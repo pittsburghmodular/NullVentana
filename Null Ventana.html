@@ -5,96 +5,112 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>NULL VENTANA — ambient geometric generator</title>
 <style>
-  :root{ --fg:#cfd6dd; }
-  *{ box-sizing:border-box; margin:0; padding:0; }
-  html,body{ height:100%; overflow:hidden; background:#05070a; }
-  body{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; color:var(--fg); }
-  #view{ position:fixed; inset:0; width:100%; height:100%; display:block; background:#05070a; }
-  .fx{ position:fixed; inset:0; pointer-events:none; z-index:2; }
-  #scan{
+  :root { --fg:#cfd6dd; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; overflow:hidden; background:#05070a; }
+  body { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; color:var(--fg); }
+  #view { position:fixed; inset:0; width:100%; height:100%; display:block; background:#05070a; }
+  .fx { position:fixed; inset:0; pointer-events:none; z-index:2; }
+  #scan {
     background:repeating-linear-gradient(0deg, rgba(0,0,0,.30) 0px, rgba(0,0,0,.30) 1px, transparent 1px, transparent 3px);
     mix-blend-mode:multiply; opacity:.55; transition:opacity .4s;
   }
-  #vig{ background:radial-gradient(ellipse at center, transparent 52%, rgba(0,0,0,.5) 100%); }
-  #side{
-    position:fixed; left:0; top:0; bottom:0; z-index:3; width:290px;
-    display:flex; flex-direction:column; gap:12px; padding:18px 14px 16px;
+  #vig { background:radial-gradient(ellipse at center, transparent 52%, rgba(0,0,0,.5) 100%); }
+  #side {
+    position:fixed; left:0; top:0; bottom:0; z-index:3; width:300px;
+    display:flex; flex-direction:column; gap:8px; padding:18px 14px 16px;
     background:rgba(7,10,15,.82); border-right:1px solid rgba(255,255,255,.12);
     backdrop-filter:blur(14px); overflow-y:auto; scrollbar-width:thin;
     transition:transform .45s cubic-bezier(.4,0,.2,1), opacity .35s;
   }
-  #side::-webkit-scrollbar{ width:5px; } 
-  #side::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.18); border-radius:2px; }
-  body.nopanel #side{ transform:translateX(-108%); opacity:.15; pointer-events:none; }
-  .panel-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:2px; }
-  h1{ font-size:13px; font-weight:700; letter-spacing:.34em; color:#eef2f5; text-shadow:0 0 12px rgba(120,200,255,.35); margin-bottom:0; }
-  button{
+  #side::-webkit-scrollbar { width:5px; } 
+  #side::-webkit-scrollbar-thumb { background:rgba(255,255,255,.18); border-radius:2px; }
+  body.nopanel #side { transform:translateX(-108%); opacity:.15; pointer-events:none; }
+  .panel-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:2px; }
+  h1 { font-size:13px; font-weight:700; letter-spacing:.34em; color:#eef2f5; text-shadow:0 0 12px rgba(120,200,255,.35); margin-bottom:0; }
+  button {
     font:inherit; font-size:9.5px; letter-spacing:.12em; color:#cfd6dd; background:rgba(10,14,20,.55);
     border:1px solid rgba(255,255,255,.18); padding:7px 11px; cursor:pointer; backdrop-filter:blur(6px);
     border-radius:2px; transition:border-color .15s,color .15s,background .15s;
   }
-  button:hover{ border-color:rgba(255,255,255,.45); color:#fff; }
-  button.on{ background:#e8edf2; color:#0a0d12; border-color:#e8edf2; font-weight:700; }
-  #bPopout{ padding:4px 8px; font-size:8.5px; }
-  .feature-box{
-    display:flex; flex-direction:column; gap:8px; padding:10px 10px 9px;
+  button:hover { border-color:rgba(255,255,255,.45); color:#fff; }
+  button.on { background:#e8edf2; color:#0a0d12; border-color:#e8edf2; font-weight:700; }
+  #bPopout { padding:4px 8px; font-size:8.5px; }
+  .feature-box {
+    display:flex; flex-direction:column; gap:8px; padding:9px 10px;
     background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.11);
     border-radius:3px; box-shadow:0 2px 8px rgba(0,0,0,0.25);
+    transition:background .2s;
   }
-  .feature-box.compact{ gap:6px; padding:8px 10px; }
-  .mod-group{
+  .feature-box.compact { gap:6px; padding:8px 10px; }
+  .box-title {
+    font-size:9px; letter-spacing:.2em; font-weight:600; opacity:.85;
+    color:#eef2f5; cursor:pointer; display:flex; justify-content:space-between;
+    align-items:center; user-select:none; padding:1px 0;
+  }
+  .box-title:hover { color:#9fd8ff; opacity:1; }
+  .box-title::after { content:'▾'; font-size:10px; opacity:.6; transition:transform .2s; }
+  .feature-box.collapsed .box-title::after { transform:rotate(-90deg); }
+  .feature-box.collapsed > *:not(.box-title) { display:none !important; }
+  .mod-group {
     display:flex; flex-direction:column; gap:4px; padding:6px 7px 7px;
     background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.06);
     border-left:2px solid rgba(255,207,119,0.5); border-radius:2px; margin-top:2px;
   }
-  .lbl{ font-size:9px; letter-spacing:.2em; opacity:.7; display:flex; justify-content:space-between; gap:8px; align-items:center; }
-  .lbl b{ font-weight:600; opacity:.95; color:#9fd8ff; }
-  .sub-lbl{ font-size:8px; letter-spacing:.14em; opacity:.6; display:flex; justify-content:space-between; margin-top:1px; }
-  .sub-lbl b{ font-weight:500; }
-  .b-depth{ color:#ffcf77; }
-  .b-rate{ color:#7be5ff; }
-  .b-aud{ color:#ff71ce; }
-  input[type=range]{ -webkit-appearance:none; appearance:none; width:100%; height:13px; background:transparent; cursor:pointer; }
-  input[type=range]::-webkit-slider-runnable-track{ height:2px; background:rgba(255,255,255,.22); }
-  input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:9px; height:13px; margin-top:-5.5px; background:#e8edf2; border:1px solid #0a0d12; box-shadow:0 0 6px rgba(160,220,255,.4); border-radius:1px; }
-  input[type=range]::-moz-range-track{ height:2px; background:rgba(255,255,255,.22); }
-  input[type=range]::-moz-range-thumb{ width:9px; height:13px; border-radius:1px; background:#e8edf2; border:1px solid #0a0d12; box-shadow:0 0 6px rgba(160,220,255,.4); }
-  input[type=range].mod-slider::-webkit-slider-runnable-track{ background:rgba(255,207,119,.28); }
-  input[type=range].mod-slider::-webkit-slider-thumb{ background:#ffd685; }
-  input[type=range].mod-slider::-moz-range-track{ background:rgba(255,207,119,.28); }
-  input[type=range].mod-slider::-moz-range-thumb{ background:#ffd685; }
-  input[type=range].lfo-rate-slider::-webkit-slider-runnable-track{ background:rgba(123,229,255,.25); }
-  input[type=range].lfo-rate-slider::-webkit-slider-thumb{ background:#7be5ff; }
-  input[type=range].lfo-rate-slider::-moz-range-track{ background:rgba(123,229,255,.25); }
-  input[type=range].lfo-rate-slider::-moz-range-thumb{ background:#7be5ff; }
-  input[type=range].aud-mod-slider::-webkit-slider-runnable-track{ background:rgba(255,113,206,.28); }
-  input[type=range].aud-mod-slider::-webkit-slider-thumb{ background:#ff71ce; }
-  input[type=range].aud-mod-slider::-moz-range-track{ background:rgba(255,113,206,.28); }
-  input[type=range].aud-mod-slider::-moz-range-thumb{ background:#ff71ce; }
-  #shapes, #shapesB{ grid-template-columns:repeat(2,1fr); }
-  .seg{ display:grid; grid-template-columns:repeat(3,1fr); gap:4px; }
-  .seg button{ padding:5px 2px; font-size:8.5px; letter-spacing:.05em; background:rgba(255,255,255,.04); white-space:normal; line-height:1.25; }
-  .seg button.on{ background:#e8edf2; color:#0a0d12; border-color:#e8edf2; font-weight:700; }
-  .swatches{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
-  .swatch{ width:auto; height:19px; padding:0; border:1px solid rgba(255,255,255,.2); background:none; overflow:hidden; display:flex; border-radius:1px; }
-  .swatch i{ flex:1; }
-  .swatch.on{ outline:2px solid #e8edf2; outline-offset:1px; }
-  .fxrow{ display:flex; flex-direction:column; gap:3px; padding-bottom:4px; }
-  .fxrow:not(:last-child){ border-bottom:1px dashed rgba(255,255,255,0.08); margin-bottom:4px; }
-  .fxrow .lbl{ opacity:.65; font-size:8.5px; }
-  .bands-meter{ display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; height:16px; margin-top:3px; }
-  .band-col{ background:rgba(255,255,255,0.06); position:relative; overflow:hidden; border-radius:1px; }
-  .band-fill{ position:absolute; bottom:0; left:0; right:0; background:#9fd8ff; height:0%; transition:height 0.04s linear; }
-  .band-fill.b0{ background:#ff5e5b; }
-  .band-fill.b1{ background:#ffd166; }
-  .band-fill.b2{ background:#00ffff; }
-  .band-fill.b3{ background:#d6ffe0; }
-  .actions{ display:flex; gap:6px; margin-top:auto; padding-top:4px; }
-  .actions button{ flex:1; padding:7px 4px; }
-  .hint{ font-size:8.5px; letter-spacing:.12em; opacity:.4; line-height:1.8; text-align:center; }
-  body.idle #side{ opacity:0; pointer-events:none; }
-  body.idle{ cursor:none; }
-  #fsPrompt{
+  .lbl { font-size:9px; letter-spacing:.2em; opacity:.7; display:flex; justify-content:space-between; gap:8px; align-items:center; }
+  .lbl b { font-weight:600; opacity:.95; color:#9fd8ff; }
+  .sub-lbl { font-size:8px; letter-spacing:.14em; opacity:.6; display:flex; justify-content:space-between; margin-top:1px; }
+  .sub-lbl b { font-weight:500; }
+  .b-depth { color:#ffcf77; }
+  .b-rate { color:#7be5ff; }
+  .b-aud { color:#ff71ce; }
+  input[type=text] {
+    width:100%; font:inherit; font-size:11px; color:#eef2f5; background:rgba(0,0,0,0.45);
+    border:1px solid rgba(255,255,255,0.2); padding:6px 8px; border-radius:2px;
+    letter-spacing:0.18em; text-transform:uppercase; outline:none;
+  }
+  input[type=text]:focus { border-color:#9fd8ff; box-shadow:0 0 8px rgba(159,216,255,0.35); }
+  input[type=range] { -webkit-appearance:none; appearance:none; width:100%; height:13px; background:transparent; cursor:pointer; }
+  input[type=range]::-webkit-slider-runnable-track { height:2px; background:rgba(255,255,255,.22); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:9px; height:13px; margin-top:-5.5px; background:#e8edf2; border:1px solid #0a0d12; box-shadow:0 0 6px rgba(160,220,255,.4); border-radius:1px; }
+  input[type=range]::-moz-range-track { height:2px; background:rgba(255,255,255,.22); }
+  input[type=range]::-moz-range-thumb { width:9px; height:13px; border-radius:1px; background:#e8edf2; border:1px solid #0a0d12; box-shadow:0 0 6px rgba(160,220,255,.4); }
+  input[type=range].mod-slider::-webkit-slider-runnable-track { background:rgba(255,207,119,.28); }
+  input[type=range].mod-slider::-webkit-slider-thumb { background:#ffd685; }
+  input[type=range].mod-slider::-moz-range-track { background:rgba(255,207,119,.28); }
+  input[type=range].mod-slider::-moz-range-thumb { background:#ffd685; }
+  input[type=range].lfo-rate-slider::-webkit-slider-runnable-track { background:rgba(123,229,255,.25); }
+  input[type=range].lfo-rate-slider::-webkit-slider-thumb { background:#7be5ff; }
+  input[type=range].lfo-rate-slider::-moz-range-track { background:rgba(123,229,255,.25); }
+  input[type=range].lfo-rate-slider::-moz-range-thumb { background:#7be5ff; }
+  input[type=range].aud-mod-slider::-webkit-slider-runnable-track { background:rgba(255,113,206,.28); }
+  input[type=range].aud-mod-slider::-webkit-slider-thumb { background:#ff71ce; }
+  input[type=range].aud-mod-slider::-moz-range-track { background:rgba(255,113,206,.28); }
+  input[type=range].aud-mod-slider::-moz-range-thumb { background:#ff71ce; }
+  #shapes, #shapesB { grid-template-columns:repeat(2,1fr); }
+  .seg { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; }
+  .seg button { padding:5px 2px; font-size:8.5px; letter-spacing:.05em; background:rgba(255,255,255,.04); white-space:normal; line-height:1.25; }
+  .seg button.on { background:#e8edf2; color:#0a0d12; border-color:#e8edf2; font-weight:700; }
+  .swatches { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .swatch { width:auto; height:19px; padding:0; border:1px solid rgba(255,255,255,.2); background:none; overflow:hidden; display:flex; border-radius:1px; }
+  .swatch i { flex:1; }
+  .swatch.on { outline:2px solid #e8edf2; outline-offset:1px; }
+  .fxrow { display:flex; flex-direction:column; gap:3px; padding-bottom:4px; }
+  .fxrow:not(:last-child) { border-bottom:1px dashed rgba(255,255,255,0.08); margin-bottom:4px; }
+  .fxrow .lbl { opacity:.65; font-size:8.5px; }
+  .bands-meter { display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; height:16px; margin-top:3px; }
+  .band-col { background:rgba(255,255,255,0.06); position:relative; overflow:hidden; border-radius:1px; }
+  .band-fill { position:absolute; bottom:0; left:0; right:0; background:#9fd8ff; height:0%; transition:height 0.04s linear; }
+  .band-fill.b0 { background:#ff5e5b; }
+  .band-fill.b1 { background:#ffd166; }
+  .band-fill.b2 { background:#00ffff; }
+  .band-fill.b3 { background:#d6ffe0; }
+  .actions { display:flex; gap:6px; margin-top:auto; padding-top:4px; }
+  .actions button { flex:1; padding:7px 4px; }
+  .hint { font-size:8.5px; letter-spacing:.12em; opacity:.4; line-height:1.8; text-align:center; }
+  body.idle #side { opacity:0; pointer-events:none; }
+  body.idle { cursor:none; }
+  #fsPrompt {
     display:none; position:fixed; top:20px; left:50%; transform:translateX(-50%);
     background:rgba(10,14,20,0.85); color:#9fd8ff; border:1px solid rgba(159,216,255,0.4);
     padding:8px 16px; border-radius:3px; font-size:10px; letter-spacing:.15em; z-index:99;
@@ -112,14 +128,87 @@
   <filter id="caR" x="-10%" y="-10%" width="120%" height="120%"><feColorMatrix type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/><feOffset id="caRO" dx="2" dy="0"/></filter>
   <filter id="caB" x="-10%" y="-10%" width="120%" height="120%"><feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 1 0  0 0 0 1 0"/><feOffset id="caBO" dx="-2" dy="0"/></filter>
 </svg>
-
 <aside id="side">
   <div class="panel-header">
     <h1>NULL VENTANA</h1>
     <button id="bPopout" title="Pop out control panel into separate window">DETACH ↗</button>
   </div>
+
   <div class="feature-box">
-    <span class="lbl">RATE OF CHANGE <b id="vRate"></b></span>
+    <div class="box-title">VECTOR TEXT OVERLAY</div>
+    <input type="text" id="cTextInput" placeholder="" value=""/>
+    <div class="fxrow">
+      <span class="lbl">FONT STYLE</span>
+      <div class="seg" id="fontStyles" style="grid-template-columns:repeat(5,1fr); gap:3px; margin-top:2px;"></div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">SCALE <b id="vTextScale">46</b></span>
+      <input type="range" id="cTextScale" min="12" max="140" value="46"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModTextScale">0%</b></span>
+        <input type="range" class="mod-slider" id="cModTextScale" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateTextScale">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateTextScale" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModTextScale">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModTextScale" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">Y POSITION <b id="vTextPosY">50%</b></span>
+      <input type="range" id="cTextPosY" min="10" max="90" value="50"/>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">SCATTER FX <b id="vTextScatter">0%</b></span>
+      <input type="range" id="cTextScatter" min="0" max="100" value="0"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModTextScatter">0%</b></span>
+        <input type="range" class="mod-slider" id="cModTextScatter" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateTextScatter">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateTextScatter" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (HI-MID) <b class="b-aud" id="vAudModTextScatter">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModTextScatter" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">ROTATE FX <b id="vTextRotate">0%</b></span>
+      <input type="range" id="cTextRotate" min="0" max="100" value="0"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModTextRotate">0%</b></span>
+        <input type="range" class="mod-slider" id="cModTextRotate" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateTextRotate">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateTextRotate" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (LOW-MID) <b class="b-aud" id="vAudModTextRotate">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModTextRotate" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">PULSE FX <b id="vTextPulse">0%</b></span>
+      <input type="range" id="cTextPulse" min="0" max="100" value="0"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModTextPulse">0%</b></span>
+        <input type="range" class="mod-slider" id="cModTextPulse" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateTextPulse">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateTextPulse" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModTextPulse">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModTextPulse" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">SCAN LINES FX <b id="vTextScan">0%</b></span>
+      <input type="range" id="cTextScan" min="0" max="100" value="0"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModTextScan">0%</b></span>
+        <input type="range" class="mod-slider" id="cModTextScan" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateTextScan">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateTextScan" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (AIR) <b class="b-aud" id="vAudModTextScan">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModTextScan" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+  </div>
+
+  <div class="feature-box">
+    <div class="box-title">RATE OF CHANGE <b id="vRate"></b></div>
     <input type="range" id="cRate" min="0" max="100" value="45"/>
     <div class="mod-group">
       <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModRate">0%</b></span>
@@ -130,10 +219,16 @@
       <input type="range" class="aud-mod-slider" id="cAudModRate" min="-100" max="100" value="0"/>
     </div>
   </div>
-  <div class="feature-box compact"><span class="lbl">SHAPE A</span><div class="seg" id="shapes"></div></div>
-  <div class="feature-box compact"><span class="lbl">SHAPE B</span><div class="seg" id="shapesB"></div></div>
+  <div class="feature-box compact">
+    <div class="box-title">SHAPE A</div>
+    <div class="seg" id="shapes"></div>
+  </div>
+  <div class="feature-box compact">
+    <div class="box-title">SHAPE B</div>
+    <div class="seg" id="shapesB"></div>
+  </div>
   <div class="feature-box">
-    <span class="lbl">CROSSFADE <b id="vMix"></b></span>
+    <div class="box-title">CROSSFADE <b id="vMix"></b></div>
     <input type="range" id="cMix" min="0" max="100" value="0"/>
     <button id="bMixAuto" style="width:100%; padding:5px 0;">AUTO OFF</button>
     <div class="mod-group">
@@ -146,7 +241,7 @@
     </div>
   </div>
   <div class="feature-box">
-    <span class="lbl">DENSITY <b id="vDen"></b></span>
+    <div class="box-title">DENSITY <b id="vDen"></b></div>
     <input type="range" id="cDen" min="0" max="100" value="50"/>
     <div class="mod-group">
       <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModDen">0%</b></span>
@@ -158,7 +253,7 @@
     </div>
   </div>
   <div class="feature-box">
-    <span class="lbl">FIDELITY <b id="vFid"></b></span>
+    <div class="box-title">FIDELITY <b id="vFid"></b></div>
     <input type="range" id="cFid" min="0" max="100" value="50"/>
     <div class="mod-group">
       <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModFid">0%</b></span>
@@ -170,7 +265,7 @@
     </div>
   </div>
   <div class="feature-box">
-    <span class="lbl">DISPLAY FILTER</span>
+    <div class="box-title">DISPLAY FILTER</div>
     <div class="seg" id="filters"></div>
     <span class="lbl" style="margin-top:6px;">FILTER LEVEL <b id="vFxLvl">70%</b></span>
     <input type="range" id="cFxLvl" min="0" max="100" value="70" title="filter intensity"/>
@@ -184,7 +279,7 @@
     </div>
   </div>
   <div class="feature-box">
-    <span class="lbl">EFFECTS & MODULATION</span>
+    <div class="box-title">EFFECTS & MODULATION</div>
     <div class="fxrow">
       <span class="lbl">TRAILS <b id="vTr"></b></span>
       <input type="range" id="cTrails" min="0" max="100" value="0"/>
@@ -222,9 +317,12 @@
       </div>
     </div>
   </div>
-  <div class="feature-box compact"><span class="lbl">COLOR PALETTE</span><div class="swatches" id="pals"></div></div>
   <div class="feature-box compact">
-    <span class="lbl">AUDIO INPUT <b id="vAud"></b></span>
+    <div class="box-title">COLOR PALETTE</div>
+    <div class="swatches" id="pals"></div>
+  </div>
+  <div class="feature-box compact">
+    <div class="box-title">AUDIO INPUT <b id="vAud"></b></div>
     <input type="range" id="cAudio" min="0" max="100" value="50"/>
     <div class="bands-meter">
       <div class="band-col" title="Sub/Bass"><div class="band-fill b0" id="mB0"></div></div>
@@ -246,12 +344,12 @@
 <script>
 'use strict';
 const TAU = Math.PI * 2;
-const clamp = (v,a,b)=> v<a?a : v>b?b : v;
-const lerp  = (a,b,t)=> a+(b-a)*t;
+const clamp = (v,a,b) => v < a ? a : v > b ? b : v;
+const lerp  = (a,b,t) => a + (b - a) * t;
 const fract = x => x - Math.floor(x);
-const hash1 = i => fract(Math.sin(i*127.1+311.7)*43758.5453);
+const hash1 = i => fract(Math.sin(i * 127.1 + 311.7) * 43758.5453);
 
-function hex2rgb(h){
+function hex2rgb(h) {
   const n = parseInt(h.replace('#',''), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
@@ -321,11 +419,23 @@ const state = {
   trails:0, blur:0, glitch:0, seed:(Math.random()*0xffff)|0, beatReseed: false,
   modRate: 0.0, modMix: 0.0, modDen: 0.0, modFid: 0.0, modFxLvl: 0.0, modTrails: 0.0, modBlur: 0.0, modGlitch: 0.0,
   lfoRateRate: 0.25, lfoRateMix: 0.25, lfoRateDen: 0.25, lfoRateFid: 0.25, lfoRateFxLvl: 0.25, lfoRateTrails: 0.25, lfoRateBlur: 0.25, lfoRateGlitch: 0.25,
-  audModRate: 0.0, audModMix: 0.0, audModDen: 0.0, audModFid: 0.0, audModFxLvl: 0.0, audModTrails: 0.0, audModBlur: 0.0, audModGlitch: 0.0
+  audModRate: 0.0, audModMix: 0.0, audModDen: 0.0, audModFid: 0.0, audModFxLvl: 0.0, audModTrails: 0.0, audModBlur: 0.0, audModGlitch: 0.0,
+  text: '', fontStyle: 'LED', textScale: 46, textPosY: 0.50, textScatter: 0, textRotate: 0.0, textPulse: 0, textScan: 0,
+  modTextScale: 0.0, lfoRateTextScale: 0.25, audModTextScale: 0.0,
+  modTextScatter: 0.0, lfoRateTextScatter: 0.25, audModTextScatter: 0.0,
+  modTextRotate: 0.0, lfoRateTextRotate: 0.25, audModTextRotate: 0.0,
+  modTextPulse: 0.0, lfoRateTextPulse: 0.25, audModTextPulse: 0.0,
+  modTextScan: 0.0, lfoRateTextScan: 0.25, audModTextScan: 0.0
 };
 
-const lfoPhases = { rate: 0, mix: 0, den: 0, fid: 0, fxLvl: 0, trails: 0, blur: 0, glitch: 0 };
-const eff = { rate: 0.45, mix: 0.0, density: 0.5, fidelity: 0.50, fxLevel: 0.7, trails: 0, blur: 0, glitch: 0 };
+const lfoPhases = { 
+  rate: 0, mix: 0, den: 0, fid: 0, fxLvl: 0, trails: 0, blur: 0, glitch: 0,
+  textScale: 0, textScatter: 0, textRotate: 0, textPulse: 0, textScan: 0
+};
+const eff = { 
+  rate: 0.45, mix: 0.0, density: 0.5, fidelity: 0.50, fxLevel: 0.7, trails: 0, blur: 0, glitch: 0,
+  textScale: 46, textScatter: 0.15, textRotate: 0.0, textPulse: 0.30, textScan: 0.45
+};
 
 reseed(state.seed);
 let paused = false, t = 0, last = performance.now();
@@ -333,24 +443,42 @@ let paused = false, t = 0, last = performance.now();
 const A = new Float32Array(4);
 let actx = null, analyser = null, aData = null;
 const lastBarVals = [-1, -1, -1, -1];
-const scanEl = document.getElementById('scan');
+let rawBassAvg = 0.05, prevRawBass = 0, lastBeatTime = 0;
+const AUDIO_RANGES = [[1, 5], [5, 16], [16, 62], [62, 220]];
 
-let rawBassAvg = 0.05;
-let prevRawBass = 0;
-let lastBeatTime = 0;
+const DOM = {
+  mB: [], cMix: null, vMix: null, scan: null,
+  caRO: null, caBO: null
+};
+
+const POP = {
+  mB: [], cMix: null, vMix: null
+};
+
+function initMainCache() {
+  DOM.mB = [0,1,2,3].map(i => document.getElementById('mB' + i));
+  DOM.cMix = document.getElementById('cMix');
+  DOM.vMix = document.getElementById('vMix');
+  DOM.scan = document.getElementById('scan');
+  DOM.caRO = document.getElementById('caRO');
+  DOM.caBO = document.getElementById('caBO');
+}
+
+function initPopCache(doc) {
+  if (!doc) return;
+  POP.mB = [0,1,2,3].map(i => doc.getElementById('mB' + i));
+  POP.cMix = doc.getElementById('cMix');
+  POP.vMix = doc.getElementById('vMix');
+}
 
 function updateAudio(dt){
   if(analyser && actx && actx.state === 'running'){
     analyser.getByteFrequencyData(aData);
-    const binCount = analyser.frequencyBinCount;
-    const ranges = [[1, 5], [5, 16], [16, 62], [62, Math.min(220, binCount)]];
     const sens = 0.5 + state.audio * 0.875;
 
     let rawKickSum = 0;
-    for(let i = ranges[0][0]; i < ranges[0][1]; i++){
-      rawKickSum += aData[i];
-    }
-    const instantBass = ((rawKickSum / (ranges[0][1] - ranges[0][0])) * 0.0039215686) * sens;
+    for(let i = AUDIO_RANGES[0][0]; i < AUDIO_RANGES[0][1]; i++) rawKickSum += aData[i];
+    const instantBass = ((rawKickSum / (AUDIO_RANGES[0][1] - AUDIO_RANGES[0][0])) * 0.0039215686) * sens;
 
     if(state.beatReseed){
       const now = performance.now();
@@ -366,7 +494,7 @@ function updateAudio(dt){
     }
 
     for(let b = 0; b < 4; b++){
-      const [start, end] = ranges[b];
+      const [start, end] = AUDIO_RANGES[b];
       let sum = 0;
       for(let i = start; i < end; i++) sum += aData[i];
       const boosted = clamp(((sum / (end - start)) * 0.0039215686) * sens, 0, 1);
@@ -375,12 +503,8 @@ function updateAudio(dt){
       const h = (A[b] * 100)|0;
       if(h !== lastBarVals[b]){
         lastBarVals[b] = h;
-        const barMain = document.getElementById('mB' + b);
-        if(barMain) barMain.style.height = h + '%';
-        if(popoutWin && !popoutWin.closed){
-          const pBar = popoutWin.document.getElementById('mB' + b);
-          if(pBar) pBar.style.height = h + '%';
-        }
+        if(DOM.mB[b]) DOM.mB[b].style.height = h + '%';
+        if(popoutWin && !popoutWin.closed && POP.mB[b]) POP.mB[b].style.height = h + '%';
       }
     }
   } else {
@@ -388,12 +512,8 @@ function updateAudio(dt){
       A[b] = A[b] > 0.002 ? A[b] * Math.max(0, 1 - dt * 6) : 0;
       if(lastBarVals[b] !== 0){
         lastBarVals[b] = 0;
-        const barMain = document.getElementById('mB' + b);
-        if(barMain) barMain.style.height = '0%';
-        if(popoutWin && !popoutWin.closed){
-          const pBar = popoutWin.document.getElementById('mB' + b);
-          if(pBar) pBar.style.height = '0%';
-        }
+        if(DOM.mB[b]) DOM.mB[b].style.height = '0%';
+        if(popoutWin && !popoutWin.closed && POP.mB[b]) POP.mB[b].style.height = '0%';
       }
     }
   }
@@ -431,14 +551,12 @@ const noiseTiles = [0,1,2].map(()=>{
   return c;
 });
 
-const caRO = document.getElementById('caRO');
-const caBO = document.getElementById('caBO');
 let glitchCA = 2;
 function setGlitchCA(px){
   if(glitchCA === px) return;
   glitchCA = px;
-  caRO.setAttribute('dx', px);
-  caBO.setAttribute('dx', -px);
+  if(DOM.caRO) DOM.caRO.setAttribute('dx', px);
+  if(DOM.caBO) DOM.caBO.setAttribute('dx', -px);
 }
 
 function resize(){
@@ -459,6 +577,276 @@ function resize(){
   }
 }
 addEventListener('resize', resize);
+
+const VECTOR_FONT = {
+  'A': [[0,1, 0.5,0], [0.5,0, 1,1], [0.2,0.6, 0.8,0.6]],
+  'B': [[0,0, 0,1], [0,0, 0.7,0], [0.7,0, 0.85,0.25], [0.85,0.25, 0.7,0.5], [0,0.5, 0.7,0.5], [0.7,0.5, 0.9,0.75], [0.9,0.75, 0.7,1], [0.7,1, 0,1]],
+  'C': [[1,0.1, 0.3,0], [0.3,0, 0,0.3], [0,0.3, 0,0.7], [0,0.7, 0.3,1], [0.3,1, 1,0.9]],
+  'D': [[0,0, 0,1], [0,0, 0.6,0], [0.6,0, 1,0.4], [1,0.4, 1,0.6], [1,0.6, 0.6,1], [0.6,1, 0,1]],
+  'E': [[1,0, 0,0], [0,0, 0,1], [0,1, 1,1], [0,0.5, 0.7,0.5]],
+  'F': [[1,0, 0,0], [0,0, 0,1], [0,0.5, 0.65,0.5]],
+  'G': [[1,0.2, 0.3,0], [0.3,0, 0,0.3], [0,0.3, 0,0.7], [0,0.7, 0.3,1], [0.3,1, 0.9,1], [0.9,1, 0.9,0.5], [0.9,0.5, 0.5,0.5]],
+  'H': [[0,0, 0,1], [1,0, 1,1], [0,0.5, 1,0.5]],
+  'I': [[0.2,0, 0.8,0], [0.5,0, 0.5,1], [0.2,1, 0.8,1]],
+  'J': [[0.7,0, 0.7,0.8], [0.7,0.8, 0.5,1], [0.5,1, 0.2,0.9], [0.2,0.9, 0.1,0.6]],
+  'K': [[0,0, 0,1], [1,0, 0,0.5], [0,0.5, 1,1]],
+  'L': [[0,0, 0,1], [0,1, 1,1]],
+  'M': [[0,1, 0,0], [0,0, 0.5,0.6], [0.5,0.6, 1,0], [1,0, 1,1]],
+  'N': [[0,1, 0,0], [0,0, 1,1], [1,1, 1,0]],
+  'O': [[0.3,0, 0.7,0], [0.7,0, 1,0.3], [1,0.3, 1,0.7], [1,0.7, 0.7,1], [0.7,1, 0.3,1], [0.3,1, 0,0.7], [0,0.7, 0,0.3], [0,0.3, 0.3,0]],
+  'P': [[0,1, 0,0], [0,0, 0.7,0], [0.7,0, 1,0.25], [1,0.25, 0.7,0.5], [0.7,0.5, 0,0.5]],
+  'Q': [[0.3,0, 0.7,0], [0.7,0, 1,0.3], [1,0.3, 1,0.7], [1,0.7, 0.7,1], [0.7,1, 0.3,1], [0.3,1, 0,0.7], [0,0.7, 0,0.3], [0,0.3, 0.3,0], [0.6,0.6, 1,1]],
+  'R': [[0,1, 0,0], [0,0, 0.7,0], [0.7,0, 1,0.25], [1,0.25, 0.7,0.5], [0.7,0.5, 0,0.5], [0.4,0.5, 1,1]],
+  'S': [[1,0.1, 0.3,0], [0.3,0, 0,0.25], [0,0.25, 0.3,0.5], [0.3,0.5, 0.8,0.5], [0.8,0.5, 1,0.75], [1,0.75, 0.7,1], [0.7,1, 0,0.9]],
+  'T': [[0,0, 1,0], [0.5,0, 0.5,1]],
+  'U': [[0,0, 0,0.8], [0,0.8, 0.3,1], [0.3,1, 0.7,1], [0.7,1, 1,0.8], [1,0.8, 1,0]],
+  'V': [[0,0, 0.5,1], [0.5,1, 1,0]],
+  'W': [[0,0, 0.2,1], [0.2,1, 0.5,0.4], [0.5,0.4, 0.8,1], [0.8,1, 1,0]],
+  'X': [[0,0, 1,1], [1,0, 0,1]],
+  'Y': [[0,0, 0.5,0.5], [1,0, 0.5,0.5], [0.5,0.5, 0.5,1]],
+  'Z': [[0,0, 1,0], [1,0, 0,1], [0,1, 1,1]],
+  '0': [[0,0, 1,0], [1,0, 1,1], [1,1, 0,1], [0,1, 0,0], [0,1, 1,0]],
+  '1': [[0.2,0.25, 0.5,0], [0.5,0, 0.5,1], [0.1,1, 0.9,1]],
+  '2': [[0,0.2, 0.3,0], [0.3,0, 0.8,0], [0.8,0, 1,0.3], [1,0.3, 0,1], [0,1, 1,1]],
+  '3': [[0,0.1, 0.8,0], [0.8,0, 1,0.25], [1,0.25, 0.6,0.5], [0.6,0.5, 1,0.75], [1,0.75, 0.7,1], [0.7,1, 0,0.9]],
+  '4': [[0.8,1, 0.8,0], [0.8,0, 0,0.65], [0,0.65, 1,0.65]],
+  '5': [[1,0, 0,0], [0,0, 0,0.45], [0,0.45, 0.8,0.45], [0.8,0.45, 1,0.7], [1,0.7, 0.7,1], [0.7,1, 0,0.9]],
+  '6': [[0.8,0.1, 0.2,0.3], [0.2,0.3, 0,0.7], [0,0.7, 0.3,1], [0.3,1, 0.8,1], [0.8,1, 1,0.7], [1,0.7, 0.8,0.5], [0.8,0.5, 0,0.5]],
+  '7': [[0,0, 1,0], [1,0, 0.3,1]],
+  '8': [[0.3,0, 0.7,0], [0.7,0, 1,0.25], [1,0.25, 0.7,0.5], [0.7,0.5, 0.3,0.5], [0.3,0.5, 0,0.25], [0,0.25, 0.3,0], [0.7,0.5, 1,0.75], [1,0.75, 0.7,1], [0.7,1, 0.3,1], [0.3,1, 0,0.75], [0,0.75, 0.3,0.5]],
+  '9': [[1,0.5, 0.2,0.5], [0.2,0.5, 0,0.3], [0,0.3, 0.3,0], [0.3,0, 0.8,0], [0.8,0, 1,0.3], [1,0.3, 1,0.8], [1,0.8, 0.6,1], [0.6,1, 0.2,0.9]],
+  '-': [[0.1,0.5, 0.9,0.5]],
+  '_': [[0,1, 1,1]],
+  '+': [[0.5,0.1, 0.5,0.9], [0.1,0.5, 0.9,0.5]],
+  '/': [[0,1, 1,0]],
+  '\\': [[0,0, 1,1]],
+  ':': [[0.45,0.3, 0.55,0.3], [0.45,0.7, 0.55,0.7]],
+  '.': [[0.45,0.9, 0.55,0.9]],
+  '!': [[0.5,0, 0.5,0.7], [0.45,0.9, 0.55,0.9]],
+  '?': [[0,0.25, 0.4,0], [0.4,0, 0.8,0], [0.8,0, 1,0.3], [1,0.3, 0.5,0.6], [0.5,0.6, 0.5,0.75], [0.45,0.95, 0.55,0.95]],
+  ' ': []
+};
+
+// Filtered down to 5 distinct typefaces
+const FONT_KEYS = ['LED', 'PHOSPHOR', 'SPACE', 'BOLD', 'MONO'];
+
+// 5x7 Dot-Matrix LED Patterns (5 columns, 7 rows: 35 bits packed as 5 7-bit column integers)
+const LED_DOT_MATRIX = {
+  'A': [0x7E, 0x11, 0x11, 0x11, 0x7E],
+  'B': [0x7F, 0x49, 0x49, 0x49, 0x36],
+  'C': [0x3E, 0x41, 0x41, 0x41, 0x22],
+  'D': [0x7F, 0x41, 0x41, 0x22, 0x1C],
+  'E': [0x7F, 0x49, 0x49, 0x49, 0x41],
+  'F': [0x7F, 0x09, 0x09, 0x09, 0x01],
+  'G': [0x3E, 0x41, 0x49, 0x49, 0x7A],
+  'H': [0x7F, 0x08, 0x08, 0x08, 0x7F],
+  'I': [0x00, 0x41, 0x7F, 0x41, 0x00],
+  'J': [0x20, 0x40, 0x41, 0x3F, 0x01],
+  'K': [0x7F, 0x08, 0x14, 0x22, 0x41],
+  'L': [0x7F, 0x40, 0x40, 0x40, 0x40],
+  'M': [0x7F, 0x02, 0x0C, 0x02, 0x7F],
+  'N': [0x7F, 0x04, 0x08, 0x10, 0x7F],
+  'O': [0x3E, 0x41, 0x41, 0x41, 0x3E],
+  'P': [0x7F, 0x09, 0x09, 0x09, 0x06],
+  'Q': [0x3E, 0x41, 0x51, 0x21, 0x5E],
+  'R': [0x7F, 0x09, 0x19, 0x29, 0x46],
+  'S': [0x46, 0x49, 0x49, 0x49, 0x31],
+  'T': [0x01, 0x01, 0x7F, 0x01, 0x01],
+  'U': [0x3F, 0x40, 0x40, 0x40, 0x3F],
+  'V': [0x1F, 0x20, 0x40, 0x20, 0x1F],
+  'W': [0x7F, 0x20, 0x18, 0x20, 0x7F],
+  'X': [0x63, 0x14, 0x08, 0x14, 0x63],
+  'Y': [0x07, 0x08, 0x70, 0x08, 0x07],
+  'Z': [0x61, 0x51, 0x49, 0x45, 0x43],
+  '0': [0x3E, 0x51, 0x49, 0x45, 0x3E],
+  '1': [0x00, 0x42, 0x7F, 0x40, 0x00],
+  '2': [0x42, 0x61, 0x51, 0x49, 0x46],
+  '3': [0x21, 0x41, 0x45, 0x4B, 0x31],
+  '4': [0x18, 0x14, 0x12, 0x7F, 0x10],
+  '5': [0x27, 0x45, 0x45, 0x45, 0x39],
+  '6': [0x3C, 0x4A, 0x49, 0x49, 0x30],
+  '7': [0x01, 0x71, 0x09, 0x05, 0x03],
+  '8': [0x36, 0x49, 0x49, 0x49, 0x36],
+  '9': [0x06, 0x49, 0x49, 0x29, 0x1E],
+  '-': [0x08, 0x08, 0x08, 0x08, 0x08],
+  '_': [0x40, 0x40, 0x40, 0x40, 0x40],
+  '+': [0x08, 0x08, 0x3E, 0x08, 0x08],
+  '/': [0x60, 0x18, 0x06, 0x01, 0x00],
+  '\\': [0x01, 0x06, 0x18, 0x60, 0x00],
+  ':': [0x00, 0x36, 0x36, 0x00, 0x00],
+  '.': [0x00, 0x60, 0x60, 0x00, 0x00],
+  '!': [0x00, 0x00, 0x7D, 0x00, 0x00],
+  '?': [0x02, 0x01, 0x51, 0x09, 0x06],
+  ' ': [0x00, 0x00, 0x00, 0x00, 0x00]
+};
+
+function drawVectorText(time){
+  const str = (state.text || '').toUpperCase();
+  if(!str) return;
+
+  const style = state.fontStyle;
+  const pal = PALETTES[state.palette];
+  const c1 = pal.rgb[0] || [255, 255, 255];
+  const c2 = pal.rgb[1 % pal.rgb.length] || [160, 220, 255];
+
+  const charCount = str.length;
+  const baseScale = eff.textScale * (bw / 512);
+
+  let aspect = 0.62, spacingRatio = 0.28;
+  if(style === 'SPACE') { aspect = 0.88; spacingRatio = 0.65; }
+  else if(style === 'MONO') { aspect = 0.65; spacingRatio = 0.35; }
+  else if(style === 'BOLD') { aspect = 0.72; spacingRatio = 0.22; }
+
+  const charW = baseScale * aspect;
+  const charH = baseScale;
+  const spacing = charW * spacingRatio;
+  const totalW = charCount * charW + Math.max(0, charCount - 1) * spacing;
+
+  const startX = (bw - totalW) * 0.5;
+  const centerY = bh * state.textPosY;
+  const rotAngle = (eff.textRotate !== 0) ? (time * 0.4) * (eff.textRotate * 1.8) : 0;
+
+  bctx.save();
+  bctx.translate(bw * 0.5, centerY);
+  if(rotAngle !== 0) bctx.rotate(rotAngle);
+  bctx.translate(-bw * 0.5, -centerY);
+
+  const scanRowH = Math.max(2, baseScale * 0.08);
+  const scanSpeed = time * 7.5;
+
+  for(let i = 0; i < charCount; i++){
+    const ch = str[i];
+    const charOriginX = startX + i * (charW + spacing);
+    const charOriginY = centerY - charH * 0.5;
+
+    const lumaLfo = Math.sin(time * (2.0 + hash1(i * 17) * 2.2) + i * 1.6);
+    const letterBrightness = clamp(1.0 + (lumaLfo * 0.78 + (hash1(i * 31) - 0.5) * 0.35) * eff.textPulse, 0.05, 2.3);
+
+    const getPos = (rx, ry, segIndex = 0) => {
+      let px = charOriginX + rx * charW;
+      let py = charOriginY + ry * charH;
+
+      if(eff.textScatter > 0.001){
+        const pSeed = i * 47 + segIndex * 19;
+        const driftDist = (hash1(pSeed) * 0.65 + 0.35) * (eff.textScatter * baseScale * 1.6);
+        const driftAngle = hash1(pSeed + 3) * TAU + Math.sin(time * 1.8 + segIndex) * 0.5;
+        px += Math.cos(driftAngle) * driftDist;
+        py += Math.sin(driftAngle) * driftDist;
+      }
+      return [px, py];
+    };
+
+    const isRowVisible = (py) => {
+      if(eff.textScan <= 0.01) return true;
+      const scanRowIndex = ((py / scanRowH) + scanSpeed) | 0;
+      return !(scanRowIndex % 2 === 0 && hash1(scanRowIndex * 13.7) < eff.textScan * 0.95);
+    };
+
+    if(style === 'LED'){
+      const cols = LED_DOT_MATRIX[ch] || LED_DOT_MATRIX['?'] || [0,0,0,0,0];
+      const dotRadius = Math.max(0.7, (charW / 5) * 0.38);
+
+      for(let col = 0; col < 5; col++){
+        const colBits = cols[col];
+        for(let row = 0; row < 7; row++){
+          const rx = (col + 0.5) / 5;
+          const ry = (row + 0.5) / 7;
+          const [px, py] = getPos(rx, ry, col * 7 + row);
+
+          if(!isRowVisible(py)) continue;
+
+          const isOn = Boolean(colBits & (1 << row));
+          bctx.beginPath();
+          bctx.arc(px, py, dotRadius, 0, TAU);
+
+          if(isOn){
+            bctx.fillStyle = `rgba(${c1[0]},${c1[1]},${c1[2]},${clamp(0.95 * letterBrightness, 0, 1)})`;
+            bctx.fill();
+
+            bctx.beginPath();
+            bctx.arc(px, py, dotRadius * 0.45, 0, TAU);
+            bctx.fillStyle = '#ffffff';
+            bctx.fill();
+          } else {
+            bctx.fillStyle = 'rgba(255,255,255,0.035)';
+            bctx.fill();
+          }
+        }
+      }
+    } else if(style === 'SPACE' || style === 'BOLD' || style === 'MONO'){
+      const [px, py] = getPos(0, 0.5, 0);
+      if(isRowVisible(py) && ch !== ' '){
+        bctx.save();
+        let fontStyleStr = '900';
+        let fontFamily = 'sans-serif';
+
+        if(style === 'SPACE'){
+          fontStyleStr = '200';
+          fontFamily = 'system-ui, -apple-system, sans-serif';
+        } else if(style === 'MONO'){
+          fontStyleStr = '600';
+          fontFamily = 'monospace';
+        }
+
+        bctx.font = `${fontStyleStr} ${charH}px ${fontFamily}`;
+        bctx.textAlign = 'left';
+        bctx.textBaseline = 'middle';
+
+        if(style === 'BOLD'){
+          bctx.fillStyle = `rgba(${c2[0]},${c2[1]},${c2[2]},0.45)`;
+          bctx.fillText(ch, px + baseScale * 0.05, py + baseScale * 0.05);
+        }
+
+        bctx.fillStyle = `rgba(${c1[0]},${c1[1]},${c1[2]},${clamp(0.92 * letterBrightness, 0, 1)})`;
+        bctx.fillText(ch, px, py);
+
+        bctx.lineWidth = Math.max(0.8, baseScale * 0.025);
+        bctx.strokeStyle = `rgba(255,255,255,${clamp(0.85 * letterBrightness, 0, 1)})`;
+        bctx.strokeText(ch, px, py);
+
+        if(style === 'MONO' && i === charCount - 1 && (time * 3 % 2 | 0) === 0){
+          bctx.fillStyle = `rgba(${c1[0]},${c1[1]},${c1[2]},0.8)`;
+          bctx.fillRect(px + charW * 0.95, py - charH * 0.42, charW * 0.28, charH * 0.84);
+        }
+        bctx.restore();
+      }
+    } else {
+      // PHOSPHOR vector beam
+      const segs = VECTOR_FONT[ch] || VECTOR_FONT['?'] || [];
+      for(let s = 0; s < segs.length; s++){
+        const [x1, y1, x2, y2] = segs[s];
+        const [px1, py1] = getPos(x1, y1, s);
+        const [px2, py2] = getPos(x2, y2, s);
+        if(!isRowVisible((py1 + py2) * 0.5)) continue;
+
+        bctx.lineCap = 'round';
+
+        bctx.beginPath();
+        bctx.strokeStyle = `rgba(${c1[0]},${c1[1]},${c1[2]},${clamp(0.25 * letterBrightness, 0, 0.45)})`;
+        bctx.lineWidth = Math.max(3.8, baseScale * 0.22);
+        bctx.moveTo(px1, py1);
+        bctx.lineTo(px2, py2);
+        bctx.stroke();
+
+        bctx.beginPath();
+        bctx.strokeStyle = `rgba(${c1[0]},${c1[1]},${c1[2]},${clamp(0.65 * letterBrightness, 0, 1)})`;
+        bctx.lineWidth = Math.max(1.8, baseScale * 0.12);
+        bctx.moveTo(px1, py1);
+        bctx.lineTo(px2, py2);
+        bctx.stroke();
+
+        bctx.beginPath();
+        bctx.strokeStyle = `rgba(255,255,255,${clamp(0.95 * letterBrightness, 0, 1)})`;
+        bctx.lineWidth = Math.max(0.8, baseScale * 0.03);
+        bctx.moveTo(px1, py1);
+        bctx.lineTo(px2, py2);
+        bctx.stroke();
+      }
+    }
+  }
+
+  bctx.restore();
+}
 
 function orb(x, y, r, c, a){
   if(r < 1) return;
@@ -556,7 +944,7 @@ function drawMosaic(t){
   for(let j = 0; j < rows; j++){
     for(let i = 0; i < cols; i++){
       const v = n2(i*0.55, j*0.62, t*0.45 + A[0]*gain*0.9);
-      let idx = Math.floor((v + 1) * 0.5 * palLen);
+      let idx = ((v + 1) * 0.5 * palLen) | 0;
       idx = clamp(idx, 0, palLen - 1);
       const c = pal.rgb[idx];
       const wave = 0.72 + 0.28*Math.sin(i*0.5 - t*0.9 + j*0.3) + A[2]*gain*0.7;
@@ -1088,7 +1476,7 @@ function drawEclipse(t){
   const c2 = pal.rgb[1 % pal.rgb.length];
   g = bctx.createRadialGradient(cx, cy, R*0.2, cx, cy, R);
   g.addColorStop(0, `rgba(${c2[0]},${c2[1]},${c2[2]},0.95)`);
-  g.addColorStop(1, `rgba(${c2[0]},${c2[1]},${c2[2]},0.4)`);
+  g.addColorStop(0.5, `rgba(${c2[0]},${c2[1]},${c2[2]},0.4)`);
   bctx.fillStyle = g;
   bctx.beginPath();
   bctx.arc(cx, cy, R, 0, TAU);
@@ -2351,18 +2739,19 @@ function frame(now){
 
   updateAudio(dt);
 
-  lfoPhases.rate   += dt * TAU * state.lfoRateRate;
-  lfoPhases.mix    += dt * TAU * state.lfoRateMix;
-  lfoPhases.den    += dt * TAU * state.lfoRateDen;
-  lfoPhases.fid    += dt * TAU * state.lfoRateFid;
-  lfoPhases.fxLvl  += dt * TAU * state.lfoRateFxLvl;
-  lfoPhases.trails += dt * TAU * state.lfoRateTrails;
-  lfoPhases.blur   += dt * TAU * state.lfoRateBlur;
-  lfoPhases.glitch += dt * TAU * state.lfoRateGlitch;
-
-  for(const k in lfoPhases){
-    if(lfoPhases[k] > TAU) lfoPhases[k] %= TAU;
-  }
+  lfoPhases.rate        += dt * TAU * state.lfoRateRate;
+  lfoPhases.mix         += dt * TAU * state.lfoRateMix;
+  lfoPhases.den         += dt * TAU * state.lfoRateDen;
+  lfoPhases.fid         += dt * TAU * state.lfoRateFid;
+  lfoPhases.fxLvl       += dt * TAU * state.lfoRateFxLvl;
+  lfoPhases.trails      += dt * TAU * state.lfoRateTrails;
+  lfoPhases.blur        += dt * TAU * state.lfoRateBlur;
+  lfoPhases.glitch      += dt * TAU * state.lfoRateGlitch;
+  lfoPhases.textScale   += dt * TAU * state.lfoRateTextScale;
+  lfoPhases.textScatter += dt * TAU * state.lfoRateTextScatter;
+  lfoPhases.textRotate  += dt * TAU * state.lfoRateTextRotate;
+  lfoPhases.textPulse   += dt * TAU * state.lfoRateTextPulse;
+  lfoPhases.textScan    += dt * TAU * state.lfoRateTextScan;
 
   eff.rate    = clamp(state.rate    + Math.sin(lfoPhases.rate)   * state.modRate   + A[0] * state.audModRate,   0, 1);
   eff.density = clamp(state.density + Math.sin(lfoPhases.den)    * state.modDen    + A[1] * state.audModDen,    0, 1);
@@ -2372,19 +2761,22 @@ function frame(now){
   eff.blur    = clamp(state.blur    + Math.sin(lfoPhases.blur)   * state.modBlur   + A[1] * state.audModBlur,   0, 1);
   eff.glitch  = clamp(state.glitch  + Math.sin(lfoPhases.glitch) * state.modGlitch + A[2] * state.audModGlitch, 0, 1);
 
+  eff.textScale   = clamp(state.textScale + (Math.sin(lfoPhases.textScale) * state.modTextScale + A[0] * state.audModTextScale) * 60, 8, 220);
+  eff.textScatter = clamp(state.textScatter + Math.sin(lfoPhases.textScatter) * state.modTextScatter + A[2] * state.audModTextScatter, 0, 1);
+  eff.textRotate  = clamp(state.textRotate + Math.sin(lfoPhases.textRotate) * state.modTextRotate + A[1] * state.audModTextRotate, 0, 1);
+  eff.textPulse   = clamp(state.textPulse + Math.sin(lfoPhases.textPulse) * state.modTextPulse + A[0] * state.audModTextPulse, 0, 1);
+  eff.textScan    = clamp(state.textScan + Math.sin(lfoPhases.textScan) * state.modTextScan + A[3] * state.audModTextScan, 0, 1);
+
   if(!paused) t += dt * (0.03 + eff.rate*eff.rate*1.6);
 
   if(state.mixAuto){
     state.mix = 0.5 + 0.5*Math.sin(tw * 0.12);
-    const slider = document.getElementById('cMix');
-    if(slider) slider.value = (state.mix * 100) | 0;
-    const readout = document.getElementById('vMix');
-    if(readout) readout.textContent = Math.round(state.mix * 100) + '%';
+    const mixPct = Math.round(state.mix * 100);
+    if(DOM.cMix) DOM.cMix.value = mixPct;
+    if(DOM.vMix) DOM.vMix.textContent = mixPct + '%';
     if(popoutWin && !popoutWin.closed){
-      const popSlider = popoutWin.document.getElementById('cMix');
-      if(popSlider) popSlider.value = (state.mix * 100) | 0;
-      const popReadout = popoutWin.document.getElementById('vMix');
-      if(popReadout) popReadout.textContent = Math.round(state.mix * 100) + '%';
+      if(POP.cMix) POP.cMix.value = mixPct;
+      if(POP.vMix) POP.vMix.textContent = mixPct + '%';
     }
   }
 
@@ -2397,15 +2789,18 @@ function frame(now){
   bctx.globalCompositeOperation = pal.blend;
 
   const mA = 1 - eff.mix, mB = eff.mix;
-  if(mA > 0.004){
+  if(mA > 0.004 && DRAW[state.shape]){
     bctx.globalAlpha = mB > 0.004 ? mA : 1;
     DRAW[state.shape](t);
   }
-  if(mB > 0.004){
+  if(mB > 0.004 && DRAW[state.shapeB]){
     bctx.globalAlpha = mA > 0.004 ? mB : 1;
     DRAW[state.shapeB](t);
   }
-  bctx.globalAlpha = 1;
+
+  bctx.globalAlpha = 1.0;
+  bctx.globalCompositeOperation = 'lighter';
+  drawVectorText(t);
 
   postProcess();
   filmOverlays(tw);
@@ -2576,7 +2971,7 @@ function frame(now){
   const curScan = state.scan ? ((so * 100) | 0) : 0;
   if(curScan !== lastScanOpacity){
     lastScanOpacity = curScan;
-    scanEl.style.opacity = (curScan * 0.01).toFixed(2);
+    if(DOM.scan) DOM.scan.style.opacity = (curScan * 0.01).toFixed(2);
   }
 }
 
@@ -2620,12 +3015,6 @@ function syncButton(id, text, isOn){
 }
 
 function syncReadouts(){
-  const rateStr = state.rate.toFixed(2);
-  const mixStr  = Math.round(state.mix * 100) + '%';
-  const denStr  = Math.round(state.density * 100) + '%';
-  const fidStr  = Math.round(state.fidelity * 100) + '%';
-  const audStr  = Math.round(state.audio * 100) + '%';
-
   const update = (id, val) => {
     const elM = document.getElementById(id);
     if(elM) elM.textContent = val;
@@ -2635,11 +3024,18 @@ function syncReadouts(){
     }
   };
 
-  update('vRate', rateStr);
-  update('vMix', mixStr);
-  update('vDen', denStr);
-  update('vFid', fidStr);
-  update('vAud', audStr);
+  update('vRate', state.rate.toFixed(2));
+  update('vMix', Math.round(state.mix * 100) + '%');
+  update('vDen', Math.round(state.density * 100) + '%');
+  update('vFid', Math.round(state.fidelity * 100) + '%');
+  update('vAud', Math.round(state.audio * 100) + '%');
+
+  update('vTextScale', Math.round(state.textScale));
+  update('vTextPosY', Math.round(state.textPosY * 100) + '%');
+  update('vTextScatter', Math.round(state.textScatter * 100) + '%');
+  update('vTextRotate', Math.round(state.textRotate * 100) + '%');
+  update('vTextPulse', Math.round(state.textPulse * 100) + '%');
+  update('vTextScan', Math.round(state.textScan * 100) + '%');
 }
 
 function setMixAuto(on){
@@ -2668,6 +3064,21 @@ function syncFx(){
 
 function sliderToHz(val) { return 0.02 * Math.pow(250, val * 0.01); }
 function hzToText(hz) { return hz < 1 ? `${hz.toFixed(2)} Hz` : `${hz.toFixed(1)} Hz`; }
+
+function setFontStyle(id){
+  state.fontStyle = id;
+  const syncGroup = (doc) => {
+    if(!doc) return;
+    const el = doc.getElementById('fontStyles');
+    if(!el) return;
+    const kids = el.children;
+    for(let i = 0; i < kids.length; i++){
+      kids[i].classList.toggle('on', FONT_KEYS[i] === id);
+    }
+  };
+  syncGroup(document);
+  if(popoutWin && !popoutWin.closed) syncGroup(popoutWin.document);
+}
 
 function setShape(id){
   state.shape = id;
@@ -2778,6 +3189,19 @@ function triggerCanvasClickFullscreenFallback(){
   view.addEventListener('click', onCanvasClick, { once: true });
 }
 
+function buildFontStyleButtons(targetDoc){
+  const fontEl = targetDoc.getElementById('fontStyles');
+  if(fontEl){
+    fontEl.innerHTML = '';
+    FONT_KEYS.forEach(k => {
+      const b = targetDoc.createElement('button');
+      b.textContent = k;
+      b.addEventListener('click', ()=>setFontStyle(k));
+      fontEl.appendChild(b);
+    });
+  }
+}
+
 function buildShapeButtons(targetDoc){
   const shapesEl = targetDoc.getElementById('shapes');
   const shapesElB = targetDoc.getElementById('shapesB');
@@ -2833,10 +3257,48 @@ function buildPaletteButtons(targetDoc){
   }
 }
 
+function setupCollapsibles(targetDoc){
+  targetDoc.querySelectorAll('.feature-box .box-title').forEach(title => {
+    title.addEventListener('click', (e) => {
+      if(e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+      const box = title.closest('.feature-box');
+      if(box) box.classList.toggle('collapsed');
+    });
+  });
+}
+
 function wireControls(targetDoc = document){
+  buildFontStyleButtons(targetDoc);
   buildShapeButtons(targetDoc);
   buildFilterButtons(targetDoc);
   buildPaletteButtons(targetDoc);
+  setupCollapsibles(targetDoc);
+
+  const cTextInput   = targetDoc.getElementById('cTextInput');
+  const cTextScale   = targetDoc.getElementById('cTextScale');
+  const cTextPosY    = targetDoc.getElementById('cTextPosY');
+  const cTextScatter = targetDoc.getElementById('cTextScatter');
+  const cTextRotate  = targetDoc.getElementById('cTextRotate');
+  const cTextPulse   = targetDoc.getElementById('cTextPulse');
+  const cTextScan    = targetDoc.getElementById('cTextScan');
+
+  if(cTextInput){
+    cTextInput.addEventListener('input', (e)=>{
+      state.text = e.target.value;
+      if(popoutWin && !popoutWin.closed){
+        const pop = popoutWin.document.getElementById('cTextInput');
+        if(pop && pop !== e.target) pop.value = state.text;
+      }
+      const main = document.getElementById('cTextInput');
+      if(main && main !== e.target) main.value = state.text;
+    });
+  }
+  if(cTextScale)   cTextScale.addEventListener('input', ()=>{ state.textScale = parseFloat(cTextScale.value); syncReadouts(); });
+  if(cTextPosY)    cTextPosY.addEventListener('input',  ()=>{ state.textPosY = cTextPosY.value * 0.01; syncReadouts(); });
+  if(cTextScatter) cTextScatter.addEventListener('input', ()=>{ state.textScatter = cTextScatter.value * 0.01; syncReadouts(); });
+  if(cTextRotate)  cTextRotate.addEventListener('input',  ()=>{ state.textRotate = cTextRotate.value * 0.01; syncReadouts(); });
+  if(cTextPulse)   cTextPulse.addEventListener('input',   ()=>{ state.textPulse = cTextPulse.value * 0.01; syncReadouts(); });
+  if(cTextScan)    cTextScan.addEventListener('input',    ()=>{ state.textScan = cTextScan.value * 0.01; syncReadouts(); });
 
   const cRate = targetDoc.getElementById('cRate');
   const cMix  = targetDoc.getElementById('cMix');
@@ -2903,6 +3365,12 @@ function wireControls(targetDoc = document){
   bindDepth('cModBlur', 'vModBlur', 'modBlur');
   bindDepth('cModGlitch', 'vModGlitch', 'modGlitch');
 
+  bindDepth('cModTextScale', 'vModTextScale', 'modTextScale');
+  bindDepth('cModTextScatter', 'vModTextScatter', 'modTextScatter');
+  bindDepth('cModTextRotate', 'vModTextRotate', 'modTextRotate');
+  bindDepth('cModTextPulse', 'vModTextPulse', 'modTextPulse');
+  bindDepth('cModTextScan', 'vModTextScan', 'modTextScan');
+
   bindLfo('cLfoRateRate', 'vLfoRateRate', 'lfoRateRate');
   bindLfo('cLfoRateMix', 'vLfoRateMix', 'lfoRateMix');
   bindLfo('cLfoRateDen', 'vLfoRateDen', 'lfoRateDen');
@@ -2912,6 +3380,12 @@ function wireControls(targetDoc = document){
   bindLfo('cLfoRateBlur', 'vLfoRateBlur', 'lfoRateBlur');
   bindLfo('cLfoRateGlitch', 'vLfoRateGlitch', 'lfoRateGlitch');
 
+  bindLfo('cLfoRateTextScale', 'vLfoRateTextScale', 'lfoRateTextScale');
+  bindLfo('cLfoRateTextScatter', 'vLfoRateTextScatter', 'lfoRateTextScatter');
+  bindLfo('cLfoRateTextRotate', 'vLfoRateTextRotate', 'lfoRateTextRotate');
+  bindLfo('cLfoRateTextPulse', 'vLfoRateTextPulse', 'lfoRateTextPulse');
+  bindLfo('cLfoRateTextScan', 'vLfoRateTextScan', 'lfoRateTextScan');
+
   bindDepth('cAudModRate', 'vAudModRate', 'audModRate');
   bindDepth('cAudModMix', 'vAudModMix', 'audModMix');
   bindDepth('cAudModDen', 'vAudModDen', 'audModDen');
@@ -2920,6 +3394,12 @@ function wireControls(targetDoc = document){
   bindDepth('cAudModTrails', 'vAudModTrails', 'audModTrails');
   bindDepth('cAudModBlur', 'vAudModBlur', 'audModBlur');
   bindDepth('cAudModGlitch', 'vAudModGlitch', 'audModGlitch');
+
+  bindDepth('cAudModTextScale', 'vAudModTextScale', 'audModTextScale');
+  bindDepth('cAudModTextScatter', 'vAudModTextScatter', 'audModTextScatter');
+  bindDepth('cAudModTextRotate', 'vAudModTextRotate', 'audModTextRotate');
+  bindDepth('cAudModTextPulse', 'vAudModTextPulse', 'audModTextPulse');
+  bindDepth('cAudModTextScan', 'vAudModTextScan', 'audModTextScan');
 
   targetDoc.querySelectorAll('input[type=range]').forEach(slider => {
     slider.title = (slider.title ? slider.title + ' — ' : '') + 'Double-click to reset';
@@ -2963,7 +3443,7 @@ function togglePopout(){
 }
 
 function openPopoutWindow(){
-  const w = 320, h = 840;
+  const w = 340, h = 880;
   const left = window.screenX + window.outerWidth + 10;
   const top = window.screenY;
   
@@ -3006,6 +3486,7 @@ function openPopoutWindow(){
   syncButton('bPopout', 'ATTACH ↙', true);
 
   wireControls(popoutWin.document);
+  initPopCache(popoutWin.document);
 
   const mainInputs = sideEl.querySelectorAll('input');
   mainInputs.forEach(inp => {
@@ -3013,6 +3494,7 @@ function openPopoutWindow(){
     if(popInp) popInp.value = inp.value;
   });
 
+  setFontStyle(state.fontStyle);
   setShape(state.shape);
   setShapeB(state.shapeB);
   setFilter(state.filter);
@@ -3034,6 +3516,7 @@ function openPopoutWindow(){
 }
 
 addEventListener('keydown', e => {
+  if(e.target && e.target.tagName === 'INPUT' && e.target.type === 'text') return;
   if(e.key === 'Tab'){ e.preventDefault(); document.body.classList.toggle('nopanel'); }
   else if(e.code === 'Space'){ e.preventDefault(); togglePause(); }
   else if(e.key === 'f' || e.key === 'F') handleFullscreenRequest(document);
@@ -3056,7 +3539,9 @@ addEventListener('mousemove', wake);
 addEventListener('keydown', wake);
 addEventListener('touchstart', wake, { passive: true });
 
+initMainCache();
 wireControls(document);
+setFontStyle('LED');
 setShape('orbs');
 setShapeB('rings');
 setFilter('none');
