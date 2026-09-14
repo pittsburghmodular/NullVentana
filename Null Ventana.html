@@ -216,18 +216,6 @@
     <div class="seg" id="shapesB"></div>
   </div>
   <div class="feature-box">
-    <div class="box-title">RATE OF CHANGE <b id="vRate"></b></div>
-    <input type="range" id="cRate" min="0" max="100" value="45"/>
-    <div class="mod-group">
-      <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModRate">0%</b></span>
-      <input type="range" class="mod-slider" id="cModRate" min="-100" max="100" value="0"/>
-      <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateRate">0.25 Hz</b></span>
-      <input type="range" class="lfo-rate-slider" id="cLfoRateRate" min="1" max="100" value="35"/>
-      <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModRate">0%</b></span>
-      <input type="range" class="aud-mod-slider" id="cAudModRate" min="-100" max="100" value="0"/>
-    </div>
-  </div>
-  <div class="feature-box">
     <div class="box-title">CROSSFADE <b id="vMix"></b></div>
     <input type="range" id="cMix" min="0" max="100" value="0"/>
     <button id="bMixAuto" style="width:100%; padding:5px 0;">AUTO OFF</button>
@@ -238,6 +226,18 @@
       <input type="range" class="lfo-rate-slider" id="cLfoRateMix" min="1" max="100" value="35"/>
       <span class="sub-lbl">AUDIO MOD (LOW-MID) <b class="b-aud" id="vAudModMix">0%</b></span>
       <input type="range" class="aud-mod-slider" id="cAudModMix" min="-100" max="100" value="0"/>
+    </div>
+  </div>
+  <div class="feature-box">
+    <div class="box-title">RATE OF CHANGE <b id="vRate"></b></div>
+    <input type="range" id="cRate" min="0" max="100" value="45"/>
+    <div class="mod-group">
+      <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModRate">0%</b></span>
+      <input type="range" class="mod-slider" id="cModRate" min="-100" max="100" value="0"/>
+      <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateRate">0.25 Hz</b></span>
+      <input type="range" class="lfo-rate-slider" id="cLfoRateRate" min="1" max="100" value="35"/>
+      <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModRate">0%</b></span>
+      <input type="range" class="aud-mod-slider" id="cAudModRate" min="-100" max="100" value="0"/>
     </div>
   </div>
   <div class="feature-box">
@@ -281,6 +281,18 @@
   <div class="feature-box">
     <div class="box-title">EFFECTS & MODULATION</div>
     <div class="fxrow">
+      <span class="lbl">GLITCH <b id="vGl"></b></span>
+      <input type="range" id="cGlitch" min="0" max="100" value="0"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModGlitch">0%</b></span>
+        <input type="range" class="mod-slider" id="cModGlitch" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateGlitch">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateGlitch" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (HI-MID) <b class="b-aud" id="vAudModGlitch">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModGlitch" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
       <span class="lbl">TRAILS <b id="vTr"></b></span>
       <input type="range" id="cTrails" min="0" max="100" value="0"/>
       <div class="mod-group">
@@ -302,18 +314,6 @@
         <input type="range" class="lfo-rate-slider" id="cLfoRateBlur" min="1" max="100" value="35"/>
         <span class="sub-lbl">AUDIO MOD (LOW-MID) <b class="b-aud" id="vAudModBlur">0%</b></span>
         <input type="range" class="aud-mod-slider" id="cAudModBlur" min="-100" max="100" value="0"/>
-      </div>
-    </div>
-    <div class="fxrow">
-      <span class="lbl">GLITCH <b id="vGl"></b></span>
-      <input type="range" id="cGlitch" min="0" max="100" value="0"/>
-      <div class="mod-group">
-        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModGlitch">0%</b></span>
-        <input type="range" class="mod-slider" id="cModGlitch" min="-100" max="100" value="0"/>
-        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateGlitch">0.25 Hz</b></span>
-        <input type="range" class="lfo-rate-slider" id="cLfoRateGlitch" min="1" max="100" value="35"/>
-        <span class="sub-lbl">AUDIO MOD (HI-MID) <b class="b-aud" id="vAudModGlitch">0%</b></span>
-        <input type="range" class="aud-mod-slider" id="cAudModGlitch" min="-100" max="100" value="0"/>
       </div>
     </div>
   </div>
@@ -581,6 +581,9 @@ const downBuf2 = document.createElement('canvas');
 const dctx2   = downBuf2.getContext('2d');
 const trail = document.createElement('canvas');
 const tctx  = trail.getContext('2d');
+// Full-res scratch canvas used by the GLITCH slice/block displacement pass.
+const fxc   = document.createElement('canvas');
+const fxctx = fxc.getContext('2d');
 
 let trailsArmed = false, W = 0, H = 0, dpr = 1;
 // Rendering surfaces. Shapes draw into a low-res buffer (bw x bh, 512 wide) that is post-processed, then scaled to the view.
@@ -624,6 +627,7 @@ function resize(){
   downBuf.width = bw; downBuf.height = bh;
   downBuf2.width = bw; downBuf2.height = bh;
   trail.width = W; trail.height = H;
+  fxc.width = W; fxc.height = H;
   trailsArmed = false;
   if(sharedSrcBuffer.length < bw * bh * 4) {
     sharedSrcBuffer = new Uint8ClampedArray(bw * bh * 4);
@@ -2160,12 +2164,12 @@ function drawRising(t){
 // DIAMONDS: Atari Video Music style nested diamonds; each ring is driven by one audio band.
 function drawVMSolid(t){
   // Atari Video Music style nested diamonds, full-res, each ring driven by its own audio band
-  const gain = 0.25 + state.audio * 1.25, minD = Math.min(bw, bh);
+  const pal = PALETTES[state.palette], gain = 0.25 + state.audio * 1.25, minD = Math.min(bw, bh);
   bctx.globalCompositeOperation = 'source-over';
   const VM = drawVMSolid;
   if(VM.step === undefined){ VM.step = 0; VM.lastBeat = 0; VM.lastT = t; VM.level = 0; VM.sm = new Float32Array(4); }
   let dt = t - VM.lastT; VM.lastT = t; if(dt < 0 || dt > 0.25) dt = 0;
-  const ATARI = [[255,56,56],[255,148,0],[255,255,64],[72,255,72],[64,255,255],[88,88,255],[255,72,255],[255,255,255],[180,110,255],[255,120,180]];
+  const COLS = pal.rgb;   // ring colours come from the current palette, cycled on beats
   // beat -> colour step
   if(A[0] > VM.level*1.35 + 0.12 && t - VM.lastBeat > 0.12){ VM.step++; VM.lastBeat = t; }
   VM.level = lerp(VM.level, A[0], 0.2);
@@ -2187,7 +2191,7 @@ function drawVMSolid(t){
   const split = Math.sin(t*0.11) > 0.72;
   const hole = VM.sm[3] > 0.55;
   const centres = split ? [[bw*0.25, bh*0.5, 0.5], [bw*0.75, bh*0.5, 0.5]] : [[bw*0.5, bh*0.5, 1]];
-  bctx.fillStyle = '#000'; bctx.fillRect(0, 0, bw, bh);
+  bctx.fillStyle = pal.bg; bctx.fillRect(0, 0, bw, bh);
   for(const [cx0, cy, sc] of centres){
     for(let k = count - 1; k >= 0; k--){
       const b = k % 4;
@@ -2196,14 +2200,14 @@ function drawVMSolid(t){
       const cx = cx0 + (b === 0 ? (VM.sm[0] - 0.4)*minD*0.04*Math.sin(t*7 + k) : 0) + (b === 3 ? (hash1(Math.floor(t*30) + k) - 0.5)*VM.sm[3]*minD*0.03 : 0);
       const skew = b === 1 ? VM.sm[1]*0.35*Math.sin(t*3 + k) : 0;
       const rx = r*1.42*(1 + (b === 2 ? VM.sm[2]*0.25 : 0)), ry = r*(1 - (b === 2 ? VM.sm[2]*0.15 : 0));
-      const c = ATARI[(k + VM.step) % ATARI.length];
+      const c = COLS[(k + VM.step) % COLS.length];
       const lit = 0.55 + 0.45*clamp(VM.sm[b], 0, 1);
       bctx.fillStyle = `rgb(${(c[0]*lit)|0},${(c[1]*lit)|0},${(c[2]*lit)|0})`;
       bctx.beginPath();
       bctx.moveTo(cx + skew*ry, cy - ry); bctx.lineTo(cx + rx, cy); bctx.lineTo(cx - skew*ry, cy + ry); bctx.lineTo(cx - rx, cy);
       bctx.closePath(); bctx.fill();
       if(k === 0 && hole){
-        bctx.fillStyle = '#000'; const hr = r*0.5;
+        bctx.fillStyle = pal.bg; const hr = r*0.5;
         bctx.beginPath(); bctx.moveTo(cx, cy - hr); bctx.lineTo(cx + hr*1.42, cy); bctx.lineTo(cx, cy + hr); bctx.lineTo(cx - hr*1.42, cy); bctx.closePath(); bctx.fill();
       }
     }
@@ -3818,9 +3822,9 @@ const FILTERS = [
 const FX = {
   none: {},
   photo: { grain:16, flick:0.03, weaveX:1.2, weaveY:0.9, scratches:[0,2], dust:[4,12], dustDark:[8,20], hair:3, stains:true, tint:[1.07,1.01,0.88], sat:0.72, blur:0.5 },
-  mm16:  { grain:24, flick:0.15, weaveX:1.1, weaveY:0.9, dust:[2,8], tint:[1.06,1.0,0.90] },
-  mm35:  { grain:9,  flick:0.07, weaveX:0.4, weaveY:0.3, dust:[1,4], tint:[1.02,1.0,0.97] },
-  vhs:   { staticP:0.06, rowWob:3.5, caAdd:2, sat:0.8, flick:0.05, tint:[1.03,1.0,0.97] },
+  mm16:  { grain:24, flick:0.075, weaveX:1.1, weaveY:0.9, dust:[2,8], tint:[1.06,1.0,0.90] },
+  mm35:  { grain:9,  flick:0.035, weaveX:0.4, weaveY:0.3, dust:[1,4], tint:[1.02,1.0,0.97] },
+  vhs:   { staticP:0.06, rowWob:3.5, caAdd:2, sat:0.8, flick:0.025, tint:[1.03,1.0,0.97] },
   cable: { staticP:0.035, blocks:8, soft:0.4, caAdd:1, flick:0.03 }
 };
 
@@ -4024,7 +4028,7 @@ function drawMixed(id, alpha, t){
 
 // ---------------------------------------------------------------------------------------------
 // Main loop: audio -> LFOs/eff -> shapes (with crossfade) -> postProcess -> film overlays -> downscale for
-// FIDELITY -> blit to view with weave/CA -> text overlay -> blur -> trails -> view-level filter noise -> scanlines
+// FIDELITY -> blit to view with weave/CA -> text overlay -> glitch -> blur -> trails -> view-level filter noise -> scanlines
 // ---------------------------------------------------------------------------------------------
 function frame(now){
   requestAnimationFrame(frame);
@@ -4159,6 +4163,40 @@ function frame(now){
     ctx.restore();
   }
 
+  // GLITCH runs before blur/trails so the slice displacement gets softened and smeared into the trail memory
+  if(eff.glitch > 0.01){
+    const per = lerp(5, 1.2, eff.glitch), bdur = lerp(0.35, 0.14, eff.glitch);
+    const bp = fract(tw / per);
+    const ga = bp < bdur ? Math.sin(bp / bdur * Math.PI) * eff.glitch : 0;
+    if(ga > 0){
+      fxctx.drawImage(view, 0, 0);
+      const seed = Math.floor(tw * 24) * 7;
+      const nS = 4 + Math.floor(ga * 16);
+      for(let sI = 0; sI < nS; sI++){
+        const y = (hash1(sI*3 + seed)*H) | 0;
+        const hgt = Math.max(2, (2 + hash1(sI*5 + seed)*H*0.06*ga) | 0);
+        const dx = (hash1(sI*7 + seed)*2 - 1)*W*0.08*ga;
+        fxctx.drawImage(view, 0, y, W, hgt, dx, y, W, hgt);
+      }
+      if(ga > 0.4){
+        const nb = 1 + Math.floor(hash1(seed)*3), bs = W*(0.08 + hash1(seed*3)*0.2);
+        for(let bI = 0; bI < nb; bI++){
+          const bx = (hash1(bI*11 + seed)*(W - bs)) | 0, by = (hash1(bI*17 + seed)*Math.max(1, H - bs*0.5)) | 0;
+          fxctx.drawImage(view, (hash1(bI*23 + seed)*(W - bs)) | 0, (hash1(bI*29 + seed)*Math.max(1, H - bs*0.5)) | 0, bs, bs*0.5, bx, by, bs, bs*0.5);
+        }
+      }
+      ctx.drawImage(fxc, 0, 0);
+      setGlitchCA(1 + ga*7);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.35 * ga;
+      ctx.filter = 'url(#caR)'; ctx.drawImage(view, 0, 0);
+      ctx.filter = 'url(#caB)'; ctx.drawImage(view, 0, 0);
+      ctx.restore();
+      setGlitchCA(2);
+    }
+  }
+
   if(eff.blur > 0.01 && FILTER_OK){
     ctx.save();
     ctx.filter = `blur(${eff.blur * Math.min(W, H) * 0.02}px)`;
@@ -4204,39 +4242,6 @@ function frame(now){
     ctx.fillStyle = '#fff8ee';
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
-  }
-
-  if(eff.glitch > 0.01){
-    const per = lerp(5, 1.2, eff.glitch), bdur = lerp(0.35, 0.14, eff.glitch);
-    const bp = fract(tw / per);
-    const ga = bp < bdur ? Math.sin(bp / bdur * Math.PI) * eff.glitch : 0;
-    if(ga > 0){
-      fxctx.drawImage(view, 0, 0);
-      const seed = Math.floor(tw * 24) * 7;
-      const nS = 4 + Math.floor(ga * 16);
-      for(let sI = 0; sI < nS; sI++){
-        const y = (hash1(sI*3 + seed)*H) | 0;
-        const hgt = Math.max(2, (2 + hash1(sI*5 + seed)*H*0.06*ga) | 0);
-        const dx = (hash1(sI*7 + seed)*2 - 1)*W*0.08*ga;
-        fxctx.drawImage(view, 0, y, W, hgt, dx, y, W, hgt);
-      }
-      if(ga > 0.4){
-        const nb = 1 + Math.floor(hash1(seed)*3), bs = W*(0.08 + hash1(seed*3)*0.2);
-        for(let bI = 0; bI < nb; bI++){
-          const bx = (hash1(bI*11 + seed)*(W - bs)) | 0, by = (hash1(bI*17 + seed)*Math.max(1, H - bs*0.5)) | 0;
-          fxctx.drawImage(view, (hash1(bI*23 + seed)*(W - bs)) | 0, (hash1(bI*29 + seed)*Math.max(1, H - bs*0.5)) | 0, bs, bs*0.5, bx, by, bs, bs*0.5);
-        }
-      }
-      ctx.drawImage(fxc, 0, 0);
-      setGlitchCA(1 + ga*7);
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.35 * ga;
-      ctx.filter = 'url(#caR)'; ctx.drawImage(view, 0, 0);
-      ctx.filter = 'url(#caB)'; ctx.drawImage(view, 0, 0);
-      ctx.restore();
-      setGlitchCA(2);
-    }
   }
 
   let so = lerp(0.75, 0.18, eff.fidelity);
