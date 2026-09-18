@@ -129,6 +129,15 @@
 <div id="fsPrompt">CLICK CANVAS TO ENTER FULLSCREEN</div>
 
 <svg width="0" height="0" style="position:absolute">
+  <!-- OUTPUT GRADE: exposure / temperature / tone curve as per-channel transfer tables, saturation as a colour matrix -->
+  <filter id="outGrade" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feComponentTransfer>
+      <feFuncR id="ogR" type="table" tableValues="0 1"/>
+      <feFuncG id="ogG" type="table" tableValues="0 1"/>
+      <feFuncB id="ogB" type="table" tableValues="0 1"/>
+    </feComponentTransfer>
+    <feColorMatrix id="ogSat" type="saturate" values="1"/>
+  </filter>
   <filter id="caR" x="-10%" y="-10%" width="120%" height="120%"><feColorMatrix type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/><feOffset id="caRO" dx="2" dy="0"/></filter>
   <filter id="caB" x="-10%" y="-10%" width="120%" height="120%"><feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 1 0  0 0 0 1 0"/><feOffset id="caBO" dx="-2" dy="0"/></filter>
   <!-- RGB SPLIT: pure channel isolation (offsets are applied by drawImage position) -->
@@ -404,6 +413,24 @@
     </div>
   </div>
   <div class="feature-box compact">
+    <div class="box-title">OUTPUT GRADE</div>
+    <div class="mod-group" style="border-left-color:rgba(255,204,128,0.5);">
+      <span class="sub-lbl">EXPOSURE <b id="vOutExp">0.0 EV</b></span>
+      <input type="range" id="cOutExp" min="-200" max="200" value="0" title="final output exposure, ±2 EV"/>
+      <span class="sub-lbl">TEMPERATURE <b id="vOutTemp">0</b></span>
+      <input type="range" id="cOutTemp" min="-100" max="100" value="0" title="cool (blue) to warm (amber)"/>
+      <span class="sub-lbl">SATURATION <b id="vOutSat">100%</b></span>
+      <input type="range" id="cOutSat" min="0" max="200" value="100" title="final output colour saturation"/>
+      <span class="sub-lbl">SHADOWS <b id="vOutSh">0</b></span>
+      <input type="range" id="cOutSh" min="-100" max="100" value="0" title="lift or crush the darks"/>
+      <span class="sub-lbl">MIDTONES <b id="vOutMid">0</b></span>
+      <input type="range" id="cOutMid" min="-100" max="100" value="0" title="raise or lower the mids"/>
+      <span class="sub-lbl">HIGHLIGHTS <b id="vOutHi">0</b></span>
+      <input type="range" id="cOutHi" min="-100" max="100" value="0" title="boost or roll off the brights"/>
+    </div>
+    <button id="bOutReset" class="toggle-full" style="margin-top:4px;" title="return all output grade controls to neutral">RESET GRADE</button>
+  </div>
+  <div class="feature-box compact">
     <div class="box-title">COLOR PALETTE</div>
     <div class="swatches" id="pals"></div>
     <button id="bPalAudio" class="toggle-full" style="margin-top:6px;" title="on each detected beat the audio input picks a new random colour set">AUDIO PALETTE OFF</button>
@@ -570,6 +597,7 @@ const state = {
   feedback:0, fbZoom:0.12, fbRot:5.7, fbHue:0, modFeedback:0.0, lfoRateFeedback:0.25, audModFeedback:0.0,
   invert:false, bgMode:'palette', noBgA:false, noBgB:false, videoLoop:false, videoGranular:false, grainMax:2.0, grainFade:0.15, srcMix:0, vidIn:0, vidOut:1, palAudio:false,
   camExp:0, camTemp:0, camSat:1, camSh:0, camMid:0, camHi:0,
+  outExp:0, outTemp:0, outSat:1, outSh:0, outMid:0, outHi:0,
   modRate: 0.0, modMix: 0.0, modDen: 0.0, modFid: 0.0, modFxLvl: 0.0, modTrails: 0.0, modBlur: 0.0, modGlitch: 0.0,
   lfoRateRate: 0.25, lfoRateMix: 0.25, lfoRateDen: 0.25, lfoRateFid: 0.25, lfoRateFxLvl: 0.25, lfoRateTrails: 0.25, lfoRateBlur: 0.25, lfoRateGlitch: 0.25,
   audModRate: 0.0, audModMix: 0.0, audModDen: 0.0, audModFid: 0.0, audModFxLvl: 0.0, audModTrails: 0.0, audModBlur: 0.0, audModGlitch: 0.0,
@@ -1066,6 +1094,68 @@ function setSrcMix(v){
   state.srcMix = clamp(v, 0, 1);
   const pct = Math.round(state.srcMix*100);
   syncButton('vSrcMix', pct === 0 ? 'VIDEO' : pct === 100 ? 'CAMERA' : `${100 - pct}/${pct}`, null);
+}
+// ---- OUTPUT GRADE: exposure / temperature / saturation / shadows / midtones / highlights on the finished frame.
+// Same maths as the camera grade, but applied to the whole view as the last step of the chain. With canvas
+// filters available it runs on the GPU through the #outGrade SVG filter (per-channel transfer tables + saturate
+// matrix, rebuilt only when a control moves); otherwise it falls back to a per-pixel LUT pass on the view.
+const OGRADE = { key:'', r:new Float32Array(256), g:new Float32Array(256), b:new Float32Array(256), tables:null };
+function outGradeActive(){
+  return state.outExp !== 0 || state.outTemp !== 0 || state.outSat !== 1 || state.outSh !== 0 || state.outMid !== 0 || state.outHi !== 0;
+}
+function outGradeBuild(){
+  const key = [state.outExp, state.outTemp, state.outSat, state.outSh, state.outMid, state.outHi].join('|');
+  if(OGRADE.key === key) return;
+  OGRADE.key = key;
+  const gainE = Math.pow(2, state.outExp), tmp = state.outTemp;
+  const mulR = 1 + 0.28*tmp, mulG = 1 + 0.06*tmp, mulB = 1 - 0.28*tmp;
+  const sh = state.outSh*0.4, mid = state.outMid*0.4, hi = state.outHi*0.4;
+  const tone = (x) => {
+    x = clamp(x, 0, 1);
+    const wS = (1 - x)*(1 - x), wM = 4*x*(1 - x), wH = x*x;
+    return clamp(x + sh*wS*(1 - x) + mid*wM*0.5 + hi*wH*(x), 0, 1);
+  };
+  for(let v = 0; v < 256; v++){
+    const x = tone(v/255 * gainE);
+    OGRADE.r[v] = clamp(x*mulR, 0, 1)*255; OGRADE.g[v] = clamp(x*mulG, 0, 1)*255; OGRADE.b[v] = clamp(x*mulB, 0, 1)*255;
+  }
+  // 64-entry transfer tables for the SVG filter (linearly interpolated by the browser)
+  const N = 64, tr = [], tg = [], tb = [];
+  for(let i = 0; i < N; i++){ const v = Math.round(i/(N - 1)*255); tr.push((OGRADE.r[v]/255).toFixed(4)); tg.push((OGRADE.g[v]/255).toFixed(4)); tb.push((OGRADE.b[v]/255).toFixed(4)); }
+  const set = (id, vals) => { const el = document.getElementById(id); if(el) el.setAttribute('tableValues', vals.join(' ')); };
+  set('ogR', tr); set('ogG', tg); set('ogB', tb);
+  const sm = document.getElementById('ogSat'); if(sm) sm.setAttribute('values', String(state.outSat));
+}
+function applyOutputGrade(){
+  if(!outGradeActive()) return;
+  outGradeBuild();
+  if(FILTER_OK){
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'copy';
+    ctx.globalAlpha = 1;
+    ctx.filter = 'url(#outGrade)';
+    ctx.drawImage(view, 0, 0);
+    ctx.restore();
+    ctx.filter = 'none';
+    return;
+  }
+  const img = ctx.getImageData(0, 0, W, H), d = img.data, LR = OGRADE.r, LG = OGRADE.g, LB = OGRADE.b, sat = state.outSat;
+  for(let i = 0; i < d.length; i += 4){
+    let r = LR[d[i]], g = LG[d[i+1]], b = LB[d[i+2]];
+    if(sat !== 1){ const l = r*0.299 + g*0.587 + b*0.114; r = l + (r - l)*sat; g = l + (g - l)*sat; b = l + (b - l)*sat; }
+    d[i] = r; d[i+1] = g; d[i+2] = b;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+function syncOutGrade(){
+  const upd = (id, txt) => syncButton(id, txt, null);
+  upd('vOutExp', (state.outExp >= 0 ? '+' : '') + state.outExp.toFixed(1) + ' EV');
+  upd('vOutTemp', (state.outTemp > 0 ? '+' : '') + Math.round(state.outTemp*100));
+  upd('vOutSat', Math.round(state.outSat*100) + '%');
+  upd('vOutSh', (state.outSh > 0 ? '+' : '') + Math.round(state.outSh*100));
+  upd('vOutMid', (state.outMid > 0 ? '+' : '') + Math.round(state.outMid*100));
+  upd('vOutHi', (state.outHi > 0 ? '+' : '') + Math.round(state.outHi*100));
 }
 // Cover-fit a <video> element into the buffer at the given opacity.
 function drawCover(el, alpha){
@@ -5208,6 +5298,8 @@ function frame(now){
     ctx.restore();
   }
 
+  applyOutputGrade();   // OUTPUT GRADE: last step, so it colours everything including text, trails and feedback
+
   let so = lerp(0.75, 0.18, eff.fidelity);
   const Lf = eff.fxLevel;
   if(state.filter === 'vhs') so = Math.min(0.95, so + 0.4*Lf);
@@ -6054,6 +6146,20 @@ function wireControls(targetDoc = document){
   };
   bindGrade('cCamExp', 'camExp', 0.01); bindGrade('cCamTemp', 'camTemp', 0.01); bindGrade('cCamSat', 'camSat', 0.01);
   bindGrade('cCamSh', 'camSh', 0.01);   bindGrade('cCamMid', 'camMid', 0.01);   bindGrade('cCamHi', 'camHi', 0.01);
+  const bindOut = (id, prop, scale) => {
+    const el = targetDoc.getElementById(id);
+    if(el) el.addEventListener('input', ()=>{ state[prop] = el.value * scale; syncOutGrade(); });
+  };
+  bindOut('cOutExp', 'outExp', 0.01); bindOut('cOutTemp', 'outTemp', 0.01); bindOut('cOutSat', 'outSat', 0.01);
+  bindOut('cOutSh', 'outSh', 0.01);   bindOut('cOutMid', 'outMid', 0.01);   bindOut('cOutHi', 'outHi', 0.01);
+  const bOutReset = targetDoc.getElementById('bOutReset');
+  if(bOutReset) bOutReset.addEventListener('click', ()=>{
+    ['cOutExp','cOutTemp','cOutSat','cOutSh','cOutMid','cOutHi'].forEach(id => {
+      const el = document.getElementById(id); if(!el) return;
+      el.value = el.defaultValue; el.dispatchEvent(new Event('input'));
+    });
+    syncPopInputs();
+  });
   const cSrcMix = targetDoc.getElementById('cSrcMix');
   if(cSrcMix) cSrcMix.addEventListener('input', ()=>setSrcMix(cSrcMix.value * 0.01));
   const bVideoGranular = targetDoc.getElementById('bVideoGranular');
@@ -6340,6 +6446,7 @@ function openPopoutWindow(){
   syncButton('bCam', CAM.on ? 'CAMERA ON' : 'CAMERA OFF', CAM.on);
   setSrcMix(state.srcMix);
   syncCamGrade();
+  syncOutGrade();
   syncButton('bVideoPlay', VID.playing ? 'STOP' : 'PLAY', VID.playing);
   syncVideoRange();
   syncVideoPos(true);
@@ -6406,6 +6513,7 @@ setNoBg('B', false);
 setVideoLoop(false);
 setSrcMix(0);
 syncCamGrade();
+syncOutGrade();
 setRecLevel(70);
 syncReadouts();
 syncFx();
