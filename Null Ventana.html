@@ -64,12 +64,13 @@
   .b-depth { color:#ffcf77; }
   .b-rate { color:#7be5ff; }
   .b-aud { color:#ff71ce; }
-  input[type=text] {
+  input[type=text], textarea.textin {
     width:100%; font:inherit; font-size:11px; color:#eef2f5; background:rgba(0,0,0,0.45);
     border:1px solid rgba(255,255,255,0.2); padding:6px 8px; border-radius:2px;
     letter-spacing:0.18em; text-transform:uppercase; outline:none;
   }
-  input[type=text]:focus { border-color:#9fd8ff; box-shadow:0 0 8px rgba(159,216,255,0.35); }
+  textarea.textin { resize:none; line-height:1.5; min-height:30px; max-height:120px; overflow-y:auto; display:block; box-sizing:border-box; }
+  input[type=text]:focus, textarea.textin:focus { border-color:#9fd8ff; box-shadow:0 0 8px rgba(159,216,255,0.35); }
   input[type=range] { -webkit-appearance:none; appearance:none; width:100%; height:13px; background:transparent; cursor:pointer; }
   input[type=range]::-webkit-slider-runnable-track { height:2px; background:rgba(255,255,255,.22); }
   input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:9px; height:13px; margin-top:-5.5px; background:#e8edf2; border:1px solid #0a0d12; box-shadow:0 0 6px rgba(160,220,255,.4); border-radius:1px; }
@@ -108,6 +109,9 @@
   .actions { display:flex; gap:6px; margin-top:auto; padding-top:4px; }
   .actions button { flex:1; padding:7px 4px; }
   .hint { font-size:8.5px; letter-spacing:.12em; opacity:.4; line-height:1.8; text-align:center; }
+  body.chroma #scan, body.chroma #vig { display:none; }
+  #bgModes { grid-template-columns:repeat(2,1fr); margin-top:6px; }
+  .toggle-full { width:100%; padding:5px 0; }
   body.idle #side { opacity:0; pointer-events:none; }
   body.idle { cursor:none; }
   #fsPrompt {
@@ -127,6 +131,10 @@
 <svg width="0" height="0" style="position:absolute">
   <filter id="caR" x="-10%" y="-10%" width="120%" height="120%"><feColorMatrix type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/><feOffset id="caRO" dx="2" dy="0"/></filter>
   <filter id="caB" x="-10%" y="-10%" width="120%" height="120%"><feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 1 0  0 0 0 1 0"/><feOffset id="caBO" dx="-2" dy="0"/></filter>
+  <!-- RGB SPLIT: pure channel isolation (offsets are applied by drawImage position) -->
+  <filter id="rsR" x="0" y="0" width="100%" height="100%"><feColorMatrix type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/></filter>
+  <filter id="rsG" x="0" y="0" width="100%" height="100%"><feColorMatrix type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0"/></filter>
+  <filter id="rsB" x="0" y="0" width="100%" height="100%"><feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0"/></filter>
 </svg>
 <aside id="side">
   <div class="panel-header">
@@ -135,8 +143,8 @@
   </div>
 
   <div class="feature-box">
-    <div class="box-title">VECTOR TEXT OVERLAY</div>
-    <input type="text" id="cTextInput" placeholder="" value=""/>
+    <div class="box-title">TEXT OVERLAY</div>
+    <textarea id="cTextInput" class="textin" rows="1" placeholder="" title="Enter for a new line"></textarea>
     <div class="fxrow">
       <span class="lbl">FONT STYLE</span>
       <div class="seg" id="fontStyles" style="grid-template-columns:repeat(4,1fr); gap:3px; margin-top:2px;"></div>
@@ -208,15 +216,57 @@
   </div>
 
   <div class="feature-box compact">
+    <div class="box-title"><span>VIDEO <b id="vVidName"></b></span></div>
+    <input type="file" id="cVideoFile" accept="video/*" style="display:none"/>
+    <button id="bVideoLoad" class="toggle-full" title="choose a local video file to play beneath the shapes">LOAD VIDEO</button>
+    <div class="seg" id="videoCtl" style="grid-template-columns:repeat(2,1fr);">
+      <button id="bVideoPlay" title="play / stop">PLAY</button>
+      <button id="bVideoLoop" title="loop playback">LOOP OFF</button>
+    </div>
+    <span class="sub-lbl">PLAY HEAD <b id="vVidPos">0:00</b></span>
+    <input type="range" id="cVidPos" min="0" max="1000" value="0" title="drag to scrub the playback point"/>
+    <div class="mod-group" style="border-left-color:rgba(159,216,255,0.5);">
+      <span class="sub-lbl">LOOP START <b id="vVidIn">0%</b></span>
+      <input type="range" id="cVidIn" min="0" max="1000" value="0" title="start of the loop / granular region"/>
+      <span class="sub-lbl">LOOP END <b id="vVidOut">100%</b></span>
+      <input type="range" id="cVidOut" min="0" max="1000" value="1000" title="end of the loop / granular region"/>
+    </div>
+    <button id="bVideoGranular" class="toggle-full" title="on each detected beat: video jumps to a random spot and loops a random-length grain; the camera loops the last random slice (up to 2 s) of live footage from that moment">GRANULAR RESET OFF</button>
+    <span class="sub-lbl">GRAIN MAX LENGTH <b class="b-aud" id="vGrainLen">2.0 s</b></span>
+    <input type="range" class="aud-mod-slider" id="cGrainLen" min="10" max="800" value="200" title="longest grain the loop can pick"/>
+    <span class="sub-lbl">GRAIN CROSSFADE <b class="b-aud" id="vGrainFade">150 ms</b></span>
+    <input type="range" class="aud-mod-slider" id="cGrainFade" min="0" max="500" value="150" title="the frame before each jump / loop wrap is held and faded out over the new one, so cuts don't flash"/>
+    <button id="bCam" class="toggle-full" style="margin-top:4px;" title="enable the camera as a live source">CAMERA OFF</button>
+    <select id="cCamDev" title="camera device" style="width:100%;background:#0b0b10;color:#cfd6e6;border:1px solid rgba(255,255,255,0.15);font:inherit;font-size:9px;letter-spacing:.08em;padding:3px 2px;border-radius:2px;"><option value="">DEFAULT CAMERA</option></select>
+    <div class="mod-group" style="border-left-color:rgba(159,216,255,0.5);">
+      <span class="sub-lbl">EXPOSURE <b id="vCamExp">0.0 EV</b></span>
+      <input type="range" id="cCamExp" min="-200" max="200" value="0" title="camera exposure, ±2 EV"/>
+      <span class="sub-lbl">TEMPERATURE <b id="vCamTemp">0</b></span>
+      <input type="range" id="cCamTemp" min="-100" max="100" value="0" title="cool (blue) to warm (amber)"/>
+      <span class="sub-lbl">SATURATION <b id="vCamSat">100%</b></span>
+      <input type="range" id="cCamSat" min="0" max="200" value="100" title="camera colour saturation"/>
+      <span class="sub-lbl">SHADOWS <b id="vCamSh">0</b></span>
+      <input type="range" id="cCamSh" min="-100" max="100" value="0" title="lift or crush the darks"/>
+      <span class="sub-lbl">MIDTONES <b id="vCamMid">0</b></span>
+      <input type="range" id="cCamMid" min="-100" max="100" value="0" title="raise or lower the mids"/>
+      <span class="sub-lbl">HIGHLIGHTS <b id="vCamHi">0</b></span>
+      <input type="range" id="cCamHi" min="-100" max="100" value="0" title="boost or roll off the brights"/>
+    </div>
+    <span class="lbl" style="margin-top:4px;">SOURCE MIX <b id="vSrcMix">VIDEO</b></span>
+    <input type="range" id="cSrcMix" min="0" max="100" value="0" title="crossfade between the video file (left) and the camera (right)"/>
+  </div>
+  <div class="feature-box compact">
     <div class="box-title">SHAPE A</div>
+    <button id="bNoBgA" class="toggle-full" title="skip this shape's own backdrop fills so only the main shape is drawn">BACKGROUND ON</button>
     <div class="seg" id="shapes"></div>
   </div>
   <div class="feature-box compact">
     <div class="box-title">SHAPE B</div>
+    <button id="bNoBgB" class="toggle-full" title="skip this shape's own backdrop fills so only the main shape is drawn">BACKGROUND ON</button>
     <div class="seg" id="shapesB"></div>
   </div>
   <div class="feature-box">
-    <div class="box-title">CROSSFADE <b id="vMix"></b></div>
+    <div class="box-title"><span><span id="lMix">CROSSFADE</span> <b id="vMix"></b></span></div>
     <input type="range" id="cMix" min="0" max="100" value="0"/>
     <button id="bMixAuto" style="width:100%; padding:5px 0;">AUTO OFF</button>
     <div class="mod-group">
@@ -281,6 +331,30 @@
   <div class="feature-box">
     <div class="box-title">EFFECTS & MODULATION</div>
     <div class="fxrow">
+      <span class="lbl">COMIC INK <b id="vCo"></b></span>
+      <input type="range" id="cComic" min="0" max="100" value="0" title="comic book ink outlines + flat colour"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModComic">0%</b></span>
+        <input type="range" class="mod-slider" id="cModComic" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateComic">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateComic" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (HI-MID) <b class="b-aud" id="vAudModComic">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModComic" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">RGB SPLIT <b id="vSp"></b></span>
+      <input type="range" id="cSplit" min="0" max="100" value="0" title="horizontal separation between red / green / blue channels"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModSplit">0%</b></span>
+        <input type="range" class="mod-slider" id="cModSplit" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateSplit">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateSplit" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModSplit">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModSplit" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
       <span class="lbl">GLITCH <b id="vGl"></b></span>
       <input type="range" id="cGlitch" min="0" max="100" value="0"/>
       <div class="mod-group">
@@ -316,10 +390,26 @@
         <input type="range" class="aud-mod-slider" id="cAudModBlur" min="-100" max="100" value="0"/>
       </div>
     </div>
+    <div class="fxrow">
+      <span class="lbl">FEEDBACK <b id="vFb"></b></span>
+      <input type="range" id="cFeedback" min="0" max="200" value="0" title="analog video feedback: the output is fed back into itself, zoomed +12% and rotated 5.7° each pass; above 100% the loop regenerates"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModFeedback">0%</b></span>
+        <input type="range" class="mod-slider" id="cModFeedback" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateFeedback">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateFeedback" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModFeedback">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModFeedback" min="-100" max="100" value="0"/>
+      </div>
+    </div>
   </div>
   <div class="feature-box compact">
     <div class="box-title">COLOR PALETTE</div>
     <div class="swatches" id="pals"></div>
+    <button id="bPalAudio" class="toggle-full" style="margin-top:6px;" title="on each detected beat the audio input picks a new random colour set">AUDIO PALETTE OFF</button>
+    <button id="bInvert" class="toggle-full" style="margin-top:6px;" title="invert all rendered colours">INVERT OFF</button>
+    <span class="lbl" style="margin-top:4px;">BACKGROUND</span>
+    <div class="seg" id="bgModes"></div>
   </div>
   <div class="feature-box compact">
     <div class="box-title">AUDIO INPUT <b id="vAud"></b></div>
@@ -331,6 +421,38 @@
       <div class="band-col" title="High Mid"><div class="band-fill b2" id="mB2"></div></div>
       <div class="band-col" title="High/Air"><div class="band-fill b3" id="mB3"></div></div>
     </div>
+  </div>
+  <div class="feature-box compact">
+    <div class="box-title">EXPORT <b id="vRecTime"></b></div>
+    <button id="bShot" class="toggle-full" title="save the current frame as a PNG">SCREENSHOT</button>
+    <div class="seg" style="grid-template-columns:2fr 1fr; margin-top:4px;">
+      <button id="bRec" title="record the display to a WebM video">● START REC</button>
+      <select id="cRecMax" title="maximum recording length" style="background:#0b0b10;color:#cfd6e6;border:1px solid rgba(255,255,255,0.15);font:inherit;font-size:9px;letter-spacing:.08em;padding:3px 2px;border-radius:2px;">
+        <option value="10">10 S</option><option value="30">30 S</option><option value="60" selected>1 MIN</option><option value="120">2 MIN</option><option value="0">∞</option>
+      </select>
+    </div>
+    <span class="sub-lbl">REC AUDIO LEVEL <b class="b-aud" id="vRecLvl">-3 dB</b></span>
+    <input type="range" class="aud-mod-slider" id="cRecLvl" min="20" max="100" value="70" title="target peak level of the saved audio; the recorder auto-levels the input up to this and limits anything louder"/>
+    <span class="lbl" style="margin-top:6px;">VIRTUAL CAMERA</span>
+    <div class="seg" style="grid-template-columns:2fr 1fr;">
+      <button id="bVCam" title="floats the live output as a frameless always-on-top picture-in-picture window at the chosen resolution. To use it as a webcam: in OBS add a Window Capture of that window and press Start Virtual Camera, then pick OBS Virtual Camera in the other app.">VIRTUAL CAM OFF</button>
+      <select id="cVCamRes" title="virtual camera resolution" style="background:#0b0b10;color:#cfd6e6;border:1px solid rgba(255,255,255,0.15);font:inherit;font-size:9px;letter-spacing:.08em;padding:3px 2px;border-radius:2px;">
+        <option value="1280x720">720P</option><option value="1920x1080" selected>1080P</option><option value="2560x1440">1440P</option><option value="3840x2160">4K</option>
+      </select>
+    </div>
+    <span class="lbl" style="margin-top:6px;">PRESETS</span>
+    <div class="seg" style="grid-template-columns:1fr 1fr 1fr;">
+      <select id="cPresetSlot" title="preset slot (stored in this browser)" style="background:#0b0b10;color:#cfd6e6;border:1px solid rgba(255,255,255,0.15);font:inherit;font-size:9px;letter-spacing:.08em;padding:3px 2px;border-radius:2px;">
+        <option value="1">SLOT 1</option><option value="2">SLOT 2</option><option value="3">SLOT 3</option><option value="4">SLOT 4</option><option value="5">SLOT 5</option><option value="6">SLOT 6</option><option value="7">SLOT 7</option><option value="8">SLOT 8</option>
+      </select>
+      <button id="bPresetSave" title="store the current settings in the selected slot">SAVE</button>
+      <button id="bPresetLoad" title="recall the selected slot">LOAD</button>
+    </div>
+    <div class="seg" style="grid-template-columns:repeat(2,1fr); margin-top:4px;">
+      <button id="bPresetExport" title="download the current settings as a .json file">EXPORT FILE</button>
+      <button id="bPresetImport" title="load settings from a .json file">IMPORT FILE</button>
+    </div>
+    <input type="file" id="cPresetFile" accept="application/json,.json" style="display:none"/>
   </div>
   <div class="actions">
     <button id="bPause" title="space">PAUSE</button>
@@ -444,6 +566,10 @@ const state = {
   rate:0.45, shape:'orbs', shapeB:'rings', mix:0, mixAuto:false, density:0.5,
   fidelity:0.50, palette:0, filter:'none', fxLevel:0.7, audio:0.5, scan:true,
   trails:0, blur:0, glitch:0, seed:(Math.random()*0xffff)|0, beatReseed: false,
+  comic:0, split:0, modComic:0.0, modSplit:0.0, lfoRateComic:0.25, lfoRateSplit:0.25, audModComic:0.0, audModSplit:0.0,
+  feedback:0, fbZoom:0.12, fbRot:5.7, fbHue:0, modFeedback:0.0, lfoRateFeedback:0.25, audModFeedback:0.0,
+  invert:false, bgMode:'palette', noBgA:false, noBgB:false, videoLoop:false, videoGranular:false, grainMax:2.0, grainFade:0.15, srcMix:0, vidIn:0, vidOut:1, palAudio:false,
+  camExp:0, camTemp:0, camSat:1, camSh:0, camMid:0, camHi:0,
   modRate: 0.0, modMix: 0.0, modDen: 0.0, modFid: 0.0, modFxLvl: 0.0, modTrails: 0.0, modBlur: 0.0, modGlitch: 0.0,
   lfoRateRate: 0.25, lfoRateMix: 0.25, lfoRateDen: 0.25, lfoRateFid: 0.25, lfoRateFxLvl: 0.25, lfoRateTrails: 0.25, lfoRateBlur: 0.25, lfoRateGlitch: 0.25,
   audModRate: 0.0, audModMix: 0.0, audModDen: 0.0, audModFid: 0.0, audModFxLvl: 0.0, audModTrails: 0.0, audModBlur: 0.0, audModGlitch: 0.0,
@@ -456,11 +582,11 @@ const state = {
 };
 
 const lfoPhases = { 
-  rate: 0, mix: 0, den: 0, fid: 0, fxLvl: 0, trails: 0, blur: 0, glitch: 0,
+  rate: 0, mix: 0, den: 0, fid: 0, fxLvl: 0, trails: 0, blur: 0, glitch: 0, comic: 0, split: 0, feedback: 0,
   textScale: 0, textScatter: 0, textRotate: 0, textPulse: 0, textScan: 0
 };
 const eff = { 
-  rate: 0.45, mix: 0.0, density: 0.5, fidelity: 0.50, fxLevel: 0.7, trails: 0, blur: 0, glitch: 0,
+  rate: 0.45, mix: 0.0, density: 0.5, fidelity: 0.50, fxLevel: 0.7, trails: 0, blur: 0, glitch: 0, comic: 0, split: 0, feedback: 0,
   textScale: 46, textScatter: 0.15, textRotate: 0.0, textPulse: 0.30, textScan: 0.45
 };
 
@@ -473,7 +599,7 @@ let paused = false, t = 0, last = performance.now();
 const A = new Float32Array(4);
 let actx = null, analyser = null, aData = null;
 const lastBarVals = [-1, -1, -1, -1];
-let rawBassAvg = 0.05, prevRawBass = 0, lastBeatTime = 0;
+let rawBassAvg = 0.05, prevRawBass = 0, lastBeatTime = 0, lastGranTime = 0;
 
 // Cached DOM handles for the main window (DOM) and the pop-out window (POP) so per-frame updates avoid lookups.
 const DOM = {
@@ -527,7 +653,7 @@ function updateAudio(dt){
     for(let i = AUDIO_BINS[0][0]; i < AUDIO_BINS[0][1]; i++) rawKickSum += aData[i];
     const instantBass = ((rawKickSum / (AUDIO_BINS[0][1] - AUDIO_BINS[0][0])) * 0.0039215686) * sens;
 
-    if(state.beatReseed){
+    if(state.beatReseed || state.videoGranular || state.palAudio){
       const now = performance.now();
       rawBassAvg += (instantBass - rawBassAvg) * Math.min(1, dt * 6.0);
       const onsetThreshold = Math.max(0.06, rawBassAvg * 1.18 + 0.02);
@@ -535,7 +661,21 @@ function updateAudio(dt){
 
       if(instantBass > onsetThreshold && isRising && (now - lastBeatTime) > 170){
         lastBeatTime = now;
-        reseedNew();
+        if(state.beatReseed) reseedNew();
+        if(state.palAudio) paletteRandomFromAudio();
+      }
+
+      // GRANULAR RESET has its own detector: the louder the input (high running bass level), the smaller the
+      // upward change that fires it - the onset ratio drops from 1.18x toward 1.04x of the running average, the
+      // absolute floor falls away and the refractory window shrinks from 170 ms to ~70 ms.
+      if(state.videoGranular){
+        const loud = clamp((rawBassAvg - 0.12) / 0.45, 0, 1);
+        const gThreshold = Math.max(0.06 * (1 - 0.6 * loud), rawBassAvg * (1.18 - 0.14 * loud) + 0.02 * (1 - loud));
+        const gMinRise = 0.012 * (1 - 0.85 * loud);   // smallest per-frame rise that counts as an onset
+        if(instantBass > gThreshold && (instantBass - prevRawBass) > gMinRise && (now - lastGranTime) > (170 - 100 * loud)){
+          lastGranTime = now;
+          videoGranularTrigger();
+        }
       }
       prevRawBass = instantBass;
     }
@@ -575,6 +715,384 @@ const view = document.getElementById('view');
 const ctx  = view.getContext('2d', { alpha: false });
 const buf  = document.createElement('canvas');
 const bctx = buf.getContext('2d', { willReadFrequently: true });
+
+// ---- REMOVE BACKGROUND: while a shape with "BACKGROUND OFF" is drawing, any fillRect that covers the whole
+// buffer with a normal (source-over / copy) composite is skipped, so only the main shape geometry lands.
+// Additive ('lighter') full-canvas fills are kept because those are glows, not backdrops.
+// Applies to every 2D context (several scene shapes paint into an offscreen canvas first). The first full-canvas
+// fill a context makes in a frame is the backdrop and becomes a clearRect (so stale offscreen content doesn't
+// linger); later full fills the same frame are overlays/vignettes and are simply dropped.
+let bgStrip = false, stripFrame = 0;
+const stripSeen = new WeakMap();
+const _protoFillRect = CanvasRenderingContext2D.prototype.fillRect;
+CanvasRenderingContext2D.prototype.fillRect = function(x, y, w, h){
+  if(bgStrip){
+    const cw = this.canvas.width, ch = this.canvas.height;
+    if(x <= 0 && y <= 0 && x + w >= cw && y + h >= ch){
+      const op = this.globalCompositeOperation;
+      if(op === 'source-over' || op === 'copy'){
+        // the main buffer already has its base prepared by frame(); clearing it would erase the other shape
+        if(this !== bctx && stripSeen.get(this) !== stripFrame){ stripSeen.set(this, stripFrame); this.clearRect(x, y, w, h); }
+        return;
+      }
+    }
+  }
+  return _protoFillRect.call(this, x, y, w, h);
+};
+
+// ---- BACKGROUND MODE / INVERT helpers ----
+const BG_MODES = [
+  { id:'palette', label:'PALETTE', color:null },
+  { id:'black',   label:'BLACK',   color:'#000000' },
+  { id:'white',   label:'WHITE',   color:'#ffffff' },
+  { id:'green',   label:'GREEN SCREEN', color:'#00ff00' }
+];
+function invHex(h){
+  const [r, g, b] = hex2rgb(h);
+  return '#' + [255 - r, 255 - g, 255 - b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+// The colour that sits underneath everything (view clear, trail memory). Palette mode follows INVERT so the
+// backdrop matches the inverted buffer; override modes are exact so a green screen stays keyable.
+function effBg(){
+  const m = BG_MODES.find(b => b.id === state.bgMode);
+  if(m && m.color) return m.color;
+  const pal = PALETTES[state.palette];
+  return state.invert ? invHex(pal.bg) : pal.bg;
+}
+function bgOverridden(){ return state.bgMode !== 'palette'; }
+
+// ---- VIDEO LAYER: a local video file drawn into the shape buffer beneath Shape A / Shape B, so it passes
+// through invert, comic ink, fidelity, film filters, RGB split, glitch, blur and trails like everything else.
+const vid = document.createElement('video');
+vid.muted = true; vid.playsInline = true; vid.preload = 'auto';
+const VID = { url:null, ready:false, playing:false, name:'', scrubbing:false, lastPosVal:-1, fade:null };
+// Hold frame for smooth jumps: the last frame before a seek is kept and faded out over the new picture.
+const vidHold = document.createElement('canvas');
+const vidHoldCtx = vidHold.getContext('2d');
+function videoJump(time, fadeCap){
+  const fadeS = Math.min(state.grainFade, fadeCap === undefined ? Infinity : fadeCap);
+  if(fadeS > 0.005 && vid.readyState >= 2 && vid.videoWidth){
+    if(vidHold.width !== vid.videoWidth || vidHold.height !== vid.videoHeight){ vidHold.width = vid.videoWidth; vidHold.height = vid.videoHeight; }
+    vidHoldCtx.drawImage(vid, 0, 0);
+    VID.fade = { t0:performance.now(), ready:false, dur:fadeS * 1000 };
+  } else VID.fade = null;
+  try{ vid.currentTime = time; }catch(e){}
+}
+vid.addEventListener('seeked', ()=>{ if(VID.fade && !VID.fade.ready){ VID.fade.ready = true; VID.fade.t0 = performance.now(); } });
+// Alpha of the held frame this instant (1 while the new frame is still decoding, then fading to 0).
+function videoHoldAlpha(now){
+  const f = VID.fade;
+  if(!f) return 0;
+  if(!f.ready){ if(now - f.t0 > 400){ f.ready = true; f.t0 = now; } else return 1; }
+  const a = 1 - (now - f.t0) / f.dur;
+  if(a <= 0){ VID.fade = null; return 0; }
+  return a;
+}
+vid.addEventListener('loadedmetadata', ()=>{ VID.ready = true; syncVideoRange(); });
+vid.addEventListener('ended', ()=>{
+  if(state.videoLoop){ videoJump(videoInTime()); vid.play().catch(()=>{}); }
+  else videoSetPlaying(false);
+});
+function videoDuration(){ return (VID.ready && isFinite(vid.duration) && vid.duration > 0) ? vid.duration : 0; }
+// LOOP START / LOOP END as times; the region is what LOOP ON repeats and what GRANULAR RESET picks grains from.
+function videoInTime(){ return videoDuration() * Math.min(state.vidIn, state.vidOut); }
+function videoOutTime(){ return videoDuration() * Math.max(state.vidIn, state.vidOut); }
+function videoLoad(file){
+  if(!file) return;
+  if(VID.url) URL.revokeObjectURL(VID.url);
+  VID.url = URL.createObjectURL(file); VID.ready = false; VID.name = file.name;
+  vid.src = VID.url; vid.loop = false; vid.load();
+  const nm = file.name.length > 18 ? file.name.slice(0, 16) + '…' : file.name;
+  syncButton('vVidName', nm.toUpperCase(), null);
+  videoSetPlaying(true);
+}
+function videoSetPlaying(on){
+  VID.playing = on && Boolean(VID.url);
+  if(VID.playing){
+    // start inside the loop region if the play head sits outside it
+    if(VID.ready && (vid.currentTime < videoInTime() || vid.currentTime > videoOutTime())){ try{ vid.currentTime = videoInTime(); }catch(e){} }
+    vid.play().catch(()=>{ VID.playing = false; syncButton('bVideoPlay', 'PLAY', false); });
+  }
+  else { vid.pause(); try{ vid.currentTime = videoInTime(); }catch(e){} }
+  syncButton('bVideoPlay', VID.playing ? 'STOP' : 'PLAY', VID.playing);
+  syncVideoPos(true);
+}
+function setVideoLoop(on){
+  state.videoLoop = on; vid.loop = false;   // looping is handled by videoLoopTick so LOOP START / END are honoured
+  syncButton('bVideoLoop', on ? 'LOOP ON' : 'LOOP OFF', on);
+}
+// PLAY HEAD: seek to a fraction of the duration (slider input).
+function videoSeekFrac(f){
+  const d = videoDuration();
+  if(!d) return;
+  try{ vid.currentTime = clamp(f, 0, 1) * d; }catch(e){}
+  VID.grain = null; VID.fade = null;   // a manual scrub leaves the current grain
+  syncVideoPos(true);
+}
+function fmtTime(s){ s = Math.max(0, s|0); const m = (s / 60)|0; return m + ':' + String(s % 60).padStart(2, '0'); }
+// Push the play head slider / readout to both documents (skipped while the user is dragging it).
+function syncVideoPos(force){
+  const d = videoDuration();
+  const v = d ? Math.round(vid.currentTime / d * 1000) : 0;
+  if(!force && (VID.scrubbing || v === VID.lastPosVal)) return;
+  VID.lastPosVal = v;
+  const txt = d ? fmtTime(vid.currentTime) + ' / ' + fmtTime(d) : '0:00';
+  const push = (doc) => {
+    if(!doc) return;
+    const s = doc.getElementById('cVidPos'); if(s && !VID.scrubbing) s.value = v;
+    const r = doc.getElementById('vVidPos'); if(r) r.textContent = txt;
+  };
+  push(document);
+  if(popoutWin && !popoutWin.closed) push(popoutWin.document);
+}
+function setVideoRange(which, f){
+  state[which] = clamp(f, 0, 1);
+  syncVideoRange();
+}
+function syncVideoRange(){
+  const d = videoDuration();
+  const lbl = (f) => d ? fmtTime(f * d) : Math.round(f * 100) + '%';
+  syncButton('vVidIn',  lbl(Math.min(state.vidIn, state.vidOut)), null);
+  syncButton('vVidOut', lbl(Math.max(state.vidIn, state.vidOut)), null);
+  const push = (doc) => {
+    if(!doc) return;
+    const a = doc.getElementById('cVidIn');  if(a && doc.activeElement !== a) a.value = Math.round(state.vidIn * 1000);
+    const b = doc.getElementById('cVidOut'); if(b && doc.activeElement !== b) b.value = Math.round(state.vidOut * 1000);
+  };
+  push(document);
+  if(popoutWin && !popoutWin.closed) push(popoutWin.document);
+}
+// LOOP ON: wrap back to LOOP START once the play head passes LOOP END.
+function videoLoopTick(){
+  if(!VID.playing || !VID.ready || state.videoGranular) return;
+  const out = videoOutTime();
+  if(vid.currentTime >= out - 0.02 && out < videoDuration() - 0.02){
+    if(state.videoLoop){ videoJump(videoInTime()); if(vid.paused) vid.play().catch(()=>{}); }
+    else videoSetPlaying(false);
+  }
+}
+// GRANULAR RESET LOOP: a detected beat throws the playhead to a random spot inside the LOOP START..END region and
+// traps it in a random-length grain (0.15 s .. GRAIN MAX LENGTH) that repeats until the next beat picks a new one.
+function videoGranularTrigger(){
+  camGranularTrigger();
+  if(!VID.playing || !VID.ready || !isFinite(vid.duration) || vid.duration <= 0) return;
+  const rIn = videoInTime(), rOut = videoOutTime(), span = Math.max(0.05, rOut - rIn);
+  const len = Math.min(span, 0.15 + Math.random()*Math.max(0, state.grainMax - 0.15));
+  const start = rIn + Math.random()*Math.max(0, span - len);
+  VID.grain = { start, end:start + len };
+  videoJump(start, len * 0.5);
+}
+function videoGranularTick(){
+  const g = VID.grain;
+  if(!g || !state.videoGranular || !VID.playing) return;
+  if(vid.currentTime >= g.end || vid.ended){ videoJump(g.start, (g.end - g.start) * 0.5); if(vid.paused) vid.play().catch(()=>{}); }
+}
+async function setVideoGranular(on){
+  state.videoGranular = on;
+  if(!on){ VID.grain = null; CAMR.loop = null; }
+  syncButton('bVideoGranular', on ? 'GRANULAR RESET ON' : 'GRANULAR RESET OFF', on);
+  if(on && (!actx || actx.state !== 'running')) await toggleMic();   // it needs the audio input running
+}
+// ---- CAMERA: a live camera feed as a second source, crossfaded with the video file by SOURCE MIX.
+const cam = document.createElement('video');
+cam.muted = true; cam.playsInline = true; cam.autoplay = true;
+const CAM = { stream:null, on:false, deviceId:'' };
+async function camStart(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('no camera API');
+  camStop(false);
+  const video = CAM.deviceId ? { deviceId:{ exact:CAM.deviceId }, width:{ ideal:1280 }, height:{ ideal:720 } } : { width:{ ideal:1280 }, height:{ ideal:720 } };
+  CAM.stream = await navigator.mediaDevices.getUserMedia({ video, audio:false });
+  cam.srcObject = CAM.stream;
+  await cam.play().catch(()=>{});
+  CAM.on = true;
+  syncButton('bCam', 'CAMERA ON', true);
+  refreshCamDevices();   // labels become available once permission is granted
+}
+function camStop(sync = true){
+  if(CAM.stream){ CAM.stream.getTracks().forEach(tr => tr.stop()); CAM.stream = null; }
+  cam.srcObject = null; CAM.on = false;
+  CAMR.loop = null; CAMR.count = 0; CAMR.head = 0;
+  if(sync) syncButton('bCam', 'CAMERA OFF', false);
+}
+async function toggleCam(){
+  if(CAM.on){ camStop(); return; }
+  try{ await camStart(); }
+  catch(err){ console.warn('camera failed:', err); camStop(false); syncButton('bCam', 'CAMERA ERR', false); }
+}
+async function refreshCamDevices(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  let devs = [];
+  try{ devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput'); }catch(e){ return; }
+  const fill = (doc) => {
+    const sel = doc && doc.getElementById('cCamDev');
+    if(!sel) return;
+    sel.innerHTML = '';
+    const def = doc.createElement('option'); def.value = ''; def.textContent = 'DEFAULT CAMERA'; sel.appendChild(def);
+    devs.forEach((d, i) => {
+      const o = doc.createElement('option'); o.value = d.deviceId;
+      o.textContent = (d.label || ('CAMERA ' + (i + 1))).toUpperCase().slice(0, 34);
+      sel.appendChild(o);
+    });
+    sel.value = CAM.deviceId;
+  };
+  fill(document);
+  if(popoutWin && !popoutWin.closed) fill(popoutWin.document);
+}
+// ---- CAMERA GRANULAR: the live feed is recorded into a rolling ring of recent frames (~2.5 s). On a beat the
+// last 0.15..min(GRAIN MAX, 2) s are copied out of the ring and played back as a loop; recording continues
+// underneath so the next beat grabs a fresh slice of live footage from that moment.
+const CAMR = { ring:[], head:0, count:0, cap:80, cw:0, ch:0, lastCap:0, loop:null, out:null, lastShown:null, lastLoop:null, lastE:0, fade:null };
+function camRingCapture(now){
+  if(!CAM.on || !state.videoGranular || cam.readyState < 2 || !cam.videoWidth) return;
+  if(now - CAMR.lastCap < 1000/32) return;                    // ~32 fps capture cadence
+  CAMR.lastCap = now;
+  const cw = 512, ch = Math.max(16, Math.round(512 * bh / bw));
+  if(CAMR.cw !== cw || CAMR.ch !== ch){ CAMR.ring = []; CAMR.head = 0; CAMR.count = 0; CAMR.cw = cw; CAMR.ch = ch; }
+  let slot = CAMR.ring[CAMR.head];
+  if(!slot){ const c = document.createElement('canvas'); c.width = cw; c.height = ch; slot = { c, x:c.getContext('2d'), t:0 }; CAMR.ring[CAMR.head] = slot; }
+  const vw = cam.videoWidth, vh = cam.videoHeight, k = Math.max(cw/vw, ch/vh);
+  const sw = cw/k, sh = ch/k;
+  slot.x.drawImage(cam, (vw - sw)*0.5, (vh - sh)*0.5, sw, sh, 0, 0, cw, ch);
+  slot.t = now;
+  CAMR.head = (CAMR.head + 1) % CAMR.cap;
+  CAMR.count = Math.min(CAMR.cap, CAMR.count + 1);
+}
+function camGranularTrigger(){
+  if(!CAM.on || CAMR.count < 2) return;
+  const now = performance.now();
+  const maxLen = Math.min(2, state.grainMax);
+  const len = (0.15 + Math.random()*Math.max(0, maxLen - 0.15)) * 1000;
+  // walk back from the newest frame collecting everything inside the window
+  const frames = [];
+  for(let i = 0; i < CAMR.count; i++){
+    const slot = CAMR.ring[(CAMR.head - 1 - i + CAMR.cap) % CAMR.cap];
+    if(!slot || now - slot.t > len) break;
+    frames.push(slot);
+  }
+  if(frames.length < 2) return;
+  frames.reverse();
+  const t0 = frames[0].t;
+  const copies = frames.map(f => {                            // copy out so live recording can keep overwriting the ring
+    const c = document.createElement('canvas'); c.width = CAMR.cw; c.height = CAMR.ch;
+    c.getContext('2d').drawImage(f.c, 0, 0);
+    return { c, rel:f.t - t0 };
+  });
+  const dur = Math.max(60, frames[frames.length - 1].t - t0 + 1000/32);
+  CAMR.loop = { frames:copies, dur, start:now };
+}
+// ---- CAMERA GRADE: exposure, temperature, saturation and a shadows / midtones / highlights tone curve, applied
+// per pixel through three cached 256-entry LUTs (rebuilt only when a control moves) plus a saturation step.
+const GRADE = { r:new Uint8ClampedArray(256), g:new Uint8ClampedArray(256), b:new Uint8ClampedArray(256), key:'', scratch:null, sctx:null };
+function gradeActive(){
+  return state.camExp !== 0 || state.camTemp !== 0 || state.camSat !== 1 || state.camSh !== 0 || state.camMid !== 0 || state.camHi !== 0;
+}
+function gradeBuildLUT(){
+  const key = [state.camExp, state.camTemp, state.camSh, state.camMid, state.camHi].join('|');
+  if(GRADE.key === key) return;
+  GRADE.key = key;
+  const gainE = Math.pow(2, state.camExp), tmp = state.camTemp;
+  const mulR = 1 + 0.28*tmp, mulG = 1 + 0.06*tmp, mulB = 1 - 0.28*tmp;   // warm = more red, less blue
+  const sh = state.camSh*0.4, mid = state.camMid*0.4, hi = state.camHi*0.4;
+  const tone = (x) => {
+    x = clamp(x, 0, 1);
+    const wS = (1 - x)*(1 - x), wM = 4*x*(1 - x), wH = x*x;
+    return clamp(x + sh*wS*(1 - x) + mid*wM*0.5 + hi*wH*(x), 0, 1);
+  };
+  for(let v = 0; v < 256; v++){
+    const x = tone(v/255 * gainE);
+    GRADE.r[v] = x*mulR*255; GRADE.g[v] = x*mulG*255; GRADE.b[v] = x*mulB*255;
+  }
+}
+// Draw a camera frame through the grade into the buffer at the given opacity.
+function drawCamGraded(el, alpha){
+  if(alpha <= 0.004) return;
+  if(!gradeActive()){ drawCover(el, alpha); return; }
+  gradeBuildLUT();
+  if(!GRADE.scratch){ GRADE.scratch = document.createElement('canvas'); GRADE.sctx = GRADE.scratch.getContext('2d', { willReadFrequently:true }); }
+  const sc = GRADE.scratch, sx = GRADE.sctx;
+  if(sc.width !== bw || sc.height !== bh){ sc.width = bw; sc.height = bh; }
+  const isVideo = el.tagName === 'VIDEO';
+  if(isVideo && (el.readyState < 2 || !el.videoWidth)) return;
+  const vw = isVideo ? el.videoWidth : el.width, vh = isVideo ? el.videoHeight : el.height, k = Math.max(bw/vw, bh/vh);
+  const sw = bw/k, shh = bh/k;
+  sx.globalCompositeOperation = 'copy'; sx.globalAlpha = 1;
+  sx.drawImage(el, (vw - sw)*0.5, (vh - shh)*0.5, sw, shh, 0, 0, bw, bh);
+  const img = sx.getImageData(0, 0, bw, bh), d = img.data, LR = GRADE.r, LG = GRADE.g, LB = GRADE.b, sat = state.camSat;
+  if(sat === 1){
+    for(let i = 0; i < d.length; i += 4){ d[i] = LR[d[i]]; d[i+1] = LG[d[i+1]]; d[i+2] = LB[d[i+2]]; }
+  } else {
+    for(let i = 0; i < d.length; i += 4){
+      const r = LR[d[i]], g = LG[d[i+1]], b = LB[d[i+2]], l = r*0.3 + g*0.59 + b*0.11;
+      d[i] = l + (r - l)*sat; d[i+1] = l + (g - l)*sat; d[i+2] = l + (b - l)*sat;
+    }
+  }
+  sx.putImageData(img, 0, 0);
+  bctx.globalCompositeOperation = 'source-over'; bctx.globalAlpha = alpha;
+  bctx.drawImage(sc, 0, 0);
+  bctx.globalAlpha = 1;
+}
+// The camera source as seen by the mixer: the grain loop when one is running, else the live feed.
+function camSource(now){
+  const L = CAMR.loop;
+  if(!L || !state.videoGranular){ CAMR.lastShown = null; CAMR.lastLoop = null; CAMR.fade = null; return cam; }
+  const e = (now - L.start) % L.dur;
+  let f = L.frames[0];
+  for(let i = L.frames.length - 1; i >= 0; i--){ if(L.frames[i].rel <= e){ f = L.frames[i]; break; } }
+  // a new loop or a wrap back to its start is a cut: hold the previous frame and fade it out (loop copies persist)
+  if(CAMR.lastShown && (L !== CAMR.lastLoop || e < CAMR.lastE)){
+    const dur = Math.min(state.grainFade * 1000, L.dur * 0.5);
+    CAMR.fade = dur > 5 ? { c:CAMR.lastShown, t0:now, dur } : null;
+  }
+  CAMR.lastShown = f.c; CAMR.lastLoop = L; CAMR.lastE = e;
+  return f.c;
+}
+function camHoldAlpha(now){
+  const f = CAMR.fade;
+  if(!f) return 0;
+  const a = 1 - (now - f.t0) / f.dur;
+  if(a <= 0){ CAMR.fade = null; return 0; }
+  return a;
+}
+function syncCamGrade(){
+  const upd = (id, txt) => syncButton(id, txt, null);
+  upd('vCamExp', (state.camExp >= 0 ? '+' : '') + state.camExp.toFixed(1) + ' EV');
+  upd('vCamTemp', (state.camTemp > 0 ? '+' : '') + Math.round(state.camTemp*100));
+  upd('vCamSat', Math.round(state.camSat*100) + '%');
+  upd('vCamSh', (state.camSh > 0 ? '+' : '') + Math.round(state.camSh*100));
+  upd('vCamMid', (state.camMid > 0 ? '+' : '') + Math.round(state.camMid*100));
+  upd('vCamHi', (state.camHi > 0 ? '+' : '') + Math.round(state.camHi*100));
+}
+function setSrcMix(v){
+  state.srcMix = clamp(v, 0, 1);
+  const pct = Math.round(state.srcMix*100);
+  syncButton('vSrcMix', pct === 0 ? 'VIDEO' : pct === 100 ? 'CAMERA' : `${100 - pct}/${pct}`, null);
+}
+// Cover-fit a <video> element into the buffer at the given opacity.
+function drawCover(el, alpha){
+  const isVideo = el.tagName === 'VIDEO';
+  if(alpha <= 0.004 || (isVideo && (el.readyState < 2 || !el.videoWidth))) return;
+  const vw = isVideo ? el.videoWidth : el.width, vh = isVideo ? el.videoHeight : el.height, k = Math.max(bw/vw, bh/vh);
+  const sw = bw/k, sh = bh/k, sx = (vw - sw)*0.5, sy = (vh - sh)*0.5;
+  bctx.globalCompositeOperation = 'source-over'; bctx.globalAlpha = alpha;
+  bctx.drawImage(el, sx, sy, sw, sh, 0, 0, bw, bh);
+  bctx.globalAlpha = 1;
+}
+// Video file and camera, crossfaded by SOURCE MIX. A source that isn't running just drops out of the mix.
+function drawVideoLayer(){
+  videoGranularTick();
+  videoLoopTick();
+  if(VID.playing) syncVideoPos(false);
+  const now = performance.now();
+  camRingCapture(now);
+  const haveVid = VID.playing && VID.ready, haveCam = CAM.on;
+  if(!haveVid && !haveCam) return;
+  const m = state.srcMix, camEl = haveCam ? camSource(now) : null;
+  const drawVid = ()=>{ drawCover(vid, 1); const ha = videoHoldAlpha(now); if(ha > 0) drawCover(vidHold, ha); };
+  const drawCam = (alpha)=>{ drawCamGraded(camEl, alpha); const ha = camHoldAlpha(now); if(ha > 0 && CAMR.fade) drawCamGraded(CAMR.fade.c, alpha * ha); };
+  if(haveVid && haveCam){ drawVid(); drawCam(m); }
+  else if(haveVid) drawVid();
+  else drawCam(1);
+}
 const downBuf = document.createElement('canvas');
 const dctx    = downBuf.getContext('2d');
 const downBuf2 = document.createElement('canvas');
@@ -584,6 +1102,16 @@ const tctx  = trail.getContext('2d');
 // Full-res scratch canvas used by the GLITCH slice/block displacement pass.
 const fxc   = document.createElement('canvas');
 const fxctx = fxc.getContext('2d');
+// Full-res scratch canvases for the text overlay so it can be degraded by FIDELITY (pixelated + colour-fringed)
+// before it lands on the view.
+const txtBuf  = document.createElement('canvas');
+const txtctx  = txtBuf.getContext('2d');
+const txtDown = document.createElement('canvas');
+const txtdctx = txtDown.getContext('2d');
+// FEEDBACK loop memory (previous output) and its scratch; swapped each pass.
+let fbA = document.createElement('canvas'), fbB = document.createElement('canvas');
+let fbActx = fbA.getContext('2d'), fbBctx = fbB.getContext('2d');
+let fbArmed = false;
 
 let trailsArmed = false, W = 0, H = 0, dpr = 1;
 // Rendering surfaces. Shapes draw into a low-res buffer (bw x bh, 512 wide) that is post-processed, then scaled to the view.
@@ -616,18 +1144,31 @@ function setGlitchCA(px){
 }
 
 // Size the view to the window (capped at 2x DPR) and the working buffers to the view's aspect ratio.
+// FIDELITY now also drives the working resolution: the shape buffer steps from 512 px wide up to 1024 px as the
+// slider rises (capped at the view width), so high fidelity gives sharper geometry rather than just less
+// posterisation. The UI value (not the LFO-modulated one) picks the step so the buffer isn't reallocated every frame.
+const BUFFER_STEPS = [[0.6, 512], [0.85, 768], [1.01, 1024]];
+function targetBufferWidth(){
+  const f = state.fidelity;
+  let w = BASE_BW;
+  for(const [lim, px] of BUFFER_STEPS){ if(f < lim){ w = px; break; } }
+  return Math.max(256, Math.min(w, W || w));
+}
 function resize(){
   dpr = Math.min(2, window.devicePixelRatio || 1);
   W = Math.round(innerWidth * dpr);
   H = Math.round(innerHeight * dpr);
   view.width = W; view.height = H;
-  bw = BASE_BW;
-  bh = Math.max(64, Math.round(BASE_BW * (H / W)));
+  bw = targetBufferWidth();
+  bh = Math.max(64, Math.round(bw * (H / W)));
   buf.width = bw; buf.height = bh;
   downBuf.width = bw; downBuf.height = bh;
   downBuf2.width = bw; downBuf2.height = bh;
   trail.width = W; trail.height = H;
   fxc.width = W; fxc.height = H;
+  txtBuf.width = W; txtBuf.height = H; txtDown.width = W; txtDown.height = H;
+  fbA.width = W; fbA.height = H; fbB.width = W; fbB.height = H;
+  fbArmed = false;
   trailsArmed = false;
   if(sharedSrcBuffer.length < bw * bh * 4) {
     sharedSrcBuffer = new Uint8ClampedArray(bw * bh * 4);
@@ -751,15 +1292,18 @@ function m3Ball(sx, sy, r, col, lit, alpha){
 
 // Text overlay (LED / SPACE / BOLD / MONO). Drawn on the full-resolution view (g = ctx) so it stays crisp.
 function drawVectorText(time, g = bctx){
-  const str = (state.text || '').toUpperCase();
-  if(!str) return;
+  const raw = (state.text || '').toUpperCase();
+  if(!raw.trim()) return;
+  // Enter in the panel inserts newlines: each line is centred on its own, the block is centred on Y POSITION
+  const lines = raw.split(/\r?\n/);
+  const str = lines.join('');           // flat string: per-character hashes stay unique across the whole block
+  const charCount = str.length;
 
   const style = FONT_KEYS.includes(state.fontStyle) ? state.fontStyle : 'LED';
   const pal = PALETTES[state.palette];
   const c1 = pal.rgb[0] || [255, 255, 255];
   const c2 = pal.rgb[1 % pal.rgb.length] || [160, 220, 255];
 
-  const charCount = str.length;
   const baseScale = eff.textScale * (bw / 512);
 
   let aspect = 0.62, spacingRatio = 0.28;
@@ -783,11 +1327,23 @@ function drawVectorText(time, g = bctx){
     for(let i = 0; i < charCount; i++) adv[i] = (str[i] === ' ' ? charW*0.6 : g.measureText(str[i]).width) + spacing;
     g.restore();
   } else { for(let i = 0; i < charCount; i++) adv[i] = charW + spacing; }
-  let totalW = 0; for(let i = 0; i < charCount; i++) totalW += adv[i]; totalW -= spacing;
 
-  const startX = (bw - totalW) * 0.5;
-  let penX = startX;
-  const centerY = bh * state.textPosY;
+  // per-line start x (each line centred) and per-line centre y (block centred on Y POSITION)
+  const lineH = charH * 1.25;
+  const nLines = lines.length;
+  const blockCY = bh * state.textPosY;
+  const lineStartX = new Float32Array(nLines), lineCY = new Float32Array(nLines), lineOf = new Int16Array(charCount);
+  {
+    let idx = 0;
+    for(let L = 0; L < nLines; L++){
+      let wsum = 0;
+      for(let c = 0; c < lines[L].length; c++){ wsum += adv[idx]; lineOf[idx] = L; idx++; }
+      if(lines[L].length) wsum -= spacing;
+      lineStartX[L] = (bw - wsum) * 0.5;
+      lineCY[L] = blockCY + (L - (nLines - 1) * 0.5) * lineH;
+    }
+  }
+  const centerY = blockCY;
   const rotAngle = (eff.textRotate !== 0) ? (time * 0.4) * (eff.textRotate * 1.8) : 0;
 
   g.save();
@@ -798,10 +1354,13 @@ function drawVectorText(time, g = bctx){
   const scanRowH = Math.max(2, baseScale * 0.08);
   const scanSpeed = time * 7.5;
 
+  let penX = 0, curLine = -1;
   for(let i = 0; i < charCount; i++){
     const ch = str[i];
+    if(lineOf[i] !== curLine){ curLine = lineOf[i]; penX = lineStartX[curLine]; }
     const charOriginX = penX; penX += adv[i];
-    const charOriginY = centerY - charH * 0.5;
+    const lineCenterY = lineCY[curLine];
+    const charOriginY = lineCenterY - charH * 0.5;
 
     const lumaLfo = Math.sin(time * (2.0 + hash1(i * 17) * 2.2) + i * 1.6);
     const letterBrightness = clamp(1.0 + (lumaLfo * 0.78 + (hash1(i * 31) - 0.5) * 0.35) * eff.textPulse, 0.05, 2.3);
@@ -1162,6 +1721,10 @@ function drawWaves(t){
   for(let j = rows - 1; j >= 0; j--){
     const near = row(j);
     const fog = clamp(1 - j/rows, 0, 1);
+    // continuous in world-z (not row index) so rows fade smoothly as they scroll on at the horizon and off at the bottom
+    const zw = j*sp - zOff + 0.3;
+    const edge = clamp((zw - (0.3 - sp))/(sp*2.5), 0, 1) * clamp(((rows - 1)*sp - zw)/(sp*4), 0, 1);
+    if(edge <= 0.002) { far = near; continue; }
     for(let i = 0; i < cols - 1; i++){
       const a = near[i].p, b = near[i+1].p, c = far[i+1].p, d = far[i].p;
       const ux = b[0]-a[0], uy = b[1]-a[1], uz = b[2]-a[2], vx = d[0]-a[0], vy = d[1]-a[1], vz = d[2]-a[2];
@@ -1172,9 +1735,9 @@ function drawWaves(t){
       const col = [c0[0] + (c1[0]-c0[0])*cf, c0[1] + (c1[1]-c0[1])*cf, c0[2] + (c1[2]-c0[2])*cf];
       const pa = m3Proj(a, D, f), pb = m3Proj(b, D, f), pc = m3Proj(c, D, f), pd = m3Proj(d, D, f);
       if(pa[3] < 0.1 || pd[3] < 0.1) continue;
-      bctx.fillStyle = m3Rgba(col, lit*(0.35 + 0.65*fog) + A[2]*gain*0.3, 1);
+      bctx.fillStyle = m3Rgba(col, lit*(0.35 + 0.65*fog) + A[2]*gain*0.3, edge);
       bctx.beginPath(); bctx.moveTo(pa[0], pa[1]); bctx.lineTo(pb[0], pb[1]); bctx.lineTo(pc[0], pc[1]); bctx.lineTo(pd[0], pd[1]); bctx.closePath(); bctx.fill();
-      bctx.strokeStyle = m3Rgba(col, lit*1.5, 0.5*fog); bctx.lineWidth = 1; bctx.stroke();
+      bctx.strokeStyle = m3Rgba(col, lit*1.5, 0.5*fog*edge); bctx.lineWidth = 1; bctx.stroke();
     }
     far = near;
   }
@@ -1886,6 +2449,10 @@ function drawForest(t){
   const skyTop = C.dusk ? [70, 40, 90] : [52, 110, 200], skyBot = C.dusk ? [230, 120, 90] : [150, 200, 235];
   const grassA = [lerp(70, tint[0], tk), lerp(150, tint[1], tk), lerp(60, tint[2], tk)], grassB = [lerp(52, tint[0], tk), lerp(120, tint[1], tk), lerp(48, tint[2], tk)];
   const rockA = [80, 92, 120], rockB = [56, 66, 92], snowC = [236, 242, 250], pineA = [26, 78, 50], pineB = [18, 56, 38], trunkC = [70, 44, 28];
+  const grassC = [lerp(88, tint[0], tk), lerp(168, tint[1], tk), lerp(72, tint[2], tk)];
+  const dirtA = [lerp(112, tint[0], tk), lerp(82, tint[1], tk), lerp(52, tint[2], tk)], dirtB = [lerp(96, tint[0], tk), lerp(70, tint[1], tk), lerp(44, tint[2], tk)];
+  const mossA = [lerp(40, tint[0], tk), lerp(96, tint[1], tk), lerp(44, tint[2], tk)], mossB = [lerp(34, tint[0], tk), lerp(82, tint[1], tk), lerp(40, tint[2], tk)];
+  const bushA = [30, 92, 46], bushB = [46, 118, 58], fernC = [62, 140, 70], logC = [84, 56, 34], stoneA = [110, 112, 118], stoneB = [78, 80, 88];
   // ---- sky ----
   const sky = c.createLinearGradient(0, 0, 0, horizon);
   sky.addColorStop(0, rgb(...skyTop)); sky.addColorStop(1, rgb(...skyBot));
@@ -1935,7 +2502,12 @@ function drawForest(t){
       const wx = (x - W*0.5)*z/f + FO.x;
       let col;
       if(lakeRow){ const shim = (Math.floor(wx*2 + t*4) + Math.floor(wz*2)) & 1; col = shim ? [90, 150, 210] : [70, 120, 190]; }
-      else { const g = cityHash(Math.floor(wx*1.5), Math.floor(wz*1.5), 5) < 0.5 ? grassA : grassB; col = g; }
+      else {
+        const gh = cityHash(Math.floor(wx*1.5), Math.floor(wz*1.5), 5), patch = cityHash(Math.floor(wx*0.35), Math.floor(wz*0.35), 12);
+        if(patch < 0.16) col = gh < 0.5 ? dirtA : dirtB;                   // bare earth / trail patches
+        else if(patch > 0.84) col = gh < 0.5 ? mossA : mossB;              // dark mossy hollows
+        else col = gh < 0.34 ? grassA : gh < 0.68 ? grassB : grassC;
+      }
       c.fillStyle = rgb(lerp(col[0], skyBot[0], (1 - fog)*0.5), lerp(col[1], skyBot[1], (1 - fog)*0.5), lerp(col[2], skyBot[2], (1 - fog)*0.5));
       c.fillRect(x, y, step, 1);
     }
@@ -1955,11 +2527,59 @@ function drawForest(t){
       const lakeHere = C.lake && Math.abs(fract((kz*cell)/60) - 0.5) < 0.12; if(lakeHere) continue;
       const wx = kx*cell + (cityHash(kx, kz, 2) - 0.5)*cell, wzz = z + (cityHash(kx, kz, 3) - 0.5)*cell*0.8;
       if(wzz < zNear) continue;
-      trees.push({ z:wzz, sx:W*0.5 + (wx - FO.x)*f/wzz, sy:horizon + camH*f/wzz, s:f/wzz, th:0.9 + cityHash(kx, kz, 4)*1.0, sw:cityHash(kx, kz, 6) });
+      trees.push({ kind:0, z:wzz, sx:W*0.5 + (wx - FO.x)*f/wzz, sy:horizon + camH*f/wzz, s:f/wzz, th:0.9 + cityHash(kx, kz, 4)*1.0, sw:cityHash(kx, kz, 6) });
+    }
+  }
+  // ---- forest floor: a finer grid of shrubs, ferns, stones, logs, tufts and flowers between the trees ----
+  const fcell = 0.55, fFar = 14;
+  const fz0 = Math.floor((FO.z + zNear)/fcell), fz1 = Math.floor((FO.z + fFar)/fcell);
+  for(let kz = fz1; kz >= fz0; kz--){
+    const z = kz*fcell - FO.z; if(z < zNear) continue;
+    const halfW = (W*0.5)*z/f + 1;
+    const kx0 = Math.floor((FO.x - halfW)/fcell), kx1 = Math.floor((FO.x + halfW)/fcell);
+    for(let kx = kx0; kx <= kx1; kx++){
+      const h = cityHash(kx, kz, C.k + 77);
+      if(h > 0.42 + eff.density*0.3) continue;
+      const lakeHere = C.lake && Math.abs(fract((kz*fcell)/60) - 0.5) < 0.12; if(lakeHere) continue;
+      const wx = kx*fcell + (cityHash(kx, kz, 21) - 0.5)*fcell, wzz = z + (cityHash(kx, kz, 22) - 0.5)*fcell*0.8;
+      if(wzz < zNear) continue;
+      const kindH = cityHash(kx, kz, 23);
+      const kind = kindH < 0.30 ? 1 : kindH < 0.48 ? 2 : kindH < 0.62 ? 3 : kindH < 0.72 ? 4 : kindH < 0.82 ? 5 : 6;   // tuft, shrub, fern, stone, log, flower
+      trees.push({ kind, z:wzz, sx:W*0.5 + (wx - FO.x)*f/wzz, sy:horizon + camH*f/wzz, s:f/wzz, th:0.12 + cityHash(kx, kz, 24)*0.16, sw:cityHash(kx, kz, 25) });
     }
   }
   trees.sort((a, b) => b.z - a.z);
   for(const tr of trees){
+    if(tr.kind){
+      const sz = tr.th*tr.s, fog = clamp(1 - tr.z/fFar, 0, 1);
+      if(sz < 1) continue;
+      const x = Math.round(tr.sx), y = Math.round(tr.sy);
+      const mixc = (col) => rgb(lerp(col[0], skyBot[0], (1 - fog)*0.5), lerp(col[1], skyBot[1], (1 - fog)*0.5), lerp(col[2], skyBot[2], (1 - fog)*0.5));
+      const sway = Math.sin(t*1.8 + tr.sw*12)*FO.sm[3]*sz*0.08;
+      if(tr.kind === 1){                                         // grass tuft: a few blades
+        c.fillStyle = mixc(tr.sw < 0.5 ? grassC : grassA);
+        for(let b = -1; b <= 1; b++) c.fillRect(x + b*Math.max(1, sz*0.25) + sway*b, y - sz*(0.6 + 0.3*(b === 0)), 1, sz*(0.6 + 0.3*(b === 0)));
+      } else if(tr.kind === 2){                                  // rounded shrub: two overlapping lobes
+        c.fillStyle = mixc(bushA); c.beginPath(); c.arc(x - sz*0.3, y - sz*0.35, sz*0.5, 0, TAU); c.arc(x + sz*0.3, y - sz*0.4, sz*0.55, 0, TAU); c.fill();
+        c.fillStyle = mixc(bushB); c.beginPath(); c.arc(x + sz*0.1, y - sz*0.6, sz*0.35, 0, TAU); c.fill();
+      } else if(tr.kind === 3){                                  // fern: fanned fronds
+        c.strokeStyle = mixc(fernC); c.lineWidth = Math.max(1, sz*0.12);
+        c.beginPath();
+        for(let fr = -2; fr <= 2; fr++){ c.moveTo(x, y); c.lineTo(x + fr*sz*0.35 + sway, y - sz*(0.9 - Math.abs(fr)*0.18)); }
+        c.stroke();
+      } else if(tr.kind === 4){                                  // stone with a lit top
+        c.fillStyle = mixc(stoneB); c.beginPath(); c.ellipse(x, y - sz*0.25, sz*0.55, sz*0.35, 0, 0, TAU); c.fill();
+        c.fillStyle = mixc(stoneA); c.beginPath(); c.ellipse(x - sz*0.1, y - sz*0.38, sz*0.35, sz*0.18, 0, 0, TAU); c.fill();
+      } else if(tr.kind === 5){                                  // fallen log
+        c.fillStyle = mixc(logC); c.fillRect(x - sz*1.1, y - sz*0.3, sz*2.2, Math.max(1, sz*0.3));
+        c.fillStyle = mixc(trunkC); c.fillRect(x - sz*1.1, y - sz*0.3, sz*2.2, 1);
+      } else {                                                   // wildflower: stem + coloured head
+        const fc = pal.rgb[Math.floor(tr.sw*pal.rgb.length) % pal.rgb.length];
+        c.fillStyle = mixc(grassC); c.fillRect(x, y - sz*0.8, 1, sz*0.8);
+        c.fillStyle = mixc(fc); c.fillRect(x - Math.max(1, sz*0.2)*0.5, y - sz*0.95, Math.max(1, sz*0.2), Math.max(1, sz*0.2));
+      }
+      continue;
+    }
     const th = tr.th*tr.s, tw = th*0.42, fog = clamp(1 - tr.z/zFar, 0, 1);
     const x = Math.round(tr.sx + Math.sin(t*2 + tr.sw*10)*FO.sm[3]*th*0.03), y = Math.round(tr.sy);
     if(th < 1.5){ c.fillStyle = rgb(...pineB); c.fillRect(x, y - 1, 1, 1); continue; }
@@ -2063,7 +2683,7 @@ function drawRain(t){
 function drawHalo(t){
   const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
   bctx.globalCompositeOperation = 'source-over';
-  const D = 7.5, f = minD*2.4, N = 400 + Math.round(eff.density * 600);
+  const D = 7.5, f = minD*2.4, N = 600 + Math.round(eff.density * 900);
   const tilt = 0.45 + Math.sin(t*0.12)*0.25, yaw = t*0.12, roll = 0.35;
   const pc = pal.rgb[Math.floor(t*0.03) % pal.rgb.length], Rp = 0.62*(1 + A[0]*gain*0.15);
   const centre = m3Proj([0, 0, 0], D, f);
@@ -2072,10 +2692,10 @@ function drawHalo(t){
     const h = cityHash(i, 1, 0), rad = 0.95 + h*0.9 + A[1]*gain*0.25*Math.sin(i), ang = cityHash(i, 2, 0)*TAU + t*(0.5/Math.sqrt(rad)) ;
     const p = m3Rot(Math.cos(ang)*rad, (cityHash(i, 3, 0) - 0.5)*0.03, Math.sin(ang)*rad, yaw, tilt, roll);
     const lit = (1.0 + 0.35*Math.cos(ang - 0.6)) * (1 + A[3]*gain*0.6);
-    parts.push({ p, c:pal.rgb[(i % 3 + Math.floor(rad*3)) % pal.rgb.length], lit, s:0.012 + cityHash(i, 4, 0)*0.02 });
+    parts.push({ p, c:pal.rgb[(i % 3 + Math.floor(rad*3)) % pal.rgb.length], lit, s:0.0035 + cityHash(i, 4, 0)*0.007 });
   }
   const drawParts = (front) => { for(const q of parts){ if((q.p[2] < 0) !== front) continue; const pr = m3Proj(q.p, D, f);
-    bctx.fillStyle = m3Rgba(q.c, q.lit, 0.9); bctx.beginPath(); bctx.arc(pr[0], pr[1], q.s*pr[2], 0, TAU); bctx.fill(); } };
+    bctx.fillStyle = m3Rgba(q.c, q.lit, 0.9); bctx.beginPath(); bctx.arc(pr[0], pr[1], Math.max(0.5, q.s*pr[2]), 0, TAU); bctx.fill(); } };
   // shadow of the planet on the far ring, ring behind planet, planet, ring in front
   drawParts(false);
   const R = Rp*centre[2];
@@ -2156,8 +2776,9 @@ function drawRising(t){
     const g = bctx.createRadialGradient(q[0], q[1], r*0.6, q[0], q[1], r);
     g.addColorStop(0, m3Rgba(it.c, 1, 0.06*fade)); g.addColorStop(0.85, m3Rgba(it.c, 1.2, 0.35*fade*depth)); g.addColorStop(1, m3Rgba(it.c, 1.5, 0.8*fade*depth));
     bctx.fillStyle = g; bctx.beginPath(); bctx.arc(q[0], q[1], r, 0, TAU); bctx.fill();
-    bctx.fillStyle = `rgba(255,255,255,${0.55*fade*depth})`; bctx.beginPath(); bctx.ellipse(q[0] - r*0.35, q[1] - r*0.4, r*0.22, r*0.14, -0.6, 0, TAU); bctx.fill();
-    bctx.fillStyle = `rgba(255,255,255,${0.2*fade*depth})`; bctx.beginPath(); bctx.ellipse(q[0] + r*0.3, q[1] + r*0.45, r*0.18, r*0.08, 0.6, 0, TAU); bctx.fill();
+    // soft, understated specular reflections
+    bctx.fillStyle = `rgba(255,255,255,${0.18*fade*depth})`; bctx.beginPath(); bctx.ellipse(q[0] - r*0.35, q[1] - r*0.4, r*0.16, r*0.09, -0.6, 0, TAU); bctx.fill();
+    bctx.fillStyle = `rgba(255,255,255,${0.06*fade*depth})`; bctx.beginPath(); bctx.ellipse(q[0] + r*0.3, q[1] + r*0.45, r*0.12, r*0.05, 0.6, 0, TAU); bctx.fill();
   }
 }
 
@@ -2926,9 +3547,17 @@ function drawDaisyGarden(t){
   const leafCol  = isLight ? [32,88,54] : mixC([48,140,82], colors[2 % nCol], 0.35);
   const leafEdge = isLight ? [70,165,105] : mixC([105,230,155], colors[3 % nCol] || colors[0], 0.35);
 
-  function drawBloom(bx, by, bloomProgress, swayAng, sizeFactor, plantIdx){
+  // ---- lifecycle ----
+  // phase 0..1 over one cycle: 0-0.30 growing, 0.30-0.45 blooming, 0.45-0.62 in full bloom,
+  // 0.62-0.84 losing petals (they detach one by one and drift to the ground), 0.84-1.0 wilting, then it starts again.
+  const P_GROW = 0.30, P_BLOOM = 0.45, P_DROP = 0.62, P_WILT = 0.84;
+  const brown = isLight ? [120, 90, 50] : [96, 72, 40];
+  const wiltMix = (col, w) => mixC(col, brown, w*0.8);
+
+  function drawBloom(bx, by, bloomProgress, swayAng, sizeFactor, plantIdx, phase, wilt, groundY, fadeOut){
     if(bloomProgress <= 0.05) return;
     bctx.save();
+    bctx.globalAlpha = fadeOut;
     bctx.translate(bx, by);
     bctx.rotate(swayAng);
 
@@ -2939,46 +3568,63 @@ function drawDaisyGarden(t){
 
     const pTone1 = flowerTones[plantIdx % nFlower];
     const pTone2 = flowerTones[(plantIdx + 1) % nFlower];
-    const pOuter = mixC(pTone1, [15,15,22], isLight ? 0.35 : 0.5);
-    const pBody  = mixC(pTone1, pTone2, 0.3);
+    const pOuter = wiltMix(mixC(pTone1, [15,15,22], isLight ? 0.35 : 0.5), wilt);
+    const pBody  = wiltMix(mixC(pTone1, pTone2, 0.3), wilt);
     const pEdge  = isLight ? [20,20,25] : mixC(pOuter, [0,0,0], 0.65);
 
     const numPetals = 12;
-    const petalLen = minD * 0.165 * bloomProgress * sizeFactor * (1 + A[2]*gain*0.25);
-    const petalW = petalLen * 0.39;
+    const petalLen = minD * 0.165 * bloomProgress * sizeFactor * (1 + A[2]*gain*0.25) * (1 - wilt*0.3);
+    const petalW = petalLen * 0.39 * (1 - wilt*0.25);
 
     for(let p = 0; p < numPetals; p++){
+      // each petal has its own drop moment inside the petal-loss window
+      const dropAt = P_DROP + hash1(p*7.3 + plantIdx*13.1) * (P_WILT - P_DROP - 0.03);
+      const falling = phase >= dropAt;
+      let fx = 0, fy = 0, fRot = 0, fAlpha = 1;
+      if(falling){
+        const fall = (phase - dropAt) * 14;                      // seconds since it let go (cycle is 14 s)
+        const gy = groundY - by;                                 // ground distance in local (pre-rotation) space
+        fy = Math.min(gy + minD*0.01, fall*fall*minD*0.28 + fall*minD*0.08);
+        fx = Math.sin(fall*2.4 + p)*minD*0.06 + fall*minD*0.02*(hash1(p*3.7) - 0.5);
+        fRot = fall*(hash1(p*5.1) - 0.5)*3;
+        fAlpha = fy >= gy ? clamp(1 - (fall - Math.sqrt(gy/(minD*0.28)))*0.6, 0, 1) : 1;
+        if(fAlpha <= 0.02) continue;
+      }
       bctx.save();
+      bctx.globalAlpha = fadeOut*fAlpha;
+      if(falling){ bctx.rotate(-swayAng); bctx.translate(fx, fy); bctx.rotate(swayAng + fRot); }
       bctx.rotate((p / numPetals) * TAU);
+      // wilting petals droop: they curl inward and lose length
+      const droop = wilt * 0.35;
       bctx.fillStyle = rgba(pOuter, 0.95);
       bctx.beginPath();
-      bctx.ellipse(petalLen * 0.54, 0, petalLen * 0.53, petalW * 0.53, 0, 0, TAU);
+      bctx.ellipse(petalLen * 0.54 * (1 - droop), 0, petalLen * 0.53 * (1 - droop), petalW * 0.53, 0, 0, TAU);
       bctx.fill();
 
       bctx.fillStyle = rgba(pBody, 0.98);
       bctx.beginPath();
-      bctx.ellipse(petalLen * 0.52, 0, petalLen * 0.47, petalW * 0.45, 0, 0, TAU);
+      bctx.ellipse(petalLen * 0.52 * (1 - droop), 0, petalLen * 0.47 * (1 - droop), petalW * 0.45, 0, 0, TAU);
       bctx.fill();
 
       bctx.strokeStyle = rgba(pEdge, 0.75);
       bctx.lineWidth = Math.max(1, minD * 0.0035);
       bctx.beginPath();
-      bctx.ellipse(petalLen * 0.52, 0, petalLen * 0.47, petalW * 0.45, 0, 0, TAU);
+      bctx.ellipse(petalLen * 0.52 * (1 - droop), 0, petalLen * 0.47 * (1 - droop), petalW * 0.45, 0, 0, TAU);
       bctx.stroke();
 
       bctx.strokeStyle = rgba(pOuter, 0.65);
       bctx.lineWidth = 1;
       bctx.beginPath();
       bctx.moveTo(petalLen * 0.15, 0);
-      bctx.lineTo(petalLen * 0.85, 0);
+      bctx.lineTo(petalLen * 0.85 * (1 - droop), 0);
       bctx.stroke();
       bctx.restore();
     }
 
-    const cInner = flowerTones[(plantIdx + 2) % nFlower];
-    const cMid   = flowerTones[(plantIdx + 3) % nFlower] || flowerTones[0];
+    const cInner = wiltMix(flowerTones[(plantIdx + 2) % nFlower], wilt);
+    const cMid   = wiltMix(flowerTones[(plantIdx + 3) % nFlower] || flowerTones[0], wilt);
     const cRim   = mixC(cMid, [0,0,0], isLight ? 0.78 : 0.68);
-    const centerR = minD * 0.052 * bloomProgress * sizeFactor * (1 + A[0]*gain*0.35);
+    const centerR = minD * 0.052 * bloomProgress * sizeFactor * (1 + A[0]*gain*0.35) * (1 - wilt*0.2);
 
     bctx.fillStyle = rgba(cRim, 0.95);
     bctx.beginPath();
@@ -2995,7 +3641,7 @@ function drawDaisyGarden(t){
     bctx.fill();
 
     const seedR = centerR * 0.58;
-    bctx.fillStyle = rgba(isLight ? [20,20,25] : [240,200,70], 0.75);
+    bctx.fillStyle = rgba(isLight ? [20,20,25] : mixC([240,200,70], brown, wilt*0.7), 0.75);
     for(let s = 0; s < 8; s++){
       const sAng = (s / 8) * TAU + t*0.2;
       bctx.beginPath();
@@ -3007,33 +3653,43 @@ function drawDaisyGarden(t){
 
   for(let i = 0; i < 3; i++){
     const stemBaseX = bw * (0.24 + i*0.26), groundY = bh * 0.95;
-    const plantTime = fract((t / 14) + i*0.333);
-    const growth = clamp(clamp(plantTime * 1.3, 0.05, 1.0) * (0.7 + eff.density*0.3) * (1 + A[i%4]*gain*0.15), 0.05, 1.0);
-    const maxStemH = bh * 0.56, stemHeight = maxStemH * growth;
-    const sway = Math.sin(t*1.4 + i*1.9) * (6 + A[1]*gain*10) * growth;
-    const topX = stemBaseX + sway, topY = groundY - stemHeight;
+    const phase = fract((t / 14) + i*0.333);
+    // growth eases in over the growing window and then holds
+    const growth = clamp(Math.sqrt(clamp(phase / P_GROW, 0.05, 1)) * (0.7 + eff.density*0.3) * (1 + A[i%4]*gain*0.15), 0.05, 1.0);
+    const bloom = phase < P_GROW ? 0 : clamp((phase - P_GROW) / (P_BLOOM - P_GROW), 0, 1);
+    const wilt = phase < P_WILT ? 0 : clamp((phase - P_WILT) / (1 - P_WILT), 0, 1);
+    const fadeOut = phase > 0.96 ? clamp((1 - phase) / 0.04, 0, 1) : 1;   // the dead plant dissolves just before the next seedling
+    const maxStemH = bh * 0.56, stemHeight = maxStemH * growth * (1 - wilt*0.12);
+    const side = i % 2 === 0 ? 1 : -1;
+    const sway = Math.sin(t*1.4 + i*1.9) * (6 + A[1]*gain*10) * growth * (1 - wilt*0.6);
+    // wilting: the head droops over sideways and down
+    const droopX = side * minD * 0.22 * wilt*wilt, droopY = stemHeight * 0.45 * wilt*wilt;
+    const topX = stemBaseX + sway + droopX, topY = groundY - stemHeight + droopY;
+    const ctlX = stemBaseX - sway*0.45 + droopX*0.2, ctlY = groundY - stemHeight*(0.5 + 0.35*wilt);
+    const stemA = wiltMix(stemBase, wilt), stemB = wiltMix(stemHi, wilt);
 
     bctx.save();
+    bctx.globalAlpha = fadeOut;
     bctx.strokeStyle = isLight ? 'rgba(15,35,25,0.85)' : 'rgba(0,0,0,0.7)';
     bctx.lineWidth = Math.max(3, minD * 0.02 * growth);
     bctx.lineCap = 'round';
     bctx.beginPath();
     bctx.moveTo(stemBaseX, groundY);
-    bctx.quadraticCurveTo(stemBaseX - sway*0.45, groundY - stemHeight*0.5, topX, topY);
+    bctx.quadraticCurveTo(ctlX, ctlY, topX, topY);
     bctx.stroke();
 
-    bctx.strokeStyle = rgba(stemBase, 0.95);
+    bctx.strokeStyle = rgba(stemA, 0.95);
     bctx.lineWidth = Math.max(2, minD * 0.015 * growth);
     bctx.beginPath();
     bctx.moveTo(stemBaseX, groundY);
-    bctx.quadraticCurveTo(stemBaseX - sway*0.45, groundY - stemHeight*0.5, topX, topY);
+    bctx.quadraticCurveTo(ctlX, ctlY, topX, topY);
     bctx.stroke();
 
-    bctx.strokeStyle = rgba(stemHi, 0.9);
+    bctx.strokeStyle = rgba(stemB, 0.9);
     bctx.lineWidth = Math.max(1, minD * 0.007 * growth);
     bctx.beginPath();
     bctx.moveTo(stemBaseX, groundY);
-    bctx.quadraticCurveTo(stemBaseX - sway*0.45, groundY - stemHeight*0.5, topX, topY);
+    bctx.quadraticCurveTo(ctlX, ctlY, topX, topY);
     bctx.stroke();
     bctx.restore();
 
@@ -3042,13 +3698,14 @@ function drawDaisyGarden(t){
       if(growth > leafThresholds[l]){
         const leafProgress = clamp((growth - leafThresholds[l]) / 0.35, 0, 1.0);
         const frac = leafThresholds[l] + 0.08;
-        const ly = groundY - maxStemH * frac, lx = stemBaseX + sway * (frac / growth);
-        const side = (l % 2 === 0 ? 1 : -1);
-        const leafLen = minD * 0.14 * leafProgress, leafW = leafLen * 0.44;
+        const ly = groundY - maxStemH * frac * (1 - wilt*0.12), lx = stemBaseX + sway * (frac / growth) + droopX*frac*0.3;
+        const lside = (l % 2 === 0 ? 1 : -1);
+        const leafLen = minD * 0.14 * leafProgress * (1 - wilt*0.25), leafW = leafLen * 0.44 * (1 - wilt*0.3);
 
         bctx.save();
+        bctx.globalAlpha = fadeOut;
         bctx.translate(lx, ly);
-        bctx.rotate(side * (0.65 + Math.sin(t + l)*0.06));
+        bctx.rotate(lside * (0.65 + Math.sin(t + l)*0.06 + wilt*0.9));   // wilting leaves hang down
 
         bctx.strokeStyle = isLight ? 'rgba(15,35,25,0.8)' : 'rgba(0,0,0,0.6)';
         bctx.lineWidth = Math.max(1.5, minD * 0.006);
@@ -3056,12 +3713,12 @@ function drawDaisyGarden(t){
         bctx.ellipse(leafLen*0.5, 0, leafLen*0.5, leafW*0.5, 0, 0, TAU);
         bctx.stroke();
 
-        bctx.fillStyle = rgba(leafCol, 0.92);
+        bctx.fillStyle = rgba(wiltMix(leafCol, wilt), 0.92);
         bctx.beginPath();
         bctx.ellipse(leafLen*0.5, 0, leafLen*0.5, leafW*0.5, 0, 0, TAU);
         bctx.fill();
 
-        bctx.strokeStyle = rgba(leafEdge, 0.95);
+        bctx.strokeStyle = rgba(wiltMix(leafEdge, wilt), 0.95);
         bctx.lineWidth = 1;
         bctx.beginPath();
         bctx.moveTo(0, 0);
@@ -3071,8 +3728,9 @@ function drawDaisyGarden(t){
       }
     }
 
-    if(growth > 0.45){
-      drawBloom(topX, topY, clamp((growth - 0.45) / 0.55, 0.08, 1.0), sway*0.02 + Math.sin(t*0.8 + i)*0.08, 1.0, i);
+    if(bloom > 0){
+      const headTilt = sway*0.02 + Math.sin(t*0.8 + i)*0.08 + side*wilt*1.1;
+      drawBloom(topX, topY, clamp(bloom, 0.08, 1.0), headTilt, 1.0, i, phase, wilt, groundY, fadeOut);
     }
   }
 }
@@ -3103,7 +3761,9 @@ function drawVaporLandscape(t){
   for(let b = 0; b < 4; b++) VP.sm[b] += (clamp(A[b]*gain*1.3, 0, 1) - VP.sm[b]) * Math.min(1, dt*10);
   VP.scroll += dt*(0.35 + VP.sm[0]*0.6)*C.scrollDir;
   const horizonY = bh*C.horizon, cx = bw*C.sunX;
-  const cA = pal.rgb[C.sunA], cB = pal.rgb[C.sunB], sA = pal.rgb[C.skyA], sB = pal.rgb[C.skyB], gC = pal.rgb[C.gridC];
+  // colour indices were picked at seed time; wrap them so a palette with fewer colours can't index past the end
+  const nc = pal.rgb.length;
+  const cA = pal.rgb[C.sunA % nc], cB = pal.rgb[C.sunB % nc], sA = pal.rgb[C.skyA % nc], sB = pal.rgb[C.skyB % nc], gC = pal.rgb[C.gridC % nc];
   // sky
   const sky = bctx.createLinearGradient(0, 0, 0, horizonY);
   sky.addColorStop(0, m3Rgba(sA, 0.12)); sky.addColorStop(0.55, m3Rgba(sB, 0.35)); sky.addColorStop(1, m3Rgba(sA, 1.0));
@@ -3141,7 +3801,7 @@ function drawVaporLandscape(t){
   }
   // mountains
   C.layers.forEach((L, li) => {
-    const col = pal.rgb[L.col];
+    const col = pal.rgb[L.col % nc];
     bctx.fillStyle = m3Rgba(col, 0.18 + 0.12*li, 1);
     bctx.beginPath(); bctx.moveTo(0, horizonY + 1);
     const off = VP.scroll*L.spd*0.4 + L.ph;
@@ -3203,37 +3863,97 @@ function drawVaporLandscape(t){
 // ASTEROIDS: vector starfield and drifting rocks.
 function drawAsteroids(t){
   const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
+  bctx.globalCompositeOperation = 'source-over';           // solid rocks: no additive palette blend
   bctx.fillStyle = '#000000';
   bctx.fillRect(0, 0, bw, bh);
-  bctx.strokeStyle = '#b8ffc9';
-  bctx.lineWidth = 1.4;
+  const D = 3.2, f = minD*1.3, cx = bw*0.5, cy = bh*0.5;
+  const yaw = Math.sin(t*0.05)*0.15, pitch = Math.sin(t*0.037)*0.1;
 
-  bctx.fillStyle = 'rgba(255,255,255,0.7)';
-  for(let s = 0; s < 24; s++){
-    bctx.fillRect((hash1(s*7.1)*bw + t*4) % bw, hash1(s*13.9)*bh, 1, 1);
-  }
-
-  const numRocks = 4 + Math.round(eff.density * 8);
-  for(let i = 0; i < numRocks; i++){
-    const seed = i * 61.3;
-    const rBase = minD * (0.045 + 0.035*hash1(seed)) * (1 + A[i%4]*gain*0.5);
-    const rx = ((hash1(seed + 4)*bw + t*(hash1(seed + 1) - 0.5)*28) % bw + bw) % bw;
-    const ry = ((hash1(seed + 5)*bh + t*(hash1(seed + 2) - 0.5)*24) % bh + bh) % bh;
-    bctx.save();
-    bctx.translate(rx, ry);
-    bctx.rotate(t * (hash1(seed + 3) - 0.5) * 1.5);
-    bctx.beginPath();
-    for(let v = 0; v < 8; v++){
-      const vAng = (v / 8) * TAU;
-      const vRad = rBase * (0.75 + 0.5*hash1(seed + v*9.1));
-      const vx = Math.cos(vAng)*vRad, vy = Math.sin(vAng)*vRad;
-      if(v === 0) bctx.moveTo(vx, vy); else bctx.lineTo(vx, vy);
+  // parallax star layers: far stars barely move, near ones drift faster
+  for(let L = 0; L < 3; L++){
+    const spd = 2 + L*5, a = 0.35 + L*0.22, n = 30 + L*18;
+    bctx.fillStyle = `rgba(255,255,255,${a})`;
+    for(let s_ = 0; s_ < n; s_++){
+      const x = (hash1(s_*7.1 + L*99)*bw + t*spd) % bw, y = hash1(s_*13.9 + L*77)*bh;
+      bctx.fillRect(x, y, L === 2 ? 2 : 1, L === 2 ? 2 : 1);
     }
-    bctx.closePath();
-    bctx.stroke();
-    bctx.restore();
   }
 
+  // ---- rocks: vector wireframe polyhedra. Base mesh is an octahedron subdivided once (18 verts / 32 faces);
+  // each rock displaces the vertices radially with its own hash, tumbles on two axes and drifts through a 3D
+  // volume that wraps. Back-facing edges are drawn faint, front faces are filled black to occlude them, and
+  // front-facing edges are drawn bright, so the outline itself reads as a 3D solid in the classic vector style.
+  const AS = drawAsteroids;
+  if(!AS.mesh){
+    const V = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+    const F0 = [[0,2,4],[2,1,4],[1,3,4],[3,0,4],[2,0,5],[1,2,5],[3,1,5],[0,3,5]];
+    const verts = V.map(v => v.slice()), faces = [], midCache = new Map();
+    const mid = (a, b) => { const k = a < b ? a + '_' + b : b + '_' + a; if(midCache.has(k)) return midCache.get(k);
+      const m = [(verts[a][0] + verts[b][0])/2, (verts[a][1] + verts[b][1])/2, (verts[a][2] + verts[b][2])/2]; const l = Math.hypot(...m);
+      verts.push([m[0]/l, m[1]/l, m[2]/l]); midCache.set(k, verts.length - 1); return verts.length - 1; };
+    for(const [a, b, c] of F0){ const ab = mid(a, b), bc = mid(b, c), ca = mid(c, a); faces.push([a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]); }
+    const edgeSet = new Set(), edges = [];
+    for(const fc of faces) for(let k = 0; k < 3; k++){ const a = fc[k], b = fc[(k + 1) % 3], key = a < b ? a + '_' + b : b + '_' + a; if(!edgeSet.has(key)){ edgeSet.add(key); edges.push([a, b]); } }
+    AS.mesh = { verts, faces, edges };
+  }
+  const M = AS.mesh;
+  const numRocks = 3 + Math.round(eff.density * 42);
+  const items = [];
+  for(let i = 0; i < numRocks; i++){
+    const seed = i*61.3, h0 = hash1(seed), h1 = hash1(seed + 1), h2 = hash1(seed + 2);
+    const vx = (h1 - 0.5)*0.5, vy = (h2 - 0.5)*0.4, vz = (hash1(seed + 6) - 0.5)*0.35;
+    const x = ((hash1(seed + 4)*6 - 3 + t*vx) % 6 + 9) % 6 - 3;
+    const y = ((hash1(seed + 5)*4 - 2 + t*vy) % 4 + 6) % 4 - 2;
+    const z = ((hash1(seed + 7)*4 - 2 + t*vz) % 4 + 6) % 4 - 2;
+    const p = m3Rot(x, y, z, yaw, pitch, 0);
+    items.push({ p, seed, i, r:(0.12 + 0.2*h0)*(1 + A[i%4]*gain*0.4) });
+  }
+  items.sort((a, b) => b.p[2] - a.p[2]);       // far to near
+  bctx.lineJoin = 'round';
+  for(const it of items){
+    const qc = m3Proj(it.p, D, f); if(qc[3] < 0.15 || qc[2]*it.r < 1.2) continue;
+    const depth = clamp(1 - (it.p[2] + 2)/4, 0.25, 1);
+    const col = pal.rgb[(it.i + Math.floor(t*0.05)) % pal.rgb.length];
+    const rotA = t*(hash1(it.seed + 3) - 0.5)*1.6, rotB = t*(hash1(it.seed + 8) - 0.5)*1.1;
+    // rock-space vertices -> world -> rotate with the camera -> project
+    const pv = [], cv = [];
+    for(let v = 0; v < M.verts.length; v++){
+      const b = M.verts[v], rr = it.r*(0.72 + 0.56*hash1(it.seed + v*9.1));
+      const q = m3Rot(b[0]*rr, b[1]*rr, b[2]*rr, rotA, rotB, 0);
+      const w = m3Rot(q[0], q[1], q[2], yaw, pitch, 0);
+      const cp = [it.p[0] + w[0], it.p[1] + w[1], it.p[2] + w[2]];
+      cv.push(cp); pv.push(m3Proj(cp, D, f));
+    }
+    // face visibility from the camera at (0,0,-D)
+    const front = M.faces.map(fc => {
+      const a = cv[fc[0]], b = cv[fc[1]], c = cv[fc[2]];
+      const ux = b[0]-a[0], uy = b[1]-a[1], uz = b[2]-a[2], vx = c[0]-a[0], vy = c[1]-a[1], vz = c[2]-a[2];
+      const nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx;
+      return nx*a[0] + ny*a[1] + nz*(a[2] + D) < 0;
+    });
+    const edgeFront = new Map();
+    M.faces.forEach((fc, fi) => { for(let k = 0; k < 3; k++){ const a = fc[k], b = fc[(k + 1) % 3], key = a < b ? a + '_' + b : b + '_' + a; edgeFront.set(key, (edgeFront.get(key) || 0) + (front[fi] ? 1 : 0)); } });
+    const lw = Math.max(0.8, qc[2]*it.r*0.045);
+    // back edges: faint, drawn first
+    bctx.strokeStyle = m3Rgba(col, 0.55*depth, 0.28*depth); bctx.lineWidth = Math.max(0.6, lw*0.6);
+    bctx.beginPath();
+    for(const [a, b] of M.edges){ const key = a < b ? a + '_' + b : b + '_' + a; if(edgeFront.get(key) > 0) continue; bctx.moveTo(pv[a][0], pv[a][1]); bctx.lineTo(pv[b][0], pv[b][1]); }
+    bctx.stroke();
+    // front faces filled black to occlude what's behind, then the front edges bright
+    bctx.fillStyle = '#000';
+    bctx.beginPath();
+    M.faces.forEach((fc, fi) => { if(!front[fi]) return; bctx.moveTo(pv[fc[0]][0], pv[fc[0]][1]); bctx.lineTo(pv[fc[1]][0], pv[fc[1]][1]); bctx.lineTo(pv[fc[2]][0], pv[fc[2]][1]); bctx.closePath(); });
+    bctx.fill();
+    // silhouette edges (shared by a front and a back face) brightest; interior front edges a touch dimmer
+    bctx.lineWidth = lw*0.7; bctx.strokeStyle = m3Rgba(col, 1.05*depth, 0.75*depth);
+    bctx.beginPath();
+    for(const [a, b] of M.edges){ const key = a < b ? a + '_' + b : b + '_' + a; if(edgeFront.get(key) !== 2) continue; bctx.moveTo(pv[a][0], pv[a][1]); bctx.lineTo(pv[b][0], pv[b][1]); }
+    bctx.stroke();
+    bctx.lineWidth = lw; bctx.strokeStyle = m3Rgba(col, 1.5*depth, 1);
+    bctx.beginPath();
+    for(const [a, b] of M.edges){ const key = a < b ? a + '_' + b : b + '_' + a; if(edgeFront.get(key) !== 1) continue; bctx.moveTo(pv[a][0], pv[a][1]); bctx.lineTo(pv[b][0], pv[b][1]); }
+    bctx.stroke();
+  }
 }
 
 // ---- DANCER: generative interpretive dance driven by the audio bands ----
@@ -3702,7 +4422,7 @@ function drawJellyfish(t){
   const order = JF.list.map(J => ({ J, z:m3Rot(J.x, J.y, J.z, camYaw, 0, 0)[2] })).sort((a, b) => b.z - a.z);
   const U = 9, V = 26;
   for(const { J } of order){
-    const c = pal.rgb[J.col], c2 = pal.rgb[(J.col + 2) % pal.rgb.length];
+    const c = pal.rgb[J.col % pal.rgb.length], c2 = pal.rgb[(J.col + 2) % pal.rgb.length];
     const contract = J.pulse;
     const R = J.R*(1 - contract*0.28), Hh = J.R*(0.75 + contract*0.45);           // bell squeezes narrower and taller
     const wob = (u, v) => 1 + 0.05*Math.sin(v*J.lobes)*(1 - contract*0.5)*Math.pow(u, 3);
@@ -3779,12 +4499,15 @@ function drawJellyfish(t){
 // ---------------------------------------------------------------------------------------------
 // Registry: SHAPES (UI order/labels) and DRAW (id -> render function). Ids are what presets store.
 // ---------------------------------------------------------------------------------------------
+// OFF is a shape that draws nothing, so a slot can be disabled (video / background still show through).
+function drawOff(){}
 const SHAPES = [
+  { id:'off', label:'OFF' },
   { id:'orbs', label:'ORBS' }, { id:'rings', label:'RINGS' }, { id:'scope', label:'SCOPE' },
-  { id:'mosaic', label:'MOSAIC' }, { id:'waves', label:'WAVES' }, { id:'dotgrid', label:'DOTGRID' },
+  { id:'waves', label:'WAVES' },
   { id:'tunnel', label:'TUNNEL' }, { id:'plasma', label:'PLASMA' }, { id:'lissa', label:'LISSAJOUS' },
   { id:'altitude', label:'ALTITUDE' }, { id:'blobs', label:'BLOBS' }, { id:'polylock', label:'POLYLOCK' },
-  { id:'sonar', label:'SONAR' }, { id:'aurora', label:'AURORA' }, { id:'helix', label:'HELIX' },
+  { id:'sonar', label:'SONAR' }, { id:'aurora', label:'AURORA' },
   { id:'wobble', label:'WOBBLE' }, { id:'lattice', label:'LATTICE' }, { id:'echo', label:'ECHO' },
   { id:'constellation', label:'CONSTELLATION' }, { id:'glitch', label:'GLITCH' }, { id:'hlines', label:'HLINES' },
   { id:'moire', label:'MOIRE' }, { id:'colorbars', label:'COLORBARS' }, { id:'spiro', label:'SPIROGRAPH' },
@@ -3798,10 +4521,11 @@ const SHAPES = [
 ];
 
 const DRAW = {
-  orbs:drawOrbs, rings:drawRings, scope:drawScope, mosaic:drawMosaic,
-  waves:drawWaves, dotgrid:drawDotGrid, tunnel:drawTunnel, plasma:drawPlasma,
+  off:drawOff,
+  orbs:drawOrbs, rings:drawRings, scope:drawScope,
+  waves:drawWaves, tunnel:drawTunnel, plasma:drawPlasma,
   lissa:drawLissa, altitude:drawAltitudeMap, blobs:drawBlobs, polylock:drawPolylock,
-  sonar:drawSonar, aurora:drawAurora, helix:drawHelix, wobble:drawWobble,
+  sonar:drawSonar, aurora:drawAurora, wobble:drawWobble,
   lattice:drawLattice, echo:drawEcho, constellation:drawConstellation,
   glitch:drawGlitch, hlines:drawHLines, moire:drawMoire, colorbars:drawColorbars,
   spiro:drawSpiro, pulses:drawPulses, forest:drawForest, eclipse:drawEclipse,
@@ -3821,7 +4545,7 @@ const FILTERS = [
 
 const FX = {
   none: {},
-  photo: { grain:16, flick:0.03, weaveX:1.2, weaveY:0.9, scratches:[0,2], dust:[4,12], dustDark:[8,20], hair:3, stains:true, tint:[1.07,1.01,0.88], sat:0.72, blur:0.5 },
+  photo: { grain:16, flick:0.03, weaveX:1.2, weaveY:0.9, dust:[4,12], dustDark:[8,20], stains:true, tint:[1.07,1.01,0.88], sat:0.72, blur:0.5 },
   mm16:  { grain:24, flick:0.075, weaveX:1.1, weaveY:0.9, dust:[2,8], tint:[1.06,1.0,0.90] },
   mm35:  { grain:9,  flick:0.035, weaveX:0.4, weaveY:0.3, dust:[1,4], tint:[1.02,1.0,0.97] },
   vhs:   { staticP:0.06, rowWob:3.5, caAdd:2, sat:0.8, flick:0.025, tint:[1.03,1.0,0.97] },
@@ -3836,6 +4560,55 @@ const frand = ()=>{ rngS ^= rngS << 13; rngS ^= rngS >>> 17; rngS ^= rngS << 5; 
 // cable-TV block noise/softening, static, film grain and colour posterisation (FIDELITY).
 // The posterise step uses a 256-entry lookup table rebuilt only when FIDELITY changes; scratch buffers are cached.
 const PP = { lut:new Float32Array(256), lutF:-1, rowSh:null, blk:null, blkSeed:-1, blkX:0 };
+
+// INVERT COLORS: flips RGB of every drawn pixel in the low-res buffer. Transparent pixels (the override
+// background layer) are left alone so BLACK / WHITE / GREEN SCREEN keep their exact colour.
+function invertBuffer(){
+  const img = bctx.getImageData(0, 0, bw, bh), d = img.data;
+  for(let i = 0; i < d.length; i += 4){
+    if(d[i+3] === 0) continue;
+    d[i] = 255 - d[i]; d[i+1] = 255 - d[i+1]; d[i+2] = 255 - d[i+2];
+  }
+  bctx.putImageData(img, 0, 0);
+}
+
+// COMIC INK (first stage of the effects chain): Sobel edge detection lays down black ink outlines, colours are
+// flattened to a few poster levels and saturation is pushed, giving the Final Cut "Comic" look. `a` = 0..1.
+const CI = { lum:null };
+function comicInk(a){
+  const img = bctx.getImageData(0, 0, bw, bh), d = img.data, n = bw*bh;
+  if(!CI.lum || CI.lum.length !== n) CI.lum = new Float32Array(n);
+  const L = CI.lum;
+  for(let i = 0, p = 0; i < n; i++, p += 4) L[i] = d[p]*0.299 + d[p+1]*0.587 + d[p+2]*0.114;
+
+  const levels = Math.round(lerp(14, 4, a)), step = 255/(levels - 1);
+  const thr = lerp(170, 44, a), invThr = 1/thr;   // lower threshold = more edges become ink
+  const satB = 1 + a*0.6;                          // punchier flat colour
+  const inkA = Math.min(1, a*1.6);                 // ink opacity ramps up quickly
+
+  for(let y = 0; y < bh; y++){
+    const yA = (y > 0 ? y - 1 : y)*bw, yB = y*bw, yC = (y < bh - 1 ? y + 1 : y)*bw;
+    for(let x = 0; x < bw; x++){
+      const xA = x > 0 ? x - 1 : x, xC = x < bw - 1 ? x + 1 : x;
+      const gx = (L[yA + xC] + 2*L[yB + xC] + L[yC + xC]) - (L[yA + xA] + 2*L[yB + xA] + L[yC + xA]);
+      const gy = (L[yC + xA] + 2*L[yC + x] + L[yC + xC]) - (L[yA + xA] + 2*L[yA + x] + L[yA + xC]);
+      let ink = ((gx < 0 ? -gx : gx) + (gy < 0 ? -gy : gy) - thr)*invThr;
+      ink = (ink < 0 ? 0 : ink > 1 ? 1 : ink)*inkA;
+
+      const p = (yB + x)*4, l = L[yB + x];
+      let r = l + (d[p] - l)*satB, g = l + (d[p+1] - l)*satB, b = l + (d[p+2] - l)*satB;
+      r += (Math.round(r/step)*step - r)*a; g += (Math.round(g/step)*step - g)*a; b += (Math.round(b/step)*step - b)*a;
+      const k = 1 - ink;
+      r *= k; g *= k; b *= k;
+      d[p]   = r < 0 ? 0 : r > 255 ? 255 : r;
+      d[p+1] = g < 0 ? 0 : g > 255 ? 255 : g;
+      d[p+2] = b < 0 ? 0 : b > 255 ? 255 : b;
+      if(ink > 0.02){ const ia = ink*255; if(d[p+3] < ia) d[p+3] = ia; }   // ink also outlines shapes over a transparent backdrop
+    }
+  }
+  bctx.putImageData(img, 0, 0);
+}
+
 function postProcess(){
   const f = eff.fidelity;
   const F = FX[state.filter];
@@ -3847,7 +4620,8 @@ function postProcess(){
 
   // posterise LUT (blend between two level counts so the slider is continuous)
   if(PP.lutF !== f){
-    const exactLevels = lerp(3, 10, f), lLow = Math.floor(exactLevels), frac = exactLevels - lLow;
+    // 3..10 colour levels across the lower range, then opening up towards full colour depth at the top
+    const exactLevels = f < 0.7 ? lerp(3, 10, f/0.7) : lerp(10, 64, (f - 0.7)/0.3), lLow = Math.floor(exactLevels), frac = exactLevels - lLow;
     const stepLow = 255/(lLow - 1), stepHigh = 255/lLow;
     for(let v = 0; v < 256; v++) PP.lut[v] = lerp(Math.round(v/stepLow)*stepLow, Math.round(v/stepHigh)*stepHigh, frac);
     PP.lutF = f;
@@ -4011,14 +4785,23 @@ let lastScanOpacity = -1;
 // result, which fades the shape as one solid layer.
 const SOLID_MIX = new Set(['rings', 'spiro', 'helix', 'lattice', 'tunnel', 'modsynth', 'stickdancer', 'orbs', 'polylock', 'vmsolid', 'triangulation', 'halo', 'rising', 'mosaic', 'waves', 'dotgrid']);
 const mixSnap = document.createElement('canvas'), mixSnapCtx = mixSnap.getContext('2d');
+const drawErrLogged = new Set();
+// A shape that throws mid-frame must never stall the output: log it once and carry on with the rest of the frame.
+function safeDraw(id, t){
+  try { DRAW[id](t); }
+  catch(err){
+    if(!drawErrLogged.has(id)){ drawErrLogged.add(id); console.error(`shape "${id}" failed to draw:`, err); }
+    bctx.globalAlpha = 1; bctx.globalCompositeOperation = 'source-over';
+  }
+}
 function drawMixed(id, alpha, t){
-  if(alpha > 0.995 || !SOLID_MIX.has(id)){ bctx.globalAlpha = alpha; DRAW[id](t); return; }
+  if(alpha > 0.995 || !SOLID_MIX.has(id)){ bctx.globalAlpha = alpha; safeDraw(id, t); return; }
   if(mixSnap.width !== bw || mixSnap.height !== bh){ mixSnap.width = bw; mixSnap.height = bh; }
   mixSnapCtx.globalCompositeOperation = 'copy';
   mixSnapCtx.drawImage(buf, 0, 0);
   const op = bctx.globalCompositeOperation;
   bctx.globalAlpha = 1;
-  DRAW[id](t);
+  safeDraw(id, t);
   bctx.globalCompositeOperation = 'source-over';
   bctx.globalAlpha = 1 - alpha;
   bctx.drawImage(mixSnap, 0, 0);
@@ -4027,13 +4810,55 @@ function drawMixed(id, alpha, t){
 }
 
 // ---------------------------------------------------------------------------------------------
-// Main loop: audio -> LFOs/eff -> shapes (with crossfade) -> postProcess -> film overlays -> downscale for
-// FIDELITY -> blit to view with weave/CA -> text overlay -> glitch -> blur -> trails -> view-level filter noise -> scanlines
+// SLOT B INSTANCE: Shape A and Shape B may be the same shape, but B must never be a pixel-identical copy of A.
+// Every shape keeps its persistent state either on its own draw function (drawOrbs.cfg, drawJellyfish.list ...)
+// or on a module-level object (ALT, MZ, SYN, DANCE, CITY). While slot B renders we swap those containers for a
+// second, independent copy, derive a different seed (so seeded layouts, colours and noise phases differ) and
+// offset time (so even purely time-driven shapes are at a different phase). Everything is restored afterwards.
+// ---------------------------------------------------------------------------------------------
+const SLOT_B_SEED_SALT = 0x3a9f, SLOT_B_TIME_OFFSET = 41.37;
+const SHARED_SHAPE_STATE = { altitude:[ALT], liminal:[MZ], modsynth:[SYN], stickdancer:[DANCE], cityflyover:[CITY] };
+const slotBStore = new WeakMap();   // container -> the state of whichever slot is NOT currently loaded into it
+// Module-level containers assume their initial keys exist, so slot B's copy starts from the same initial template
+// (captured now, before the first frame). Draw-function containers start empty and lazily build their own state.
+const freshCopy = (v) => Array.isArray(v) ? v.map(freshCopy) : (v && typeof v === 'object' && v.constructor === Object) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, freshCopy(x)])) : v;
+const slotBTemplate = new Map();
+Object.values(SHARED_SHAPE_STATE).flat().forEach(c => slotBTemplate.set(c, freshCopy(c)));
+function slotContainers(id){
+  const c = [DRAW[id]];
+  if(SHARED_SHAPE_STATE[id]) c.push(...SHARED_SHAPE_STATE[id]);
+  return c;
+}
+// Exchange a container's own properties with the parked copy. Calling it twice round-trips.
+function swapShapeState(c){
+  const cur = {};
+  for(const k of Object.keys(c)){ cur[k] = c[k]; delete c[k]; }
+  Object.assign(c, slotBStore.get(c) || freshCopy(slotBTemplate.get(c)) || {});
+  slotBStore.set(c, cur);
+}
+function drawSlotB(id, alpha, tt){
+  const conts = slotContainers(id), seedA = state.seed;
+  conts.forEach(swapShapeState);
+  state.seed = (seedA ^ SLOT_B_SEED_SALT) & 0xffff;
+  reseed(state.seed);
+  try { drawMixed(id, alpha, tt + SLOT_B_TIME_OFFSET); }
+  finally {
+    state.seed = seedA;
+    reseed(seedA);
+    conts.forEach(swapShapeState);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Main loop: audio -> LFOs/eff -> base background (palette or BLACK/WHITE/GREEN override) -> shapes (with crossfade,
+// per-shape BACKGROUND OFF) -> invert -> COMIC INK -> postProcess -> film overlays -> downscale for FIDELITY ->
+// blit to view with weave/CA -> text overlay -> RGB SPLIT -> glitch -> blur -> trails -> FEEDBACK -> view-level filter noise -> scanlines
 // ---------------------------------------------------------------------------------------------
 function frame(now){
   requestAnimationFrame(frame);
   const dt = clamp((now - last)*0.001, 0, 0.05);
   last = now;
+  if(bw !== targetBufferWidth()) resize();   // FIDELITY stepped into a new resolution tier
   const tw = now * 0.001;
 
   updateAudio(dt);
@@ -4046,6 +4871,9 @@ function frame(now){
   lfoPhases.trails      += dt * TAU * state.lfoRateTrails;
   lfoPhases.blur        += dt * TAU * state.lfoRateBlur;
   lfoPhases.glitch      += dt * TAU * state.lfoRateGlitch;
+  lfoPhases.comic       += dt * TAU * state.lfoRateComic;
+  lfoPhases.split       += dt * TAU * state.lfoRateSplit;
+  lfoPhases.feedback    += dt * TAU * state.lfoRateFeedback;
   lfoPhases.textScale   += dt * TAU * state.lfoRateTextScale;
   lfoPhases.textScatter += dt * TAU * state.lfoRateTextScatter;
   lfoPhases.textRotate  += dt * TAU * state.lfoRateTextRotate;
@@ -4059,6 +4887,9 @@ function frame(now){
   eff.trails  = clamp(state.trails  + Math.sin(lfoPhases.trails) * state.modTrails + A[0] * state.audModTrails, 0, 1);
   eff.blur    = clamp(state.blur    + Math.sin(lfoPhases.blur)   * state.modBlur   + A[1] * state.audModBlur,   0, 1);
   eff.glitch  = clamp(state.glitch  + Math.sin(lfoPhases.glitch) * state.modGlitch + A[2] * state.audModGlitch, 0, 1);
+  eff.comic   = clamp(state.comic   + Math.sin(lfoPhases.comic)  * state.modComic  + A[2] * state.audModComic,  0, 1);
+  eff.split   = clamp(state.split   + Math.sin(lfoPhases.split)  * state.modSplit  + A[0] * state.audModSplit,  0, 1);
+  eff.feedback= clamp(state.feedback+ Math.sin(lfoPhases.feedback)* state.modFeedback + A[0] * state.audModFeedback, 0, 2);
 
   eff.textScale   = clamp(state.textScale + (Math.sin(lfoPhases.textScale) * state.modTextScale + A[0] * state.audModTextScale) * 60, 8, 220);
   eff.textScatter = clamp(state.textScatter + Math.sin(lfoPhases.textScatter) * state.modTextScatter + A[2] * state.audModTextScatter, 0, 1);
@@ -4082,18 +4913,34 @@ function frame(now){
   eff.mix = clamp(state.mix + Math.sin(lfoPhases.mix) * state.modMix + A[1] * state.audModMix, 0, 1);
 
   const pal = PALETTES[state.palette];
+  const bgCol = effBg();
   bctx.globalCompositeOperation = 'source-over';
-  bctx.fillStyle = pal.bg;
-  bctx.fillRect(0, 0, bw, bh);
+  bctx.globalAlpha = 1;
+  if(bgOverridden()){
+    // override backgrounds live UNDER the buffer: keep the base transparent so any shape that paints its own
+    // backdrop covers it, while shapes that don't (or have BACKGROUND OFF) reveal the chosen colour.
+    bctx.clearRect(0, 0, bw, bh);
+  } else {
+    bctx.fillStyle = pal.bg;
+    bctx.fillRect(0, 0, bw, bh);
+  }
+  drawVideoLayer();                     // video sits beneath both shapes
   bctx.globalCompositeOperation = pal.blend;
 
-  const mA = 1 - eff.mix, mB = eff.mix;
-  if(mA > 0.004 && DRAW[state.shape]) drawMixed(state.shape, mB > 0.004 ? mA : 1, t);
-  if(mB > 0.004 && DRAW[state.shapeB]) drawMixed(state.shapeB, mA > 0.004 ? mB : 1, t);
+  // CROSSFADE normally; when Shape B has BACKGROUND OFF it becomes an OVERLAY: A stays at full opacity and B
+  // (its own backdrop gone) fades in on top of it as the slider rises.
+  const overlay = state.noBgB;
+  const mA = overlay ? 1 : 1 - eff.mix, mB = eff.mix;
+  stripFrame++;
+  if(mA > 0.004 && DRAW[state.shape]){ bgStrip = state.noBgA; drawMixed(state.shape, (!overlay && mB > 0.004) ? mA : 1, t); }
+  if(mB > 0.004 && DRAW[state.shapeB]){ bgStrip = state.noBgB; drawSlotB(state.shapeB, (overlay || mA > 0.004) ? mB : 1, t); }
+  bgStrip = false;
 
   bctx.globalAlpha = 1.0;
   bctx.globalCompositeOperation = 'source-over';
 
+  if(state.invert) invertBuffer();
+  if(eff.comic > 0.01) comicInk(eff.comic);   // effects chain stage 1
   postProcess();
   filmOverlays(tw);
 
@@ -4103,8 +4950,10 @@ function frame(now){
   if(targetScale < 0.98){
     const subW = Math.max(16, Math.round(bw * targetScale));
     const subH = Math.max(9, Math.round(bh * targetScale));
+    dctx.clearRect(0, 0, bw, bh);
     dctx.imageSmoothingEnabled = true;
     dctx.drawImage(buf, 0, 0, bw, bh, 0, 0, subW, subH);
+    dctx2.clearRect(0, 0, bw, bh);
     dctx2.imageSmoothingEnabled = false;
     dctx2.drawImage(downBuf, 0, 0, subW, subH, 0, 0, bw, bh);
     if(eff.fidelity > 0.65){
@@ -4130,7 +4979,7 @@ function frame(now){
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
   ctx.filter = 'none';
-  ctx.fillStyle = pal.bg;
+  ctx.fillStyle = bgCol;
   ctx.fillRect(0, 0, W, H);
 
   ctx.save();
@@ -4150,16 +4999,90 @@ function frame(now){
   }
   ctx.restore();
 
-  // text is rendered straight onto the full-resolution view (same transform as the buffer) so it stays crisp
+  // text is rendered at full resolution into its own scratch canvas (same transform as the buffer), then put
+  // through the same FIDELITY treatment as the picture: pixelated below ~98%, blended back toward crisp above 65%,
+  // and colour-fringed (chromatic aberration) at low fidelity.
   if(state.text){
+    txtctx.setTransform(1, 0, 0, 1, 0, 0);
+    txtctx.globalCompositeOperation = 'source-over';
+    txtctx.globalAlpha = 1;
+    txtctx.filter = 'none';
+    txtctx.clearRect(0, 0, W, H);
+    txtctx.save();
+    txtctx.translate(W*0.5 + wx, H*0.5 + wy);
+    txtctx.scale(k, k);
+    txtctx.translate(-bw*0.5, -bh*0.5);
+    drawVectorText(t, txtctx);
+    txtctx.restore();
+
+    let textSource = txtBuf;
+    if(targetScale < 0.98){
+      // pixel size follows the buffer's downscale so text blocks match the picture's blocks on screen
+      const tw2 = Math.max(16, Math.round(bw * targetScale * k)), th2 = Math.max(9, Math.round(bh * targetScale * k));
+      const subW = Math.min(W, tw2), subH = Math.min(H, th2);
+      txtdctx.setTransform(1, 0, 0, 1, 0, 0);
+      txtdctx.globalAlpha = 1;
+      txtdctx.clearRect(0, 0, W, H);
+      txtdctx.imageSmoothingEnabled = true;
+      txtdctx.drawImage(txtBuf, 0, 0, W, H, 0, 0, subW, subH);
+      txtctx.clearRect(0, 0, W, H);
+      txtctx.imageSmoothingEnabled = false;
+      txtctx.drawImage(txtDown, 0, 0, subW, subH, 0, 0, W, H);
+      if(eff.fidelity > 0.65){
+        // txtBuf now holds the pixelated text; re-draw the crisp text over it with the same blend the picture uses
+        txtctx.globalAlpha = (eff.fidelity - 0.65) / 0.35;
+        txtctx.imageSmoothingEnabled = true;
+        txtctx.save();
+        txtctx.translate(W*0.5 + wx, H*0.5 + wy);
+        txtctx.scale(k, k);
+        txtctx.translate(-bw*0.5, -bh*0.5);
+        drawVectorText(t, txtctx);
+        txtctx.restore();
+        txtctx.globalAlpha = 1;
+      }
+      textSource = txtBuf;
+    }
+
     ctx.save();
-    ctx.translate(W*0.5 + wx, H*0.5 + wy);
-    ctx.scale(k, k);
-    ctx.translate(-bw*0.5, -bh*0.5);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 1;
     ctx.filter = 'none';
-    drawVectorText(t, ctx);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(textSource, 0, 0);
+    if(FILTER_OK && eff.fxLevel > 0.15){
+      const ca = eff.fidelity < 0.7 ? (eff.fidelity < 0.35 ? 2 : 1) : 0;
+      if(ca > 0){
+        ctx.globalAlpha = 0.4 * eff.fxLevel;
+        ctx.filter = 'url(#caR)'; ctx.drawImage(textSource, 0, 0);
+        ctx.filter = 'url(#caB)'; ctx.drawImage(textSource, 0, 0);
+      }
+    }
+    ctx.restore();
+  }
+
+  // RGB SPLIT (effects chain stage 2): the frame is rebuilt from its red, green and blue channels drawn at
+  // different horizontal offsets. Edge columns are stretched so the frame border doesn't show dark strips.
+  if(eff.split > 0.005 && FILTER_OK){
+    const dx = Math.max(1, Math.round(eff.split * W * 0.05));
+    fxctx.globalCompositeOperation = 'copy';
+    fxctx.drawImage(view, 0, 0);
+    fxctx.globalCompositeOperation = 'source-over';
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.filter = 'none';
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.filter = 'url(#rsR)';
+    ctx.drawImage(fxc, dx, 0);
+    ctx.drawImage(fxc, 0, 0, 1, H, 0, 0, dx + 1, H);
+    ctx.filter = 'url(#rsG)';
+    ctx.drawImage(fxc, 0, 0);
+    ctx.filter = 'url(#rsB)';
+    ctx.drawImage(fxc, -dx, 0);
+    ctx.drawImage(fxc, W - 1, 0, 1, H, W - dx - 1, 0, dx + 1, H);
     ctx.restore();
   }
 
@@ -4208,7 +5131,7 @@ function frame(now){
     if(!trailsArmed){
       tctx.globalCompositeOperation = 'source-over';
       tctx.globalAlpha = 1;
-      tctx.fillStyle = pal.bg;
+      tctx.fillStyle = bgCol;
       tctx.fillRect(0, 0, W, H);
       tctx.drawImage(view, 0, 0);
       trailsArmed = true;
@@ -4227,6 +5150,47 @@ function frame(now){
     ctx.drawImage(trail, 0, 0);
   } else if(trailsArmed){
     trailsArmed = false;
+  }
+
+  // FEEDBACK (last in the effects chain): analog video feedback. The previous output frame is re-zoomed, re-rotated,
+  // hue-drifted and screened back over the current frame, then the result becomes the memory for the next pass,
+  // so the picture tunnels into itself like a camera pointed at its own monitor.
+  if(eff.feedback > 0.01){
+    // loop gain: 0..100% stays under unity (screen + slight darkening keep it from washing out);
+    // 100..200% drives the loop over unity with contrast + saturation, so it regenerates and saturates the way an
+    // analog loop does instead of just fading to white.
+    // Additive loop with a black level: the fed-back frame goes through a contrast curve that maps everything
+    // below a threshold to black (like a camera's black clip), so the background never accumulates while bright
+    // content sustains. Under 100% the loop gain is below unity and decays; 100..200% drives it over unity so
+    // highlights regenerate and burn outward through the zoom.
+    const over = Math.max(0, eff.feedback - 1);
+    const gain = Math.min(0.95, 0.3 + eff.feedback * 0.5);
+    // 100..200%: the black clip rises and the highlight gain approaches unity, so the loop holds and burns
+    // instead of decaying, while noise-level pixels still fall below the clip and die out.
+    const bright = 0.9 - over * 0.15, contrast = 1.12 + over * 0.3, sat = 1.0 + over * 0.25;
+    if(!fbArmed){
+      fbActx.globalCompositeOperation = 'source-over'; fbActx.globalAlpha = 1; fbActx.filter = 'none';
+      fbActx.drawImage(view, 0, 0);
+      fbArmed = true;
+    }
+    fbBctx.globalCompositeOperation = 'source-over'; fbBctx.globalAlpha = 1; fbBctx.filter = 'none';
+    fbBctx.drawImage(view, 0, 0);
+    fbBctx.save();
+    fbBctx.translate(W*0.5, H*0.5);
+    fbBctx.rotate(state.fbRot * Math.PI/180);
+    fbBctx.scale(1 + state.fbZoom, 1 + state.fbZoom);
+    fbBctx.translate(-W*0.5, -H*0.5);
+    fbBctx.globalCompositeOperation = 'lighter';
+    fbBctx.globalAlpha = gain;
+    if(FILTER_OK) fbBctx.filter = `hue-rotate(${state.fbHue}deg) saturate(${sat.toFixed(3)}) brightness(${bright.toFixed(3)}) contrast(${contrast.toFixed(3)})`;
+    fbBctx.drawImage(fbA, 0, 0);
+    fbBctx.restore();
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.filter = 'none';
+    ctx.drawImage(fbB, 0, 0);
+    // swap: what we just showed is next pass's memory
+    let tc = fbA; fbA = fbB; fbB = tc; let tx = fbActx; fbActx = fbBctx; fbBctx = tx;
+  } else if(fbArmed){
+    fbArmed = false;
   }
 
   if(state.filter === 'photo'){
@@ -4255,14 +5219,18 @@ function frame(now){
     lastScanOpacity = curScan;
     if(DOM.scan) DOM.scan.style.opacity = (curScan * 0.01).toFixed(2);
   }
+  if(OUT.stream) drawOutFrame();   // feed the fixed-resolution export canvas (recording / virtual camera)
+  if(REC.rec) recLevelTick();
 }
 
-let micStream = null, micDeviceId = '';
+let micStream = null, micDeviceId = '', micSrcNode = null, recDest = null;
 // ---------------------------------------------------------------------------------------------
 // Audio input: raw (unprocessed) capture, device selection, toggle on/off
 // ---------------------------------------------------------------------------------------------
 function micSetOff(){
+  if(REC.rec){ syncButton('bMic', 'MIC ON', true); return; }   // the recorder needs the input; stop recording first
   if(micStream){ micStream.getTracks().forEach(tr => tr.stop()); micStream = null; }
+  if(micSrcNode){ try{ micSrcNode.disconnect(); }catch(e){} micSrcNode = null; }
   analyser = null; aData = null;
   if(actx && actx.state === 'running') actx.suspend();
   syncButton('bMic', 'MIC OFF', false);
@@ -4277,6 +5245,9 @@ async function micStart(){
   if(micStream) micStream.getTracks().forEach(tr => tr.stop());
   micStream = stream;
   const srcNode = actx.createMediaStreamSource(stream);
+  if(micSrcNode){ try{ micSrcNode.disconnect(); }catch(e){} }
+  micSrcNode = srcNode;
+  if(REC.gain) srcNode.connect(REC.gain);   // keep a running recording fed if the input device changes
   const an = actx.createAnalyser();
   an.fftSize = 1024;
   an.smoothingTimeConstant = 0.35;
@@ -4318,7 +5289,7 @@ async function refreshAudioDevices(){
   fill(document);
   if(popoutWin && !popoutWin.closed) fill(popoutWin.document);
 }
-if(navigator.mediaDevices && navigator.mediaDevices.addEventListener) navigator.mediaDevices.addEventListener('devicechange', refreshAudioDevices);
+if(navigator.mediaDevices && navigator.mediaDevices.addEventListener) navigator.mediaDevices.addEventListener('devicechange', ()=>{ refreshAudioDevices(); refreshCamDevices(); });
 
 let popoutWin = null;
 const sideEl = document.getElementById('side');
@@ -4343,6 +5314,13 @@ function syncButton(id, text, isOn){
   }
 }
 
+// Grow the text overlay box to fit its lines (capped by CSS max-height).
+function textAreaGrow(el){
+  if(!el) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(120, el.scrollHeight) + 'px';
+}
+
 // Push numeric readouts to both documents.
 function syncReadouts(){
   const update = (id, val) => {
@@ -4357,7 +5335,7 @@ function syncReadouts(){
   update('vRate', state.rate.toFixed(2));
   update('vMix', Math.round(state.mix * 100) + '%');
   update('vDen', Math.round(state.density * 100) + '%');
-  update('vFid', Math.round(state.fidelity * 100) + '%');
+  update('vFid', Math.round(state.fidelity * 100) + '% · ' + targetBufferWidth() + 'PX');
   update('vAud', Math.round(state.audio * 100) + '%');
 
   update('vTextScale', Math.round(state.textScale));
@@ -4392,6 +5370,42 @@ function syncFx(){
   update('vTr', trStr);
   update('vBl', blStr);
   update('vGl', glStr);
+  update('vCo', Math.round(state.comic * 100) + '%');
+  update('vSp', Math.round(state.split * 100) + '%');
+  update('vFb', Math.round(state.feedback * 100) + '%');
+}
+
+// Per-shape "draw only the main shape" toggles.
+function setNoBg(slot, on){
+  if(slot === 'A') state.noBgA = on; else state.noBgB = on;
+  syncButton(slot === 'A' ? 'bNoBgA' : 'bNoBgB', on ? 'BACKGROUND OFF' : 'BACKGROUND ON', on);
+  // the mix slider is a crossfade unless B has no background, in which case it overlays B on top of A
+  const lbl = state.noBgB ? 'OVERLAY' : 'CROSSFADE';
+  const lm = document.getElementById('lMix'); if(lm) lm.textContent = lbl;
+  if(popoutWin && !popoutWin.closed){ const lp = popoutWin.document.getElementById('lMix'); if(lp) lp.textContent = lbl; }
+}
+
+// Invert all rendered colours.
+function setInvert(on){
+  state.invert = on;
+  syncButton('bInvert', on ? 'INVERT ON' : 'INVERT OFF', on);
+}
+
+// Base background: palette colour, or an exact BLACK / WHITE / GREEN SCREEN that sits under the shapes.
+function setBgMode(id){
+  if(!BG_MODES.some(b => b.id === id)) id = 'palette';
+  state.bgMode = id;
+  document.body.classList.toggle('chroma', id === 'green');   // no scanlines / vignette over a green screen
+  trailsArmed = false;                                          // trail memory re-seeds with the new backdrop
+  const syncGroup = (doc) => {
+    if(!doc) return;
+    const el = doc.getElementById('bgModes');
+    if(!el) return;
+    const kids = el.children;
+    for(let i = 0; i < kids.length; i++) kids[i].classList.toggle('on', BG_MODES[i].id === id);
+  };
+  syncGroup(document);
+  if(popoutWin && !popoutWin.closed) syncGroup(popoutWin.document);
 }
 
 // LFO rate slider <-> Hz mapping.
@@ -4472,6 +5486,345 @@ function setPalette(i){
   };
   syncGroup(document);
   if(popoutWin && !popoutWin.closed) syncGroup(popoutWin.document);
+}
+
+// AUDIO PALETTE: on each detected beat, jump to a random palette other than the current one.
+function paletteRandomFromAudio(){
+  if(PALETTES.length < 2) return;
+  let i = (Math.random() * (PALETTES.length - 1)) | 0;
+  if(i >= state.palette) i++;
+  setPalette(i);
+}
+async function setPalAudio(on){
+  state.palAudio = on;
+  syncButton('bPalAudio', on ? 'AUDIO PALETTE ON' : 'AUDIO PALETTE OFF', on);
+  if(on && (!actx || actx.state !== 'running')) await toggleMic();   // it needs the audio input running
+}
+
+// ---------------------------------------------------------------------------------------------
+// EXPORT: screenshot, video recording, live output (clean window / picture-in-picture) and presets.
+// ---------------------------------------------------------------------------------------------
+function downloadBlob(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+function stamp(){
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+// SCREENSHOT: the view canvas as a PNG (the CSS scan-line/vignette overlays are drawn on top of the canvas by the
+// page, so they are composited in here to match what is on screen).
+function takeScreenshot(){
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.drawImage(view, 0, 0);
+  const sa = scanLineAlpha();
+  if(sa > 0){
+    g.fillStyle = `rgba(0,0,0,${sa.toFixed(3)})`;
+    for(let y = 0; y < H; y += 3 * dpr) g.fillRect(0, y, W, dpr);
+  }
+  c.toBlob(b => { if(b) downloadBlob(b, `null-ventana-${stamp()}.png`); }, 'image/png');
+  syncButton('bShot', 'SAVED ✓', true);
+  setTimeout(()=>syncButton('bShot', 'SCREENSHOT', false), 900);
+}
+// Live output: the view is copied every frame (cover-fit, CSS scan lines composited in) into a canvas of exactly the
+// chosen export resolution, and one captureStream of that canvas feeds both the recorder and the virtual camera.
+const OUT = { stream:null, win:null, pipVideo:null };
+const OUTRES = { w:1920, h:1080 };
+const outCanvas = document.createElement('canvas');
+const outctx = outCanvas.getContext('2d', { alpha:false });
+function outSize(){
+  if(outCanvas.width !== OUTRES.w || outCanvas.height !== OUTRES.h){ outCanvas.width = OUTRES.w; outCanvas.height = OUTRES.h; }
+}
+function outputStream(){
+  if(!OUT.stream){ outSize(); drawOutFrame(); OUT.stream = outCanvas.captureStream(60); }
+  return OUT.stream;
+}
+function scanLineAlpha(){
+  if(!state.scan || !DOM.scan || document.body.classList.contains('chroma')) return 0;
+  return parseFloat(DOM.scan.style.opacity || '0.55') * 0.30;
+}
+function drawOutFrame(){
+  outSize();
+  const ow = outCanvas.width, oh = outCanvas.height;
+  const k = Math.max(ow / W, oh / H), dw = W * k, dh = H * k;
+  outctx.imageSmoothingEnabled = true;
+  outctx.drawImage(view, (ow - dw) * 0.5, (oh - dh) * 0.5, dw, dh);
+  const a = scanLineAlpha();
+  if(a > 0){
+    const step = 3 * dpr * k, lh = Math.max(1, dpr * k);
+    outctx.fillStyle = `rgba(0,0,0,${a.toFixed(3)})`;
+    for(let y = 0; y < oh; y += step) outctx.fillRect(0, y, ow, lh);
+  }
+}
+// RECORD: MediaRecorder on the view stream (+ the mic track when the audio input is on). MP4 (H.264, else AV1/VP9
+// in an MP4 container) wherever the browser can mux it; WebM only as a last resort (Firefox has no MP4 muxer).
+const REC = { rec:null, chunks:[], start:0, timer:null, max:60, mime:undefined, starting:false, hasAudio:false, target:0.70,
+              gain:null, comp:null, ana:null, anaBuf:null };
+const REC_GAIN_MIN = 0.25, REC_GAIN_MAX = 40;   // -12 dB .. +32 dB of make-up
+const REC_MIMES = [
+  'video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4;codecs=h264',
+  'video/mp4;codecs=av01', 'video/mp4;codecs=vp9', 'video/mp4',
+  'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'
+];
+function recMime(){
+  if(!window.MediaRecorder) return null;
+  if(REC.mime !== undefined) return REC.mime;
+  REC.mime = '';
+  for(const m of REC_MIMES){ if(MediaRecorder.isTypeSupported(m)){ REC.mime = m; break; } }
+  return REC.mime;
+}
+function recIsMp4(){ const m = recMime(); return Boolean(m) && m.startsWith('video/mp4'); }
+// Label the record button with the container the browser will actually write.
+function syncRecLabel(){
+  if(REC.rec) return;
+  const m = recMime();
+  syncButton('bRec', m === null ? 'NO RECORDER' : (recIsMp4() ? '● START REC' : '● REC (WEBM)'), false);
+  const tip = m === null ? 'this browser has no MediaRecorder' : (recIsMp4() ? 'records the display, with the audio input, to an MP4 file' : 'this browser cannot write MP4; recordings will be saved as WebM (use Chrome, Edge or Safari for MP4)');
+  const push = (doc) => { const b = doc && doc.getElementById('bRec'); if(b) b.title = tip; };
+  push(document); if(popoutWin && !popoutWin.closed) push(popoutWin.document);
+}
+// Recording audio chain: mic -> make-up gain (auto-levelled toward REC AUDIO LEVEL) -> limiter -> recorder.
+// The live analysis path is untouched, so the visuals keep reacting to the raw input.
+function recAudioChain(){
+  if(REC.gain) return;
+  recDest = recDest || actx.createMediaStreamDestination();
+  REC.gain = actx.createGain(); REC.gain.gain.value = 4;          // start at +12 dB, the leveler settles from there
+  REC.ana = actx.createAnalyser(); REC.ana.fftSize = 2048; REC.anaBuf = new Float32Array(REC.ana.fftSize);
+  REC.comp = actx.createDynamicsCompressor();
+  REC.comp.threshold.value = -8; REC.comp.knee.value = 6; REC.comp.ratio.value = 16;
+  REC.comp.attack.value = 0.002; REC.comp.release.value = 0.2;
+  REC.gain.connect(REC.ana);
+  REC.gain.connect(REC.comp);
+  REC.comp.connect(recDest);
+}
+// Called every frame while recording: measure the post-gain peak, duck instantly when it is over the target and
+// creep the gain up (~+8 dB/s) when it is under, ignoring near-silence so pauses don't wind the gain to maximum.
+function recLevelTick(){
+  if(!REC.rec || !REC.ana || !actx) return;
+  REC.ana.getFloatTimeDomainData(REC.anaBuf);
+  let peak = 0;
+  for(let i = 0; i < REC.anaBuf.length; i++){ const v = Math.abs(REC.anaBuf[i]); if(v > peak) peak = v; }
+  const g = REC.gain.gain.value, target = REC.target;
+  let ng = g;
+  if(peak > target) ng = g * (target / peak);
+  else if(peak > 0.03) ng = g * 1.016;
+  ng = clamp(ng, REC_GAIN_MIN, REC_GAIN_MAX);
+  if(ng !== g) REC.gain.gain.setTargetAtTime(ng, actx.currentTime, ng < g ? 0.005 : 0.05);
+}
+function setRecLevel(pct){
+  REC.target = clamp(pct * 0.01, 0.2, 1);
+  const db = 20 * Math.log10(REC.target);
+  syncButton('vRecLvl', (db >= -0.05 ? '0' : db.toFixed(1)) + ' dB', null);
+  const push = (doc) => { const s = doc && doc.getElementById('cRecLvl'); if(s && doc.activeElement !== s) s.value = Math.round(REC.target * 100); };
+  push(document); if(popoutWin && !popoutWin.closed) push(popoutWin.document);
+}
+async function recStart(){
+  if(REC.rec || REC.starting) return;
+  const mime = recMime();
+  if(mime === null){ syncRecLabel(); return; }
+  // audio: the recording always carries the audio input, so turn it on if it isn't running yet
+  REC.starting = true;
+  syncButton('bRec', 'STARTING…', true);
+  if(!actx || actx.state !== 'running' || !micStream){ try{ await micStart(); }catch(e){ console.warn('audio input for recording failed:', e); } }
+  REC.starting = false;
+  const stream = new MediaStream(outputStream().getVideoTracks());
+  if(actx && micSrcNode){
+    recAudioChain();
+    try{ micSrcNode.connect(REC.gain); }catch(e){}
+    recDest.stream.getAudioTracks().forEach(tr => stream.addTrack(tr));
+  }
+  const hasAudio = stream.getAudioTracks().length > 0;
+  const opts = { videoBitsPerSecond: 12e6, audioBitsPerSecond: 192e3 }; if(mime) opts.mimeType = mime;
+  let rec;
+  try{ rec = new MediaRecorder(stream, opts); }
+  catch(e){ console.warn('recorder failed:', e); syncButton('bRec', 'REC ERR', false); setTimeout(syncRecLabel, 1500); return; }
+  REC.chunks = [];
+  rec.ondataavailable = e => { if(e.data && e.data.size) REC.chunks.push(e.data); };
+  rec.onstop = ()=>{
+    const type = (rec.mimeType || mime || 'video/webm').split(';')[0];
+    const blob = new Blob(REC.chunks, { type });
+    REC.chunks = [];
+    if(blob.size) downloadBlob(blob, `null-ventana-${stamp()}.${type.includes('mp4') ? 'mp4' : 'webm'}`);
+    syncRecLabel();
+  };
+  rec.start(1000);
+  REC.rec = rec; REC.start = performance.now(); REC.hasAudio = hasAudio;
+  syncButton('bRec', hasAudio ? '■ STOP REC' : '■ STOP (NO AUDIO)', true);
+  clearInterval(REC.timer); REC.timer = setInterval(recTick, 250); recTick();
+}
+function recTick(){
+  if(!REC.rec) return;
+  const el = (performance.now() - REC.start) / 1000;
+  syncButton('vRecTime', '● ' + fmtTime(el) + (REC.max ? ' / ' + fmtTime(REC.max) : ''), null);
+  if(REC.max && el >= REC.max) recStop();
+}
+function recStop(){
+  if(!REC.rec) return;
+  const rec = REC.rec; REC.rec = null;
+  clearInterval(REC.timer); REC.timer = null;
+  try{ if(rec.state !== 'inactive') rec.stop(); }catch(e){}
+  syncRecLabel();
+  syncButton('vRecTime', '', null);
+}
+function setRecMax(sec){
+  REC.max = +sec || 0;
+  const push = (doc) => { const s = doc && doc.getElementById('cRecMax'); if(s) s.value = String(REC.max); };
+  push(document); if(popoutWin && !popoutWin.closed) push(popoutWin.document);
+}
+// VIRTUAL CAMERA. A web page cannot register itself as a camera device (no browser API exists for it), so the
+// live output is floated as a picture-in-picture window: no title bar, always on top, natively sized to the chosen
+// resolution. OBS (or any window-capture tool) picks that window up and "Start Virtual Camera" publishes it as a
+// webcam device for Zoom, Meet, Discord, Resolume, TouchDesigner, etc. Browsers without PiP get a plain window.
+function setVCamRes(str){
+  const m = /^(\d+)x(\d+)$/.exec(String(str || ''));
+  if(m){ OUTRES.w = +m[1]; OUTRES.h = +m[2]; }
+  if(OUT.stream) outSize();   // the capture track follows the canvas size, so a live PiP / recording re-sizes too
+  const push = (doc) => { const s = doc && doc.getElementById('cVCamRes'); if(s) s.value = OUTRES.w + 'x' + OUTRES.h; };
+  push(document); if(popoutWin && !popoutWin.closed) push(popoutWin.document);
+}
+function vcamOn(){ return Boolean(document.pictureInPictureElement) || Boolean(OUT.win && !OUT.win.closed); }
+function syncVCamButton(){ syncButton('bVCam', vcamOn() ? 'VIRTUAL CAM ON' : 'VIRTUAL CAM OFF', vcamOn()); }
+async function toggleVirtualCam(){
+  if(document.pictureInPictureElement){ try{ await document.exitPictureInPicture(); }catch(e){} syncVCamButton(); return; }
+  if(OUT.win && !OUT.win.closed){ OUT.win.close(); return; }
+  if(!document.pictureInPictureEnabled || !HTMLVideoElement.prototype.requestPictureInPicture){ openVCamWindow(); return; }
+  if(!OUT.pipVideo){
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true; v.autoplay = true;
+    v.style.cssText = 'position:fixed;width:2px;height:2px;opacity:0.01;pointer-events:none;left:0;top:0;';
+    v.srcObject = outputStream();
+    document.body.appendChild(v);
+    v.addEventListener('leavepictureinpicture', syncVCamButton);
+    OUT.pipVideo = v;
+  }
+  const v = OUT.pipVideo;
+  try{
+    await v.play();
+    if(v.readyState < 1) await new Promise((res, rej) => { v.addEventListener('loadedmetadata', res, { once:true }); setTimeout(rej, 3000); });
+    await v.requestPictureInPicture();
+    syncVCamButton();
+  }catch(e){
+    console.warn('picture-in-picture failed, using a window instead:', e);
+    openVCamWindow();
+  }
+}
+// Fallback for browsers without video PiP: a plain window at the chosen size (F / double-click for frameless fullscreen).
+function openVCamWindow(){
+  const rw = OUTRES.w, rh = OUTRES.h;
+  const w = window.open('', 'NullVentanaCam', `width=${rw},height=${rh},left=0,top=0,menubar=no,toolbar=no,location=no,status=no,resizable=yes`);
+  if(!w){ syncButton('bVCam', 'POPUP BLOCKED', false); setTimeout(syncVCamButton, 1500); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>NULL VENTANA CAM</title><style>
+    html,body{margin:0;height:100%;background:#000;overflow:hidden}
+    video{width:100%;height:100%;object-fit:contain;display:block}
+  </style></head><body></body></html>`);
+  w.document.close();
+  const d = w.document;
+  const v = document.createElement('video');
+  v.muted = true; v.autoplay = true; v.playsInline = true;
+  v.srcObject = outputStream();
+  d.body.appendChild(v);
+  v.play().catch(()=>{});
+  const fsToggle = ()=>{ if(d.fullscreenElement) d.exitFullscreen().catch(()=>{}); else d.documentElement.requestFullscreen({ navigationUI:'hide' }).catch(()=>{}); };
+  d.addEventListener('dblclick', fsToggle);
+  d.addEventListener('keydown', e => { if(e.key === 'f' || e.key === 'F') fsToggle(); });
+  OUT.win = w;
+  syncVCamButton();
+  const poll = setInterval(()=>{ if(!OUT.win || OUT.win.closed){ clearInterval(poll); OUT.win = null; syncVCamButton(); } }, 500);
+}
+// PRESETS: every panel slider (by id), the text, the segmented choices, the toggles and the seed. Loading pushes
+// slider values through their own 'input' handlers so state, readouts and both windows update the normal way.
+const PRESET_SKIP = new Set(['cVidPos']);
+function presetCapture(){
+  const sliders = {};
+  sideEl.querySelectorAll('input[type=range]').forEach(s => { if(s.id && !PRESET_SKIP.has(s.id)) sliders[s.id] = +s.value; });
+  return {
+    app:'null-ventana', version:1, saved:new Date().toISOString(),
+    sliders, text:state.text, seed:state.seed, recMax:REC.max, vcamRes:OUTRES.w + 'x' + OUTRES.h,
+    seg:{ fontStyle:state.fontStyle, shape:state.shape, shapeB:state.shapeB, filter:state.filter, palette:state.palette, bgMode:state.bgMode },
+    toggles:{ invert:state.invert, mixAuto:state.mixAuto, videoLoop:state.videoLoop, noBgA:state.noBgA, noBgB:state.noBgB,
+              beatReseed:state.beatReseed, videoGranular:state.videoGranular, palAudio:state.palAudio }
+  };
+}
+function presetApply(p){
+  if(!p || p.app !== 'null-ventana' || !p.sliders) return false;
+  const fire = (el) => el.dispatchEvent(new Event('input'));
+  Object.keys(p.sliders).forEach(id => {
+    const el = document.getElementById(id);
+    if(!el || el.type !== 'range' || PRESET_SKIP.has(id)) return;
+    el.value = p.sliders[id]; fire(el);
+  });
+  const ti = document.getElementById('cTextInput');
+  if(ti){ ti.value = typeof p.text === 'string' ? p.text : ''; fire(ti); }
+  const sg = p.seg || {};
+  if(sg.fontStyle) setFontStyle(sg.fontStyle);
+  if(sg.shape) setShape(sg.shape);
+  if(sg.shapeB) setShapeB(sg.shapeB);
+  if(sg.filter) setFilter(sg.filter);
+  if(Number.isInteger(sg.palette) && sg.palette >= 0 && sg.palette < PALETTES.length) setPalette(sg.palette);
+  if(sg.bgMode) setBgMode(sg.bgMode);
+  const tg = p.toggles || {};
+  setInvert(Boolean(tg.invert)); setMixAuto(Boolean(tg.mixAuto)); setVideoLoop(Boolean(tg.videoLoop));
+  setNoBg('A', Boolean(tg.noBgA)); setNoBg('B', Boolean(tg.noBgB));
+  state.beatReseed = Boolean(tg.beatReseed);
+  syncButton('bBeatReseed', state.beatReseed ? 'BEAT RESEED ON' : 'BEAT RESEED OFF', state.beatReseed);
+  setVideoGranular(Boolean(tg.videoGranular));
+  setPalAudio(Boolean(tg.palAudio));
+  if(Number.isInteger(p.seed)){ state.seed = p.seed; reseed(p.seed); }
+  if(p.recMax !== undefined) setRecMax(p.recMax);
+  if(p.vcamRes) setVCamRes(p.vcamRes);
+  syncPopInputs();
+  syncReadouts(); syncFx(); syncCamGrade(); syncVideoRange();
+  return true;
+}
+// Copy every main-window input value into the pop-out (used after a preset load).
+function syncPopInputs(){
+  if(!popoutWin || popoutWin.closed) return;
+  sideEl.querySelectorAll('input, select, textarea').forEach(inp => {
+    if(!inp.id || inp.type === 'file') return;
+    const p = popoutWin.document.getElementById(inp.id);
+    if(p){ p.value = inp.value; if(p.tagName === 'TEXTAREA') textAreaGrow(p); }
+  });
+}
+const PRESET_KEY = n => 'nullventana.preset.' + n;
+function presetSlot(){ const s = document.getElementById('cPresetSlot'); return s ? s.value : '1'; }
+function presetSlotSave(){
+  try{ localStorage.setItem(PRESET_KEY(presetSlot()), JSON.stringify(presetCapture())); }
+  catch(e){ console.warn('preset save failed:', e); syncButton('bPresetSave', 'ERR', false); setTimeout(()=>syncButton('bPresetSave', 'SAVE', false), 1200); return; }
+  refreshPresetSlots();
+  syncButton('bPresetSave', 'SAVED ✓', true); setTimeout(()=>syncButton('bPresetSave', 'SAVE', false), 900);
+}
+function presetSlotLoad(){
+  let p = null;
+  try{ p = JSON.parse(localStorage.getItem(PRESET_KEY(presetSlot())) || 'null'); }catch(e){}
+  if(!presetApply(p)){ syncButton('bPresetLoad', 'EMPTY', false); setTimeout(()=>syncButton('bPresetLoad', 'LOAD', false), 1200); return; }
+  syncButton('bPresetLoad', 'LOADED ✓', true); setTimeout(()=>syncButton('bPresetLoad', 'LOAD', false), 900);
+}
+function presetExport(){
+  downloadBlob(new Blob([JSON.stringify(presetCapture(), null, 2)], { type:'application/json' }), `null-ventana-preset-${stamp()}.json`);
+}
+function presetImport(file){
+  if(!file) return;
+  const r = new FileReader();
+  r.onload = ()=>{
+    let p = null; try{ p = JSON.parse(r.result); }catch(e){}
+    if(!presetApply(p)){ syncButton('bPresetImport', 'BAD FILE', false); setTimeout(()=>syncButton('bPresetImport', 'IMPORT FILE', false), 1500); }
+    else { syncButton('bPresetImport', 'LOADED ✓', true); setTimeout(()=>syncButton('bPresetImport', 'IMPORT FILE', false), 900); }
+  };
+  r.readAsText(file);
+}
+// Mark filled slots in both documents' slot selectors.
+function refreshPresetSlots(){
+  const fill = (doc) => {
+    const s = doc && doc.getElementById('cPresetSlot'); if(!s) return;
+    for(const o of s.options){
+      let has = false; try{ has = Boolean(localStorage.getItem(PRESET_KEY(o.value))); }catch(e){}
+      o.textContent = 'SLOT ' + o.value + (has ? ' •' : '');
+    }
+  };
+  fill(document); if(popoutWin && !popoutWin.closed) fill(popoutWin.document);
 }
 
 // Pause/resume shape time.
@@ -4576,6 +5929,19 @@ function buildFilterButtons(targetDoc){
   }
 }
 
+function buildBgModeButtons(targetDoc){
+  const el = targetDoc.getElementById('bgModes');
+  if(!el) return;
+  el.innerHTML = '';
+  BG_MODES.forEach(m => {
+    const b = targetDoc.createElement('button');
+    b.textContent = m.label;
+    b.title = m.color ? `exact ${m.color} under the shapes` : 'use the palette background';
+    b.addEventListener('click', ()=>setBgMode(m.id));
+    el.appendChild(b);
+  });
+}
+
 function buildPaletteButtons(targetDoc){
   const palsEl = targetDoc.getElementById('pals');
   if(palsEl){
@@ -4612,7 +5978,104 @@ function wireControls(targetDoc = document){
   buildShapeButtons(targetDoc);
   buildFilterButtons(targetDoc);
   buildPaletteButtons(targetDoc);
+  buildBgModeButtons(targetDoc);
   setupCollapsibles(targetDoc);
+
+  const cVideoFile = targetDoc.getElementById('cVideoFile');
+  const bVideoLoad = targetDoc.getElementById('bVideoLoad');
+  if(cVideoFile) cVideoFile.addEventListener('change', ()=>{ videoLoad(cVideoFile.files && cVideoFile.files[0]); cVideoFile.value = ''; });
+  if(bVideoLoad && cVideoFile) bVideoLoad.addEventListener('click', ()=>cVideoFile.click());
+  const bVideoPlay = targetDoc.getElementById('bVideoPlay');
+  if(bVideoPlay) bVideoPlay.addEventListener('click', ()=>videoSetPlaying(!VID.playing));
+  const bVideoLoop = targetDoc.getElementById('bVideoLoop');
+  if(bVideoLoop) bVideoLoop.addEventListener('click', ()=>setVideoLoop(!state.videoLoop));
+  const cVidPos = targetDoc.getElementById('cVidPos');
+  if(cVidPos){
+    const grab = ()=>{ VID.scrubbing = true; };
+    const drop = ()=>{ VID.scrubbing = false; syncVideoPos(true); };
+    cVidPos.addEventListener('pointerdown', grab);
+    cVidPos.addEventListener('pointerup', drop);
+    cVidPos.addEventListener('pointercancel', drop);
+    cVidPos.addEventListener('keydown', grab);
+    cVidPos.addEventListener('keyup', drop);
+    cVidPos.addEventListener('input', ()=>videoSeekFrac(cVidPos.value * 0.001));
+    cVidPos.addEventListener('change', drop);
+  }
+  const cVidIn = targetDoc.getElementById('cVidIn');
+  if(cVidIn) cVidIn.addEventListener('input', ()=>setVideoRange('vidIn', cVidIn.value * 0.001));
+  const cVidOut = targetDoc.getElementById('cVidOut');
+  if(cVidOut) cVidOut.addEventListener('input', ()=>setVideoRange('vidOut', cVidOut.value * 0.001));
+  const bPalAudio = targetDoc.getElementById('bPalAudio');
+  if(bPalAudio) bPalAudio.addEventListener('click', ()=>setPalAudio(!state.palAudio));
+
+  const bShot = targetDoc.getElementById('bShot');
+  if(bShot) bShot.addEventListener('click', takeScreenshot);
+  const bRec = targetDoc.getElementById('bRec');
+  if(bRec) bRec.addEventListener('click', ()=>{ if(REC.rec) recStop(); else recStart(); });
+  const cRecMax = targetDoc.getElementById('cRecMax');
+  if(cRecMax) cRecMax.addEventListener('change', ()=>setRecMax(cRecMax.value));
+  const cRecLvl = targetDoc.getElementById('cRecLvl');
+  if(cRecLvl) cRecLvl.addEventListener('input', ()=>setRecLevel(+cRecLvl.value));
+  const bVCam = targetDoc.getElementById('bVCam');
+  if(bVCam) bVCam.addEventListener('click', toggleVirtualCam);
+  const cVCamRes = targetDoc.getElementById('cVCamRes');
+  if(cVCamRes) cVCamRes.addEventListener('change', ()=>setVCamRes(cVCamRes.value));
+  syncRecLabel();
+  const cPresetSlot = targetDoc.getElementById('cPresetSlot');
+  if(cPresetSlot) cPresetSlot.addEventListener('change', ()=>{
+    const main = document.getElementById('cPresetSlot'); if(main && main !== cPresetSlot) main.value = cPresetSlot.value;
+    if(popoutWin && !popoutWin.closed){ const p = popoutWin.document.getElementById('cPresetSlot'); if(p && p !== cPresetSlot) p.value = cPresetSlot.value; }
+  });
+  const bPresetSave = targetDoc.getElementById('bPresetSave');
+  if(bPresetSave) bPresetSave.addEventListener('click', presetSlotSave);
+  const bPresetLoad = targetDoc.getElementById('bPresetLoad');
+  if(bPresetLoad) bPresetLoad.addEventListener('click', presetSlotLoad);
+  const bPresetExport = targetDoc.getElementById('bPresetExport');
+  if(bPresetExport) bPresetExport.addEventListener('click', presetExport);
+  const cPresetFile = targetDoc.getElementById('cPresetFile');
+  const bPresetImport = targetDoc.getElementById('bPresetImport');
+  if(cPresetFile) cPresetFile.addEventListener('change', ()=>{ presetImport(cPresetFile.files && cPresetFile.files[0]); cPresetFile.value = ''; });
+  if(bPresetImport && cPresetFile) bPresetImport.addEventListener('click', ()=>cPresetFile.click());
+  refreshPresetSlots();
+  const bCam = targetDoc.getElementById('bCam');
+  if(bCam) bCam.addEventListener('click', toggleCam);
+  const cCamDev = targetDoc.getElementById('cCamDev');
+  if(cCamDev){
+    cCamDev.addEventListener('change', async ()=>{
+      CAM.deviceId = cCamDev.value;
+      if(CAM.on){ try{ await camStart(); }catch(err){ console.warn('camera failed:', err); camStop(false); syncButton('bCam', 'CAMERA ERR', false); } }
+      else refreshCamDevices();
+    });
+    refreshCamDevices();
+  }
+  const bindGrade = (id, prop, scale) => {
+    const el = targetDoc.getElementById(id);
+    if(el) el.addEventListener('input', ()=>{ state[prop] = el.value * scale; syncCamGrade(); });
+  };
+  bindGrade('cCamExp', 'camExp', 0.01); bindGrade('cCamTemp', 'camTemp', 0.01); bindGrade('cCamSat', 'camSat', 0.01);
+  bindGrade('cCamSh', 'camSh', 0.01);   bindGrade('cCamMid', 'camMid', 0.01);   bindGrade('cCamHi', 'camHi', 0.01);
+  const cSrcMix = targetDoc.getElementById('cSrcMix');
+  if(cSrcMix) cSrcMix.addEventListener('input', ()=>setSrcMix(cSrcMix.value * 0.01));
+  const bVideoGranular = targetDoc.getElementById('bVideoGranular');
+  if(bVideoGranular) bVideoGranular.addEventListener('click', ()=>setVideoGranular(!state.videoGranular));
+  const cGrainFade = targetDoc.getElementById('cGrainFade');
+  if(cGrainFade) cGrainFade.addEventListener('input', ()=>{
+    state.grainFade = cGrainFade.value * 0.001;
+    syncButton('vGrainFade', Math.round(state.grainFade * 1000) + ' ms', null);
+  });
+  const cGrainLen = targetDoc.getElementById('cGrainLen');
+  if(cGrainLen) cGrainLen.addEventListener('input', ()=>{
+    state.grainMax = cGrainLen.value * 0.01;
+    syncButton('vGrainLen', state.grainMax.toFixed(1) + ' s', null);
+  syncButton('vGrainFade', Math.round(state.grainFade * 1000) + ' ms', null);
+  });
+
+  const bInvert = targetDoc.getElementById('bInvert');
+  if(bInvert) bInvert.addEventListener('click', ()=>setInvert(!state.invert));
+  const bNoBgA = targetDoc.getElementById('bNoBgA');
+  if(bNoBgA) bNoBgA.addEventListener('click', ()=>setNoBg('A', !state.noBgA));
+  const bNoBgB = targetDoc.getElementById('bNoBgB');
+  if(bNoBgB) bNoBgB.addEventListener('click', ()=>setNoBg('B', !state.noBgB));
 
   const cTextInput   = targetDoc.getElementById('cTextInput');
   const cTextScale   = targetDoc.getElementById('cTextScale');
@@ -4625,12 +6088,13 @@ function wireControls(targetDoc = document){
   if(cTextInput){
     cTextInput.addEventListener('input', (e)=>{
       state.text = e.target.value;
+      textAreaGrow(e.target);
       if(popoutWin && !popoutWin.closed){
         const pop = popoutWin.document.getElementById('cTextInput');
-        if(pop && pop !== e.target) pop.value = state.text;
+        if(pop && pop !== e.target){ pop.value = state.text; textAreaGrow(pop); }
       }
       const main = document.getElementById('cTextInput');
-      if(main && main !== e.target) main.value = state.text;
+      if(main && main !== e.target){ main.value = state.text; textAreaGrow(main); }
     });
   }
   if(cTextScale)   cTextScale.addEventListener('input', ()=>{ state.textScale = parseFloat(cTextScale.value); syncReadouts(); });
@@ -4649,6 +6113,8 @@ function wireControls(targetDoc = document){
   const cTrails = targetDoc.getElementById('cTrails');
   const cBlur   = targetDoc.getElementById('cBlur');
   const cGlitch = targetDoc.getElementById('cGlitch');
+  const cComic  = targetDoc.getElementById('cComic');
+  const cSplit  = targetDoc.getElementById('cSplit');
 
   if(cRate) cRate.addEventListener('input', ()=>{ state.rate = cRate.value * 0.01; syncReadouts(); });
   if(cMix)  cMix.addEventListener('input',  ()=>{ state.mix = cMix.value * 0.01; if(state.mixAuto) setMixAuto(false); syncReadouts(); });
@@ -4679,6 +6145,10 @@ function wireControls(targetDoc = document){
   if(cTrails) cTrails.addEventListener('input', ()=>{ state.trails = cTrails.value * 0.01; syncFx(); });
   if(cBlur)   cBlur.addEventListener('input',   ()=>{ state.blur = cBlur.value * 0.01; syncFx(); });
   if(cGlitch) cGlitch.addEventListener('input', ()=>{ state.glitch = cGlitch.value * 0.01; syncFx(); });
+  if(cComic)  cComic.addEventListener('input',  ()=>{ state.comic = cComic.value * 0.01; syncFx(); });
+  if(cSplit)  cSplit.addEventListener('input',  ()=>{ state.split = cSplit.value * 0.01; syncFx(); });
+  const cFeedback = targetDoc.getElementById('cFeedback');
+  if(cFeedback) cFeedback.addEventListener('input', ()=>{ state.feedback = cFeedback.value * 0.01; syncFx(); });
 
   const bindDepth = (sliderId, readoutId, stateProp) => {
     const el = targetDoc.getElementById(sliderId);
@@ -4713,6 +6183,9 @@ function wireControls(targetDoc = document){
   bindDepth('cModTrails', 'vModTrails', 'modTrails');
   bindDepth('cModBlur', 'vModBlur', 'modBlur');
   bindDepth('cModGlitch', 'vModGlitch', 'modGlitch');
+  bindDepth('cModComic', 'vModComic', 'modComic');
+  bindDepth('cModSplit', 'vModSplit', 'modSplit');
+  bindDepth('cModFeedback', 'vModFeedback', 'modFeedback');
 
   bindDepth('cModTextScale', 'vModTextScale', 'modTextScale');
   bindDepth('cModTextScatter', 'vModTextScatter', 'modTextScatter');
@@ -4728,6 +6201,9 @@ function wireControls(targetDoc = document){
   bindLfo('cLfoRateTrails', 'vLfoRateTrails', 'lfoRateTrails');
   bindLfo('cLfoRateBlur', 'vLfoRateBlur', 'lfoRateBlur');
   bindLfo('cLfoRateGlitch', 'vLfoRateGlitch', 'lfoRateGlitch');
+  bindLfo('cLfoRateComic', 'vLfoRateComic', 'lfoRateComic');
+  bindLfo('cLfoRateSplit', 'vLfoRateSplit', 'lfoRateSplit');
+  bindLfo('cLfoRateFeedback', 'vLfoRateFeedback', 'lfoRateFeedback');
 
   bindLfo('cLfoRateTextScale', 'vLfoRateTextScale', 'lfoRateTextScale');
   bindLfo('cLfoRateTextScatter', 'vLfoRateTextScatter', 'lfoRateTextScatter');
@@ -4743,6 +6219,9 @@ function wireControls(targetDoc = document){
   bindDepth('cAudModTrails', 'vAudModTrails', 'audModTrails');
   bindDepth('cAudModBlur', 'vAudModBlur', 'audModBlur');
   bindDepth('cAudModGlitch', 'vAudModGlitch', 'audModGlitch');
+  bindDepth('cAudModComic', 'vAudModComic', 'audModComic');
+  bindDepth('cAudModSplit', 'vAudModSplit', 'audModSplit');
+  bindDepth('cAudModFeedback', 'vAudModFeedback', 'audModFeedback');
 
   bindDepth('cAudModTextScale', 'vAudModTextScale', 'audModTextScale');
   bindDepth('cAudModTextScatter', 'vAudModTextScatter', 'audModTextScatter');
@@ -4838,10 +6317,11 @@ function openPopoutWindow(){
   wireControls(popoutWin.document);
   initPopCache(popoutWin.document);
 
-  const mainInputs = sideEl.querySelectorAll('input');
+  const mainInputs = sideEl.querySelectorAll('input, textarea');
   mainInputs.forEach(inp => {
+    if(inp.type === 'file') return;
     const popInp = popoutWin.document.getElementById(inp.id);
-    if(popInp) popInp.value = inp.value;
+    if(popInp){ popInp.value = inp.value; if(popInp.tagName === 'TEXTAREA') textAreaGrow(popInp); }
   });
 
   setFontStyle(state.fontStyle);
@@ -4849,6 +6329,28 @@ function openPopoutWindow(){
   setShapeB(state.shapeB);
   setFilter(state.filter);
   setPalette(state.palette);
+  setBgMode(state.bgMode);
+  setInvert(state.invert);
+  setNoBg('A', state.noBgA);
+  setNoBg('B', state.noBgB);
+  setVideoLoop(state.videoLoop);
+  syncButton('bVideoGranular', state.videoGranular ? 'GRANULAR RESET ON' : 'GRANULAR RESET OFF', state.videoGranular);
+  syncButton('vGrainLen', state.grainMax.toFixed(1) + ' s', null);
+  syncButton('vGrainFade', Math.round(state.grainFade * 1000) + ' ms', null);
+  syncButton('bCam', CAM.on ? 'CAMERA ON' : 'CAMERA OFF', CAM.on);
+  setSrcMix(state.srcMix);
+  syncCamGrade();
+  syncButton('bVideoPlay', VID.playing ? 'STOP' : 'PLAY', VID.playing);
+  syncVideoRange();
+  syncVideoPos(true);
+  syncButton('bPalAudio', state.palAudio ? 'AUDIO PALETTE ON' : 'AUDIO PALETTE OFF', state.palAudio);
+  if(REC.rec) syncButton('bRec', REC.hasAudio ? '■ STOP REC' : '■ STOP (NO AUDIO)', true); else syncRecLabel();
+  setRecMax(REC.max);
+  setRecLevel(REC.target * 100);
+  { const ms = document.getElementById('cPresetSlot'), ps = popoutWin.document.getElementById('cPresetSlot'); if(ms && ps) ps.value = ms.value; }
+  refreshPresetSlots();
+  syncVCamButton();
+  setVCamRes(OUTRES.w + 'x' + OUTRES.h);
   syncReadouts();
   syncFx();
   syncButton('bMic', analyser ? 'MIC ON' : 'MIC OFF', Boolean(analyser));
@@ -4866,7 +6368,7 @@ function openPopoutWindow(){
 }
 
 addEventListener('keydown', e => {
-  if(e.target && e.target.tagName === 'INPUT' && e.target.type === 'text') return;
+  if(e.target && ((e.target.tagName === 'INPUT' && e.target.type === 'text') || e.target.tagName === 'TEXTAREA')) return;
   if(e.key === 'Tab'){ e.preventDefault(); document.body.classList.toggle('nopanel'); }
   else if(e.code === 'Space'){ e.preventDefault(); togglePause(); }
   else if(e.key === 'f' || e.key === 'F') handleFullscreenRequest(document);
@@ -4897,6 +6399,14 @@ setShape('orbs');
 setShapeB('rings');
 setFilter('none');
 setPalette(0);
+setBgMode('palette');
+setInvert(false);
+setNoBg('A', false);
+setNoBg('B', false);
+setVideoLoop(false);
+setSrcMix(0);
+syncCamGrade();
+setRecLevel(70);
 syncReadouts();
 syncFx();
 resize();
