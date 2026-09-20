@@ -1211,19 +1211,6 @@ let sharedSrcBuffer = new Uint8ClampedArray(BASE_BW * BASE_BW * 4);
 
 // Feature test for CanvasRenderingContext2D.filter (used for chromatic aberration and blur).
 const FILTER_OK = (()=>{ try{ const c = document.createElement('canvas').getContext('2d'); c.filter = 'blur(1px)'; return c.filter === 'blur(1px)'; }catch(e){ return false; } })();
-const noiseTiles = [0,1,2].map(()=>{
-  const s = 96, c = document.createElement('canvas');
-  c.width = c.height = s;
-  const x = c.getContext('2d'), im = x.createImageData(s,s), d = im.data;
-  for(let i = 0; i < d.length; i += 4){
-    const v = (Math.random() * 255) | 0;
-    d[i] = d[i+1] = d[i+2] = v;
-    d[i+3] = 255;
-  }
-  x.putImageData(im, 0, 0);
-  return c;
-});
-
 let glitchCA = 2;
 // Update the SVG displacement filters used for chromatic aberration.
 function setGlitchCA(px){
@@ -1688,7 +1675,9 @@ function drawScope(t){
   const vGain = (0.9 + state.audio*1.6) * (live ? 8 : 0.5);
   const hot = clamp(0.5 + A[0]*gain*0.4 + A[2]*gain*0.3, 0, 1);
   // sample the window into screen points once
-  const M = Math.min(win, Math.floor(W*1.2)), pts = new Float32Array(M*2);
+  const M = Math.min(win, Math.floor(W*1.2));
+  if(!SC.pts || SC.pts.length < M*2) SC.pts = new Float32Array(M*2);   // reused scratch
+  const pts = SC.pts;
   for(let k = 0; k < M; k++){
     const i = Math.floor(k/(M-1)*(win-1));
     pts[k*2] = x0 + W*k/(M-1); pts[k*2+1] = cy - clamp(SC.buf[trig + i]*vGain, -1.05, 1.05)*H*0.48;
@@ -1755,43 +1744,6 @@ function drawScope(t){
   bctx.fillStyle = vg; bctx.fillRect(0, 0, bw, bh);
 }
 
-// MOSAIC: wall of extruding shaded tiles viewed at an angle.
-function drawMosaic(t){
-  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
-  bctx.globalCompositeOperation = 'source-over';
-  const n = 9 + Math.round(eff.density * 9), D = 4.2, f = minD*1.35;
-  const cell = 3.6 / n, yaw = 0.35 + Math.sin(t*0.13)*0.35, pitch = 0.3 + Math.sin(t*0.09)*0.2;
-  const items = [];
-  const rows = Math.round(n*bh/bw) + 1;
-  for(let j = 0; j < rows; j++) for(let i = 0; i < n; i++){
-    const x0 = (i - (n-1)/2)*cell, y0 = (j - (rows-1)/2)*cell;
-    const h = clamp(0.06 + 0.22*(0.5 + 0.5*Math.sin(i*0.9 + t*1.4)*Math.cos(j*0.8 - t*1.1)) + A[(i + j)&3]*gain*0.35*hash1(i*7 + j*3), 0.03, 0.8);
-    const col = pal.rgb[(i + j + Math.floor(t*0.25)) % pal.rgb.length];
-    const s = cell*0.44;
-    const P8 = [[-s,-s,0],[s,-s,0],[s,s,0],[-s,s,0],[-s,-s,-h],[s,-s,-h],[s,s,-h],[-s,s,-h]].map(p => m3Rot(x0 + p[0], y0 + p[1], p[2], yaw, pitch, 0));
-    const zc = P8.reduce((a, p) => a + p[2], 0)/8;
-    items.push({ z:zc, P8, col, h });
-  }
-  // dark backplane so the tiles read as a wall
-  const bp = [[-1.9, -1.9*bh/bw - 0.2, 0.02], [1.9, -1.9*bh/bw - 0.2, 0.02], [1.9, 1.9*bh/bw + 0.2, 0.02], [-1.9, 1.9*bh/bw + 0.2, 0.02]].map(p => m3Proj(m3Rot(p[0], p[1], p[2], yaw, pitch, 0), D, f));
-  bctx.fillStyle = 'rgba(0,0,0,0.55)'; bctx.beginPath(); bp.forEach((p, k) => k ? bctx.lineTo(p[0], p[1]) : bctx.moveTo(p[0], p[1])); bctx.closePath(); bctx.fill();
-  items.sort((a, b) => b.z - a.z);
-  const faces = [[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]];
-  const L = [0.45, 0.6, -0.65];
-  for(const it of items){
-    const pr = it.P8.map(p => m3Proj(p, D, f));
-    for(const fc of faces){
-      const a = it.P8[fc[0]], b = it.P8[fc[1]], c = it.P8[fc[2]];
-      let nx = (b[1]-a[1])*(c[2]-a[2]) - (b[2]-a[2])*(c[1]-a[1]), ny = (b[2]-a[2])*(c[0]-a[0]) - (b[0]-a[0])*(c[2]-a[2]), nz = (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0]);
-      const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
-      if(nx*(-a[0]) + ny*(-a[1]) + nz*(-D - a[2]) < 0) continue;
-      const lit = 0.3 + 0.7*Math.max(0, nx*L[0] + ny*L[1] + nz*L[2]);
-      bctx.fillStyle = m3Rgba(it.col, lit*(0.7 + it.h*0.8) + A[2]*gain*0.2, 1);
-      bctx.beginPath(); for(let k = 0; k < 4; k++){ const p = pr[fc[k]]; if(k) bctx.lineTo(p[0], p[1]); else bctx.moveTo(p[0], p[1]); } bctx.closePath(); bctx.fill();
-    }
-  }
-}
-
 // WAVES: lit low-poly terrain surface scrolling toward the camera.
 function drawWaves(t){
   const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
@@ -1830,33 +1782,6 @@ function drawWaves(t){
       bctx.strokeStyle = m3Rgba(col, lit*1.5, 0.5*fog*edge); bctx.lineWidth = 1; bctx.stroke();
     }
     far = near;
-  }
-}
-
-// DOTGRID: perspective plane of glossy dots rippling with the audio.
-function drawDotGrid(t){
-  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
-  bctx.globalCompositeOperation = 'source-over';
-  const cols = 18 + Math.round(eff.density * 22), rows = 26, D = 1.0, f = minD*1.1;
-  const sp = 5 / cols, scroll = t*1.4 + A[0]*gain*0.6;
-  const pitch = -(0.75 + Math.sin(t*0.12)*0.12), yaw = Math.sin(t*0.09)*0.25;
-  const zOff = scroll % sp;
-  for(let j = rows - 1; j >= 0; j--){
-    const zw = j*sp - zOff + 0.4, jw = Math.floor(scroll/sp) + j;
-    for(let i = 0; i < cols; i++){
-      const xw = (i - (cols-1)/2)*sp;
-      const h = 0.22*Math.sin(xw*1.6 + jw*sp*1.2 - t*1.5) + 0.18*Math.sin(jw*sp*2.3 + t*0.9) + A[(i+j)%4]*gain*0.35*Math.sin(i*0.8 + jw*0.5 + t*4);
-      const p = m3Rot(xw, h - 0.9, zw, yaw, pitch, 0);
-      const q = m3Proj(p, D, f);
-      if(q[3] < 0.15) continue;
-      const w = clamp(0.5 + h*1.6, 0, 1), fog = clamp(1 - zw/(rows*sp), 0, 1);
-      const c = pal.rgb[Math.floor(((h + 0.5)*1.4 + t*0.1) % 1 * pal.rgb.length + pal.rgb.length) % pal.rgb.length];
-      const r = sp*0.32*q[2]*(0.4 + w)*(1 + A[2]*gain*0.6);
-      if(r < 0.4) continue;
-      bctx.fillStyle = m3Rgba(c, (0.4 + 0.8*w)*fog + 0.1, 0.95);
-      bctx.beginPath(); bctx.arc(q[0], q[1], r, 0, TAU); bctx.fill();
-      if(r > 2){ bctx.fillStyle = `rgba(255,255,255,${0.35*fog})`; bctx.beginPath(); bctx.arc(q[0] - r*0.3, q[1] - r*0.3, r*0.35, 0, TAU); bctx.fill(); }
-    }
   }
 }
 
@@ -2038,7 +1963,9 @@ function drawAltitudeMap(t){
   const lx = Math.cos(t*0.15), ly = Math.sin(t*0.15);       // slowly orbiting sun for hillshade
 
   // height field with one-pixel apron for gradients
-  const HF = new Float32Array((W+2)*(H+2));
+  const hfN = (W+2)*(H+2);
+  if(!ALT.hf || ALT.hf.length !== hfN) ALT.hf = new Float32Array(hfN);   // reused across frames instead of a fresh allocation
+  const HF = ALT.hf;
   for(let y = 0; y < H+2; y++){
     const wy = ALT.oy + (y-1)*scale;
     for(let x = 0; x < W+2; x++){
@@ -2187,35 +2114,6 @@ function drawAurora(t){
     g.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
     bctx.fillStyle = g;
     bctx.fill();
-  }
-}
-
-// HELIX: rotating double helix of spheres with rungs.
-function drawHelix(t){
-  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
-  bctx.globalCompositeOperation = 'source-over';
-  const N = 40 + Math.round(eff.density * 50), D = 3.6, f = minD*1.2;
-  const len = 4.2, turns = 3.2, R = 0.55*(1 + A[1]*gain*0.6);
-  const ay = 0.9 + Math.sin(t*0.15)*0.4, ax = 0.3 + Math.sin(t*0.11)*0.25, spin = t*0.9 + A[0]*gain*1.5;
-  const items = [];
-  for(let k = 0; k < N; k++){
-    const u = k/N, x = (u - 0.5)*len, ph = u*turns*TAU + spin;
-    const a = m3Rot(x, Math.sin(ph)*R, Math.cos(ph)*R, ay, ax, 0), b = m3Rot(x, -Math.sin(ph)*R, -Math.cos(ph)*R, ay, ax, 0);
-    const ca = pal.rgb[(k >> 3) % pal.rgb.length], cb = pal.rgb[((k >> 3) + 2) % pal.rgb.length];
-    items.push({ type:'b', p:a, c:ca, r:0.075, b:k%4 }, { type:'b', p:b, c:cb, r:0.075, b:(k+2)%4 });
-    if(k % 3 === 0) items.push({ type:'r', p:[(a[0]+b[0])/2, (a[1]+b[1])/2, (a[2]+b[2])/2], a, b, c:pal.rgb[(k/3|0) % pal.rgb.length] });
-  }
-  items.sort((p, q) => q.p[2] - p.p[2]);
-  for(const it of items){
-    const depth = clamp(1 - (it.p[2] + 1.2) / 3, 0.3, 1.1);
-    if(it.type === 'r'){
-      const pa = m3Proj(it.a, D, f), pb = m3Proj(it.b, D, f);
-      bctx.strokeStyle = m3Rgba(it.c, depth*0.9, 0.9); bctx.lineWidth = Math.max(1, 0.03*pa[2]);
-      bctx.beginPath(); bctx.moveTo(pa[0], pa[1]); bctx.lineTo(pb[0], pb[1]); bctx.stroke();
-    } else {
-      const q = m3Proj(it.p, D, f);
-      m3Ball(q[0], q[1], it.r*q[2]*(1 + A[it.b]*gain*0.8), it.c, depth*(0.8 + A[2]*gain*0.4), 1);
-    }
   }
 }
 
@@ -2407,14 +2305,14 @@ function drawMoire(t){
 // COLORBARS: test-card bars.
 function drawColorbars(t){
   const pal = PALETTES[state.palette], gain = 0.25 + state.audio * 1.25;
-  const n = pal.rgb.length, bwid = bw / n;
+  const n = pal.rgb.length*(1 + Math.round(eff.density*4)), bwid = bw / n;   // DENSITY repeats the bar set
   for(let i = 0; i < n; i++){
-    const c = pal.rgb[i];
+    const c = pal.rgb[i % pal.rgb.length];
     bctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
     bctx.fillRect(i*bwid, 0, bwid+1, bh*0.6*(1 + (i%2 ? A[0] : -A[1])*gain*0.35));
   }
   for(let i = 0; i < n; i++){
-    const c = pal.rgb[(i + Math.floor(t*0.3)) % n];
+    const c = pal.rgb[(i + Math.floor(t*0.3)) % pal.rgb.length];
     bctx.globalAlpha = clamp(0.5 + A[2]*gain*0.6, 0, 1);
     bctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
     bctx.fillRect(i*bwid, bh*0.6, bwid+1, bh*0.4);
@@ -2714,6 +2612,20 @@ function drawEclipse(t){
   bctx.arc(cx, cy, R, 0, TAU);
   bctx.fill();
 
+  // corona rays: DENSITY sets how many, treble makes them flare
+  const rays = Math.round(eff.density*36);
+  if(rays > 0){
+    const c3 = pal.rgb[2 % pal.rgb.length];
+    bctx.globalCompositeOperation = 'lighter';
+    for(let i = 0; i < rays; i++){
+      const a = i/rays*TAU + t*0.05, len = R*(1.1 + 0.9*Math.abs(Math.sin(i*1.7 + t*0.6)) + A[3]*gain*0.8);
+      const g3 = bctx.createLinearGradient(cx + Math.cos(a)*R*0.9, cy + Math.sin(a)*R*0.9, cx + Math.cos(a)*len, cy + Math.sin(a)*len);
+      g3.addColorStop(0, `rgba(${c3[0]},${c3[1]},${c3[2]},0.45)`); g3.addColorStop(1, `rgba(${c3[0]},${c3[1]},${c3[2]},0)`);
+      bctx.strokeStyle = g3; bctx.lineWidth = 1 + eff.density*2;
+      bctx.beginPath(); bctx.moveTo(cx + Math.cos(a)*R*0.9, cy + Math.sin(a)*R*0.9); bctx.lineTo(cx + Math.cos(a)*len, cy + Math.sin(a)*len); bctx.stroke();
+    }
+    bctx.globalCompositeOperation = 'source-over';
+  }
   bctx.fillStyle = pal.bg;
   bctx.beginPath();
   bctx.arc(cx + Math.sin(t*0.1)*bw*0.55, cy + n1(t*0.07)*bh*0.2, R*0.92, 0, TAU);
@@ -3825,7 +3737,7 @@ function drawDaisyGarden(t){
   }
 }
 
-// VAPORWAVE: seeded synthwave landscape - sun style, sky, mountains, grid, moon, pyramid, palms, haze.
+// VAPORWAVE: seeded synthwave landscape - sun style, sky, mountains, grid, moon, pyramid, haze.
 function drawVaporLandscape(t){
   // VAPORWAVE: the whole scene (horizon, sun, sky, mountains, grid, extras) is generated from the seed
   const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
@@ -3842,7 +3754,7 @@ function drawVaporLandscape(t){
       horizon:0.42 + r()*0.22, sunX:0.3 + r()*0.4, sunR:0.12 + r()*0.2, sunLift:r()*0.12, bands:4 + Math.floor(r()*9), bandSpd:0.03 + r()*0.08,
       sunA:Math.floor(r()*pal.rgb.length), sunB:Math.floor(r()*pal.rgb.length), skyA:Math.floor(r()*pal.rgb.length), skyB:Math.floor(r()*pal.rgb.length), gridC:Math.floor(r()*pal.rgb.length),
       layers, stars, gridX:6 + Math.floor(r()*10), gridZ:9 + Math.floor(r()*10), cam:0.7 + r()*0.8, edge:1.4 + r()*1.6, edgeK:r()*0.14, wave:r()*0.2,
-      moon:r() < 0.35, moonX:r(), moonY:0.1 + r()*0.3, palms:r() < 0.45, nPalms:2 + Math.floor(r()*4), pyramid:r() < 0.3, haze:r()*0.5, sunStyle:Math.floor(r()*3), scrollDir:r() < 0.8 ? 1 : -1
+      moon:r() < 0.35, moonX:r(), moonY:0.1 + r()*0.3, palms:false, nPalms:(r(), r(), 0), pyramid:r() < 0.3, haze:r()*0.5, sunStyle:Math.floor(r()*2), scrollDir:r() < 0.8 ? 1 : -1
     };
     VP.seed = state.seed;
   }
@@ -3880,8 +3792,7 @@ function drawVaporLandscape(t){
   bctx.fillStyle = sunGrad; bctx.fillRect(cx - sunR, sunY - sunR, sunR*2, sunR*2);
   bctx.fillStyle = m3Rgba(sA, 0.15);
   if(C.sunStyle === 0){ for(let s = 0; s < C.bands; s++){ const p = fract(s/C.bands + t*C.bandSpd), y = sunY - sunR*(1 - p*p) ; bctx.fillRect(cx - sunR, y, sunR*2, 1 + p*p*sunR*0.09); } }
-  else if(C.sunStyle === 1){ for(let s = 0; s < C.bands; s++){ const p = fract(s/C.bands + t*C.bandSpd), y = sunY + sunR - p*sunR*1.3; bctx.fillRect(cx - sunR, y, sunR*2, Math.max(1, sunR*0.06)); } }
-  else { for(let s = 0; s < C.bands; s++){ const a = s/C.bands*TAU + t*C.bandSpd*3; bctx.beginPath(); bctx.moveTo(cx, sunY); bctx.arc(cx, sunY, sunR, a, a + TAU/C.bands*0.35); bctx.closePath(); bctx.fill(); } }
+  else { for(let s = 0; s < C.bands; s++){ const p = fract(s/C.bands + t*C.bandSpd), y = sunY + sunR - p*sunR*1.3; bctx.fillRect(cx - sunR, y, sunR*2, Math.max(1, sunR*0.06)); } }
   bctx.restore();
   // optional pyramid on the horizon
   if(C.pyramid){
@@ -3971,7 +3882,7 @@ function drawAsteroids(t){
 
   // ---- rocks: vector wireframe polyhedra. Base mesh is an octahedron subdivided once (18 verts / 32 faces);
   // each rock displaces the vertices radially with its own hash, tumbles on two axes and drifts through a 3D
-  // volume that wraps. Back-facing edges are drawn faint, front faces are filled black to occlude them, and
+  // volume that wraps. Back-facing edges are drawn faint, faces are left transparent, and
   // front-facing edges are drawn bright, so the outline itself reads as a 3D solid in the classic vector style.
   const AS = drawAsteroids;
   if(!AS.mesh){
@@ -4024,24 +3935,10 @@ function drawAsteroids(t){
     const edgeFront = new Map();
     M.faces.forEach((fc, fi) => { for(let k = 0; k < 3; k++){ const a = fc[k], b = fc[(k + 1) % 3], key = a < b ? a + '_' + b : b + '_' + a; edgeFront.set(key, (edgeFront.get(key) || 0) + (front[fi] ? 1 : 0)); } });
     const lw = Math.max(0.8, qc[2]*it.r*0.045);
-    // back edges: faint, drawn first
-    bctx.strokeStyle = m3Rgba(col, 0.55*depth, 0.28*depth); bctx.lineWidth = Math.max(0.6, lw*0.6);
+    // every edge (inner and outer, front and back) in one uniform colour and weight
+    bctx.lineWidth = lw*0.35; bctx.strokeStyle = m3Rgba(col, 1.5*depth, 1);
     bctx.beginPath();
-    for(const [a, b] of M.edges){ const key = a < b ? a + '_' + b : b + '_' + a; if(edgeFront.get(key) > 0) continue; bctx.moveTo(pv[a][0], pv[a][1]); bctx.lineTo(pv[b][0], pv[b][1]); }
-    bctx.stroke();
-    // front faces filled black to occlude what's behind, then the front edges bright
-    bctx.fillStyle = '#000';
-    bctx.beginPath();
-    M.faces.forEach((fc, fi) => { if(!front[fi]) return; bctx.moveTo(pv[fc[0]][0], pv[fc[0]][1]); bctx.lineTo(pv[fc[1]][0], pv[fc[1]][1]); bctx.lineTo(pv[fc[2]][0], pv[fc[2]][1]); bctx.closePath(); });
-    bctx.fill();
-    // silhouette edges (shared by a front and a back face) brightest; interior front edges a touch dimmer
-    bctx.lineWidth = lw*0.7; bctx.strokeStyle = m3Rgba(col, 1.05*depth, 0.75*depth);
-    bctx.beginPath();
-    for(const [a, b] of M.edges){ const key = a < b ? a + '_' + b : b + '_' + a; if(edgeFront.get(key) !== 2) continue; bctx.moveTo(pv[a][0], pv[a][1]); bctx.lineTo(pv[b][0], pv[b][1]); }
-    bctx.stroke();
-    bctx.lineWidth = lw; bctx.strokeStyle = m3Rgba(col, 1.5*depth, 1);
-    bctx.beginPath();
-    for(const [a, b] of M.edges){ const key = a < b ? a + '_' + b : b + '_' + a; if(edgeFront.get(key) !== 1) continue; bctx.moveTo(pv[a][0], pv[a][1]); bctx.lineTo(pv[b][0], pv[b][1]); }
+    for(const [a, b] of M.edges){ bctx.moveTo(pv[a][0], pv[a][1]); bctx.lineTo(pv[b][0], pv[b][1]); }
     bctx.stroke();
   }
 }
@@ -4586,6 +4483,1093 @@ function drawJellyfish(t){
   bctx.lineCap = 'butt';
 }
 
+// OIL PAINT: seeded nature landscape rendered as thousands of thick, jittered brush dabs (impasto highlights,
+// canvas grain, aerial perspective). Scene = sky / sun / ridges / lake-or-meadow / trees / foreground flowers.
+// The painting is cached in two layers (sky, land) and re-dabbed every few seconds with a slow crossfade so the
+// brushwork breathes; clouds, sun glow and water shimmer are painted live and react to audio.
+function drawOilscape(t){
+  const pal = PALETTES[state.palette], gain = 0.25 + state.audio * 1.25;
+  bctx.globalCompositeOperation = 'source-over';
+  const OP = drawOilscape;
+  if(!OP.cv){
+    OP.cv = document.createElement('canvas'); OP.c = OP.cv.getContext('2d');
+    OP.sky = [0, 1].map(() => ({ base: document.createElement('canvas'), det: [0, 1, 2].map(() => document.createElement('canvas')) }));
+    OP.land = [0, 1].map(() => ({ base: document.createElement('canvas'), det: [0, 1, 2].map(() => document.createElement('canvas')) }));
+    OP.grain = document.createElement('canvas');
+    OP.lastT = t; OP.sm = new Float32Array(4); OP.cur = 0; OP.fade = 1; OP.nextAt = t + 7; OP.glow = 0; OP.shim = [];
+  }
+  const W = 336, H = Math.max(48, Math.round(W*bh/bw));
+  const sizeChanged = OP.cv.width !== W || OP.cv.height !== H;
+  if(sizeChanged){ OP.cv.width = W; OP.cv.height = H; [OP.grain].concat(OP.sky.map(L => L.base), OP.sky[0].det, OP.sky[1].det, OP.land.map(L => L.base), OP.land[0].det, OP.land[1].det).forEach(k => { k.width = W; k.height = H; }); }
+  const rgb = (c, m = 1, a = 1) => `rgba(${clamp(c[0]*m,0,255)|0},${clamp(c[1]*m,0,255)|0},${clamp(c[2]*m,0,255)|0},${clamp(a,0,1)})`;
+  const mix = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
+  // ---- scene layout (seeded): rebuilt on SEED / palette / size change. DENSITY is applied live: detail
+  // (grass, rocks, trees, flowers) is painted into three tiers that fade in as eff.density rises ----
+  const key = `${state.seed}|${state.palette}`;
+  if(OP.key !== key || sizeChanged){
+    const r = mulberry32((state.seed|0) ^ 0x011ca5);
+    const mood = ['day', 'sunset', 'dusk', 'mist', 'storm', 'gold'][Math.floor(r()*6)];
+    const S = { mood, horizon: 0.48 + r()*0.2, water: r() < 0.55, sunX: 0.15 + r()*0.7, sunR: 0.035 + r()*0.05, ridges: [], trees: [], rocks: [], flowers: [], k: Math.floor(r()*9999) };
+    S.sunY = S.horizon*(mood === 'day' ? 0.25 + r()*0.35 : 0.62 + r()*0.3);
+    S.sunVisible = mood !== 'storm' && mood !== 'mist' || r() < 0.4;
+    const nR = 2 + Math.floor(r()*3);
+    for(let i = 0; i < nR; i++){
+      const depth = (i + 1)/nR;                                 // 0 = far, 1 = nearest ridge
+      S.ridges.push({ depth, amp: 0.08 + r()*0.22*(0.4 + depth*0.6), f1: 0.6 + r()*1.1, f2: 1.7 + r()*2.5, f3: 5 + r()*7, p1: r()*TAU, p2: r()*TAU, p3: r()*TAU, base: 0.02 + depth*0.05 + r()*0.05, snow: r() < 0.35 && depth < 0.7, hue: r() });
+    }
+    const nT = Math.round((3 + r()*9));
+    for(let i = 0; i < nT; i++) S.trees.push({ x: r(), y: 0.55 + r()*0.45, s: 0.05 + r()*0.12, kind: r() < 0.55 ? 0 : 1, sway: r()*TAU, tier: i % 3 });
+    S.trees.sort((a, b) => a.y - b.y);
+    const nRk = Math.round(2 + r()*6); for(let i = 0; i < nRk; i++) S.rocks.push({ x: r(), y: 0.6 + r()*0.4, s: 0.02 + r()*0.05, tier: i % 3 });
+    const nF = Math.round(50 + r()*90); for(let i = 0; i < nF; i++) S.flowers.push({ x: r(), y: 0.62 + r()*0.38, c: Math.floor(r()*pal.rgb.length), s: r(), tier: i % 3 });
+    // colour script: natural base colours pulled a little toward the palette so every palette re-tints the painting
+    const tk = 0.22, P0 = pal.rgb[0], P1 = pal.rgb[1 % pal.rgb.length], P2 = pal.rgb[2 % pal.rgb.length];
+    const skies = {
+      day:    [[70, 120, 205], [150, 195, 235], [225, 235, 240]], sunset: [[60, 40, 110], [225, 110, 90], [255, 205, 120]],
+      dusk:   [[25, 30, 70], [110, 70, 120], [235, 150, 120]],  mist:   [[170, 180, 190], [205, 210, 212], [230, 228, 222]],
+      storm:  [[45, 50, 62], [95, 100, 115], [170, 165, 160]],  gold:   [[150, 110, 60], [235, 190, 110], [255, 240, 200]]
+    }[mood];
+    S.sky = [mix(skies[0], P0, tk), mix(skies[1], P1, tk*0.8), mix(skies[2], P2, tk*0.6)];
+    S.sunC = mood === 'day' ? [255, 250, 225] : mix([255, 210, 130], P2, 0.3);
+    S.haze = S.sky[2];
+    S.land = mood === 'mist' ? mix([70, 95, 70], P1, tk) : mood === 'storm' ? mix([60, 80, 55], P1, tk) : mix([76, 130, 60], P1, tk);
+    S.landLit = mood === 'gold' || mood === 'sunset' ? mix([200, 170, 80], P2, tk) : mix([140, 185, 80], P2, tk);
+    S.rock = mix([88, 84, 96], P0, tk*0.6); S.rockLit = mix([160, 145, 130], P2, tk*0.6); S.snow = [240, 244, 250];
+    S.waterC = mix(S.sky[0], [40, 80, 120], 0.4); S.waterLit = mix(S.sky[2], S.sunC, 0.5);
+    S.leaf = mix([50, 110, 50], P1, tk); S.leafLit = mix([150, 200, 90], P2, tk); S.trunk = mix([60, 42, 30], P0, tk*0.5);
+    S.sunSide = S.sunX < 0.5 ? -1 : 1;
+    OP.S = S; OP.key = key; OP.built = [false, false]; OP.fade = 1; OP.nextAt = t + 7;
+    OP.built0 = false;
+    // canvas grain (once per size / seed): light + dark flecks that make the paint read as textured
+    const g = OP.grain.getContext('2d'); g.clearRect(0, 0, W, H);
+    for(let i = 0; i < W*H*0.12; i++){ const x = r()*W, y = r()*H, l = r(); g.fillStyle = l < 0.5 ? `rgba(255,255,255,${0.04 + l*0.08})` : `rgba(0,0,0,${0.03 + (l - 0.5)*0.1})`; g.fillRect(x, y, 1 + r()*2, 1); }
+  }
+  const S = OP.S;
+  const horizon = H*S.horizon, sunX = W*S.sunX, sunY = H*S.sunY;
+  // ridge profile in [0,1] of H above the horizon
+  const ridgeH = (R, u) => H*R.amp*(0.5 + 0.5*Math.sin(u*R.f1*TAU + R.p1)*0.6 + Math.abs(Math.sin(u*R.f2*TAU + R.p2))*0.32 + Math.abs(Math.sin(u*R.f3*TAU + R.p3))*0.08) + H*R.base;
+  // ---- brush: one dab = a short round-capped stroke with jittered colour ----
+  const dab = (c, x, y, len, ang, w, col, a, jit) => {
+    const j = (jit === undefined ? 14 : jit), q = jit === 0 ? [col[0], col[1], col[2]] : [col[0] + (Math.random() - 0.5)*j, col[1] + (Math.random() - 0.5)*j, col[2] + (Math.random() - 0.5)*j];
+    c.strokeStyle = rgb(q, 1, a); c.lineWidth = w;
+    const dx = Math.cos(ang)*len*0.5, dy = Math.sin(ang)*len*0.5;
+    c.beginPath(); c.moveTo(x - dx, y - dy); c.lineTo(x + dx, y + dy); c.stroke();
+  };
+  // ---- paint one variant of the sky layer ----
+  // ---- paint one variant of the sky layer: gradient + sun in the base, brush strokes split over 3 density tiers ----
+  const paintSky = (L) => {
+    const c = L.base.getContext('2d'); c.clearRect(0, 0, W, H); c.lineCap = 'round';
+    const g = c.createLinearGradient(0, 0, 0, horizon*1.15); g.addColorStop(0, rgb(S.sky[0])); g.addColorStop(0.55, rgb(S.sky[1])); g.addColorStop(1, rgb(S.sky[2]));
+    c.fillStyle = g; c.fillRect(0, 0, W, Math.ceil(horizon*1.15) + 2);
+    const skyStrokes = (cc, n) => { for(let i = 0; i < n; i++){                 // broad, mostly horizontal sky strokes
+      const y = Math.random()*horizon*1.1, u = clamp(y/horizon, 0, 1);
+      const col = u < 0.55 ? mix(S.sky[0], S.sky[1], u/0.55) : mix(S.sky[1], S.sky[2], (u - 0.55)/0.45);
+      const near = S.sunVisible ? clamp(1 - Math.hypot(Math.random()*W - sunX, y - sunY)/(W*0.35), 0, 1) : 0;
+      dab(cc, Math.random()*W, y, 10 + Math.random()*26, (Math.random() - 0.5)*0.35, 3 + Math.random()*5, mix(col, S.sunC, near*0.35), 0.35 + Math.random()*0.35, 18);
+    } };
+    const nSky = Math.round(W*H*0.007);
+    skyStrokes(c, Math.round(nSky*0.2));
+    for(let tier = 0; tier < 3; tier++){ const cc = L.det[tier].getContext('2d'); cc.clearRect(0, 0, W, H); cc.lineCap = 'round'; skyStrokes(cc, Math.round(nSky*0.27)); }
+    if(S.sunVisible){                                            // sun: soft glow + a few concentric dabs
+      const rg = c.createRadialGradient(sunX, sunY, 0, sunX, sunY, W*0.3); rg.addColorStop(0, rgb(S.sunC, 1, 0.45)); rg.addColorStop(1, rgb(S.sunC, 1, 0));
+      c.fillStyle = rg; c.fillRect(0, 0, W, Math.ceil(horizon) + 1);
+      const R = W*S.sunR; c.fillStyle = rgb(S.sunC, 1, 0.9); c.beginPath(); c.arc(sunX, sunY, R, 0, TAU); c.fill();
+      for(let i = 0; i < 40; i++){ const a = Math.random()*TAU, d = Math.random()*R*0.9; dab(c, sunX + Math.cos(a)*d, sunY + Math.sin(a)*d, R*0.8, a + Math.PI/2, R*0.35, S.sunC, 0.5, 10); }
+    }
+  };
+  // ---- paint one variant of the land layer (transparent where the sky shows): base + 3 detail tiers ----
+  const paintLand = (L) => {
+    const c = L.base.getContext('2d'); c.clearRect(0, 0, W, H); c.lineCap = 'round';
+    for(let tier = 0; tier < 3; tier++){ const cc = L.det[tier].getContext('2d'); cc.clearRect(0, 0, W, H); cc.lineCap = 'round'; }
+    for(const R of S.ridges){                                    // far -> near ridges, hazed by distance
+      const hazeK = (1 - R.depth)*0.6 + (S.mood === 'mist' ? 0.25 : 0);
+      const base = mix(mix(S.rock, S.land, R.depth*0.7), S.haze, hazeK), lit = mix(mix(S.rockLit, S.landLit, R.depth*0.7), S.haze, hazeK);
+      c.fillStyle = rgb(base); c.beginPath(); c.moveTo(0, horizon + 2);
+      for(let x = 0; x <= W; x += 3) c.lineTo(x, horizon - ridgeH(R, x/W + R.hue));
+      c.lineTo(W, horizon + 2); c.closePath(); c.fill();
+      const n = Math.round(W*R.amp*H*0.035*(0.5 + R.depth));
+      const ridgeDabs = (cc, cnt) => { for(let i = 0; i < cnt; i++){          // slope-following dabs, lit toward the sun
+        const x = Math.random()*W, h = ridgeH(R, x/W + R.hue), hb = ridgeH(R, (x + 3)/W + R.hue), slope = (hb - h)/3;
+        const y = horizon - h*Math.random(), rel = (horizon - y)/h;
+        const light = clamp(0.5 - slope*S.sunSide*1.6, 0, 1), snow = R.snow && rel > 0.62 + (Math.random() - 0.5)*0.2;
+        const col = snow ? mix(S.snow, S.haze, hazeK*0.5) : mix(base, lit, light*(0.35 + rel*0.5));
+        dab(cc, x, y, 4 + Math.random()*10, Math.atan2(-slope, 1)*0.7 + (Math.random() - 0.5)*0.6, 2 + Math.random()*3*R.depth, col, 0.55 + Math.random()*0.4, 12);
+      } };
+      ridgeDabs(c, Math.round(n*0.2));
+      for(let tier = 0; tier < 3; tier++) ridgeDabs(L.det[tier].getContext('2d'), Math.round(n*0.27));
+    }
+    const lakeTop = horizon + 1, lakeBot = S.water ? H*(S.horizon + (1 - S.horizon)*0.55) : lakeTop;
+    if(S.water){                                                 // lake: dark inverted sky + long calm strokes + sun path
+      const g = c.createLinearGradient(0, lakeTop, 0, lakeBot); g.addColorStop(0, rgb(mix(S.waterC, S.haze, 0.5))); g.addColorStop(1, rgb(S.waterC, 0.85));
+      c.fillStyle = g; c.fillRect(0, lakeTop, W, lakeBot - lakeTop + 1);
+      const n = Math.round(W*(lakeBot - lakeTop)*0.024);
+      const waterStrokes = (cc, cnt) => { for(let i = 0; i < cnt; i++){
+        const y = lakeTop + Math.random()*(lakeBot - lakeTop), u = (y - lakeTop)/(lakeBot - lakeTop), x = Math.random()*W;
+        const refl = mix(S.sky[2], S.waterC, 0.3 + u*0.6), path = S.sunVisible ? clamp(1 - Math.abs(x - sunX)/(W*0.12*(0.5 + u)), 0, 1) : 0;
+        dab(cc, x, y, 8 + Math.random()*30*(0.4 + u), (Math.random() - 0.5)*0.06, 1.5 + u*4, mix(refl, S.waterLit, path*0.8), 0.35 + Math.random()*0.35, 10);
+      } };
+      waterStrokes(c, Math.round(n*0.2));
+      for(let tier = 0; tier < 3; tier++) waterStrokes(L.det[tier].getContext('2d'), Math.round(n*0.27));
+    }
+    const gTop = S.water ? lakeBot : lakeTop;                    // meadow / shore: short grass dabs, darker with distance
+    const g2 = c.createLinearGradient(0, gTop, 0, H); g2.addColorStop(0, rgb(mix(S.land, S.haze, 0.3))); g2.addColorStop(1, rgb(S.land, 0.8));
+    c.fillStyle = g2; c.fillRect(0, gTop, W, H - gTop + 1);
+    const grass = (cc, n) => { for(let i = 0; i < n; i++){
+      const y = gTop + Math.pow(Math.random(), 0.7)*(H - gTop), u = (y - gTop)/(H - gTop), x = Math.random()*W;
+      const patch = 0.5 + 0.5*Math.sin(x*0.02 + S.k) * Math.cos(y*0.03 - S.k);
+      dab(cc, x, y, 3 + u*12, -0.9 + (Math.random() - 0.5)*1.2, 1.5 + u*3.5, mix(mix(S.land, S.haze, (1 - u)*0.35), S.landLit, patch*0.7), 0.5 + Math.random()*0.45, 16);
+    } };
+    const ngAll = Math.round(W*(H - gTop)*0.04);
+    grass(c, Math.round(ngAll*0.3));                              // sparse base grass, always present
+    c.globalAlpha = 0.9; c.drawImage(OP.grain, 0, 0); c.globalAlpha = 1;
+    for(let tier = 0; tier < 3; tier++){
+    const c = L.det[tier].getContext('2d'); c.lineCap = 'round';
+    grass(c, Math.round(ngAll*0.25));
+    for(const rk of S.rocks){ if(rk.tier !== tier) continue;                                    // rocks: dark mass, lit cap
+      const x = rk.x*W, y = gTop + rk.y*(H - gTop), s = rk.s*W;
+      for(let i = 0; i < 12; i++) dab(c, x + (Math.random() - 0.5)*s, y - Math.random()*s*0.5, s*0.6, (Math.random() - 0.5)*0.5, s*0.35, i < 8 ? S.rock : S.rockLit, 0.8, 12);
+    }
+    for(const tr of S.trees){                                    // trees: trunk + canopy of dabs (round or conifer)
+      if(tr.tier !== tier) continue;
+      const x = tr.x*W, y = gTop + tr.y*(H - gTop), s = tr.s*H*(0.6 + tr.y*0.8);
+      c.strokeStyle = rgb(S.trunk); c.lineWidth = Math.max(1.5, s*0.12); c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.sin(tr.sway)*s*0.1, y - s*0.9); c.stroke();
+      const nd = Math.round(18 + s*1.2);
+      for(let i = 0; i < nd; i++){
+        let dx, dy;
+        if(tr.kind === 0){ const a = Math.random()*TAU, d = Math.sqrt(Math.random())*s*0.55; dx = Math.cos(a)*d; dy = -s*0.95 + Math.sin(a)*d*0.8; }
+        else { const v = Math.random(); dx = (Math.random() - 0.5)*s*0.7*(1 - v); dy = -s*0.35 - v*s*1.1; }
+        const light = clamp(0.5 + (dx*S.sunSide)/(s*0.6) - dy/(s*2), 0, 1);
+        dab(c, x + dx, y + dy, s*0.25, tr.kind === 0 ? Math.random()*TAU : -Math.PI/2 + (Math.random() - 0.5)*0.8, s*0.16, mix(S.leaf, S.leafLit, light), 0.85, 14);
+      }
+      c.fillStyle = 'rgba(0,0,0,0.18)'; c.beginPath(); c.ellipse(x, y + 1, s*0.5, s*0.08, 0, 0, TAU); c.fill();
+    }
+    for(const f of S.flowers){                                   // foreground wildflowers in palette accents
+      if(f.tier !== tier) continue;
+      const x = f.x*W, y = gTop + f.y*(H - gTop), s = 1.5 + f.s*3*(f.y);
+      dab(c, x, y, s, Math.random()*TAU, s, pal.rgb[f.c], 0.9, 20);
+    }
+    }
+  };
+  // ---- variant scheduling: paint the first pair up-front, then re-dab one layer set every ~7 s and crossfade ----
+  if(!OP.built0){
+    paintSky(OP.sky[0]); paintLand(OP.land[0]);
+    // second variant starts as an exact copy: 'copy' replaces the old scene's pixels entirely (the layers are
+    // partly transparent, so a plain drawImage would leave the previous seed's mountains/sky showing through)
+    const dup = (dst, srcCv) => { const cc = dst.getContext('2d'); cc.globalCompositeOperation = 'copy'; cc.drawImage(srcCv, 0, 0); cc.globalCompositeOperation = 'source-over'; };
+    dup(OP.sky[1].base, OP.sky[0].base); dup(OP.land[1].base, OP.land[0].base);
+    for(let j = 0; j < 3; j++){ dup(OP.sky[1].det[j], OP.sky[0].det[j]); dup(OP.land[1].det[j], OP.land[0].det[j]); }
+    OP.built0 = true; OP.cur = 0; OP.fade = 1; OP.nextAt = t + 2;
+  }
+  let dt = t - OP.lastT; OP.lastT = t; if(dt < 0 || dt > 0.25) dt = 0;
+  for(let b = 0; b < 4; b++) OP.sm[b] += (clamp(A[b]*gain*1.3, 0, 1) - OP.sm[b]) * Math.min(1, dt*8);
+  if(t >= OP.nextAt){ const nx = 1 - OP.cur; paintSky(OP.sky[nx]); paintLand(OP.land[nx]); OP.cur = nx; OP.fade = 0; OP.nextAt = t + 6 + Math.random()*4; }
+  OP.fade = Math.min(1, OP.fade + dt*0.35);
+  OP.glow = lerp(OP.glow, OP.sm[0], 0.1);
+  // ---- compose: sky (skippable for BACKGROUND OFF) -> live sun glow + clouds -> land -> live water shimmer ----
+  const c = OP.c, prev = 1 - OP.cur, fa = OP.fade;
+  c.clearRect(0, 0, W, H); c.lineCap = 'round';
+  if(!bgStrip){
+    const tierA0 = (j) => clamp(eff.density*3 - j, 0, 1);
+    c.globalAlpha = 1; c.drawImage(OP.sky[prev].base, 0, 0);
+    for(let j = 0; j < 3; j++){ const a = tierA0(j); if(a > 0.01){ c.globalAlpha = a; c.drawImage(OP.sky[prev].det[j], 0, 0); } }
+    c.globalAlpha = fa; c.drawImage(OP.sky[OP.cur].base, 0, 0);
+    for(let j = 0; j < 3; j++){ const a = tierA0(j)*fa; if(a > 0.01){ c.globalAlpha = a; c.drawImage(OP.sky[OP.cur].det[j], 0, 0); } }
+    c.globalAlpha = 1;
+    if(S.sunVisible){ const rg = c.createRadialGradient(sunX, sunY, 0, sunX, sunY, W*(0.18 + OP.glow*0.22)); rg.addColorStop(0, rgb(S.sunC, 1, 0.25 + OP.glow*0.35)); rg.addColorStop(1, rgb(S.sunC, 1, 0)); c.fillStyle = rg; c.fillRect(0, 0, W, Math.ceil(horizon) + 1); }
+    const nC = Math.round((S.mood === 'storm' ? 9 : S.mood === 'mist' ? 3 : 6)*(0.25 + eff.density*0.9)), cloudC = S.mood === 'storm' ? mix(S.sky[0], [40, 40, 50], 0.4) : mix(S.sky[2], [255, 255, 255], 0.5), under = mix(cloudC, S.mood === 'sunset' || S.mood === 'gold' ? S.sunC : S.sky[0], 0.45);
+    for(let i = 0; i < nC; i++){                                 // clouds: clusters of round dabs, deterministic per cloud so they don't flicker
+      const cw = W*(0.12 + ihash(i, S.k, 1)*0.22), cx = ((ihash(i, S.k, 2)*W*2 - t*(2.5 + OP.sm[1]*6)*(0.4 + ihash(i, S.k, 3))) % (W + cw*2) + W + cw*2) % (W + cw*2) - cw, cy = horizon*(0.1 + ihash(i, S.k, 4)*0.5), ch = cw*0.28;
+      for(let d = 0; d < 26; d++){
+        const u = ihash(i, d, 5), v = ihash(i, d, 6), x = cx + (u - 0.5)*cw, y = cy + (v - 0.5)*ch*(1 - Math.abs(u - 0.5)*1.2), sz = cw*(0.08 + ihash(i, d, 7)*0.1);
+        const lit = v < 0.55 ? cloudC : under;
+        c.strokeStyle = rgb(lit, 1, 0.55); c.lineWidth = sz; c.beginPath(); c.moveTo(x - sz*0.6, y); c.lineTo(x + sz*0.6, y); c.stroke();
+      }
+    }
+  }
+  // land: base + detail tiers; tier j fades in as DENSITY passes j/3 (live, so the LFO / audio mod sweeps smoothly)
+  const tierA = (j) => clamp(eff.density*3 - j, 0, 1);
+  c.globalAlpha = 1; c.drawImage(OP.land[prev].base, 0, 0);
+  for(let j = 0; j < 3; j++){ const a = tierA(j); if(a > 0.01){ c.globalAlpha = a; c.drawImage(OP.land[prev].det[j], 0, 0); } }
+  c.globalAlpha = fa; c.drawImage(OP.land[OP.cur].base, 0, 0);
+  for(let j = 0; j < 3; j++){ const a = tierA(j)*fa; if(a > 0.01){ c.globalAlpha = a; c.drawImage(OP.land[OP.cur].det[j], 0, 0); } }
+  c.globalAlpha = 1;
+  if(S.water){                                                   // shimmer: brief bright dabs on the lake, more with treble
+    const lakeTop = horizon + 1, lakeBot = H*(S.horizon + (1 - S.horizon)*0.55), want = Math.round((6 + OP.sm[3]*30)*(0.5 + eff.density));
+    while(OP.shim.length < want) OP.shim.push({ x: Math.random()*W, y: lakeTop + Math.random()*(lakeBot - lakeTop), life: 0.4 + Math.random()*0.8, age: 0 });
+    for(let i = OP.shim.length - 1; i >= 0; i--){
+      const s = OP.shim[i]; s.age += dt; if(s.age > s.life){ OP.shim.splice(i, 1); continue; }
+      const a = Math.sin(s.age/s.life*Math.PI), u = (s.y - lakeTop)/(lakeBot - lakeTop);
+      c.strokeStyle = rgb(S.waterLit, 1, a*0.6); c.lineWidth = 1 + u*2; c.beginPath(); c.moveTo(s.x - 4 - u*10, s.y); c.lineTo(s.x + 4 + u*10, s.y); c.stroke();
+    }
+  }
+  // gentle breathing zoom (bass leans in a touch) so the still painting still feels alive
+  const z = 1.03 + Math.sin(t*0.11)*0.015 + OP.glow*0.01;
+  bctx.imageSmoothingEnabled = true;
+  bctx.save();
+  bctx.translate(bw*0.5 + Math.sin(t*0.07)*bw*0.006, bh*0.5 + Math.cos(t*0.09)*bh*0.006); bctx.scale(z, z);
+  bctx.drawImage(OP.cv, -bw*0.5, -bh*0.5, bw, bh);
+  bctx.restore();
+}
+
+// SKYLINE: a seeded city skyline painted with the same cached-dab engine as OIL PAINT, but in a watercolour
+// hand - translucent layered washes, soft bleeding edges, granulated paper. A mood (dawn, day, dusk, night,
+// storm) sets the sky; fourteen depth rows of towers shaped by district clusters (spires, setbacks, stepped crowns, twin slabs, tapered tops, water tanks, antennas) rise behind an
+// optional waterfront with drifting boats. Windows are dabbed in, and at night they slowly come on and go off.
+// Two variants are re-dabbed and crossfaded so the brushwork breathes. Bass slowly swells the sun/moon glow,
+// mids send bird flocks across, treble brings more window lights on. Nothing flashes. DENSITY runs through the whole
+// picture in three tiers: sky washes, building texture, windows, water strokes, clouds, birds.
+function drawSkylinePaint(t){
+  const pal = PALETTES[state.palette], gain = 0.25 + state.audio * 1.25, np = pal.rgb.length;
+  bctx.globalCompositeOperation = 'source-over';
+  const SK = drawSkylinePaint;
+  const mkLayer = () => ({ base: document.createElement('canvas'), det: [0, 1, 2].map(() => document.createElement('canvas')) });
+  if(!SK.cv){
+    SK.cv = document.createElement('canvas'); SK.c = SK.cv.getContext('2d');
+    SK.sky = [mkLayer(), mkLayer()]; SK.city = [mkLayer(), mkLayer()]; SK.grain = document.createElement('canvas');
+    SK.lastT = t; SK.sm = new Float32Array(4); SK.cur = 0; SK.fade = 1; SK.nextAt = t + 7; SK.glow = 0; SK.shim = []; SK.birds = [];
+  }
+  const W = 336, H = Math.max(48, Math.round(W*bh/bw));
+  const allCv = () => [SK.grain].concat(...[SK.sky, SK.city].map(L => L.flatMap(l => [l.base, ...l.det])));
+  const sizeChanged = SK.cv.width !== W || SK.cv.height !== H;
+  if(sizeChanged){ SK.cv.width = W; SK.cv.height = H; allCv().forEach(k => { k.width = W; k.height = H; }); }
+  const rgb = (c, m = 1, a = 1) => `rgba(${clamp(c[0]*m,0,255)|0},${clamp(c[1]*m,0,255)|0},${clamp(c[2]*m,0,255)|0},${clamp(a,0,1)})`;
+  const mix = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
+  // ---- scene (seeded): rebuilt on SEED / palette / size change ----
+  const key = `${state.seed}|${state.palette}`;
+  if(SK.key !== key || sizeChanged){
+    const r = mulberry32((state.seed|0) ^ 0x5c11e);
+    const mood = ['dawn', 'day', 'dusk', 'night', 'storm'][Math.floor(r()*5)];
+    const S = { mood, horizon: 0.58 + r()*0.2, water: r() < 0.6, sunX: 0.15 + r()*0.7, sunR: 0.03 + r()*0.05, rows: [], k: Math.floor(r()*9999), bridge: r() < 0.35, hills: r() < 0.5 };
+    S.sunY = S.horizon*(mood === 'day' ? 0.2 + r()*0.3 : 0.55 + r()*0.35);
+    S.sunVisible = mood !== 'storm' || r() < 0.3;
+    const tk = 0.25, P0 = pal.rgb[0], P1 = pal.rgb[1 % np], P2 = pal.rgb[2 % np];
+    const skies = {
+      dawn: [[80, 70, 140], [235, 150, 120], [255, 225, 170]], day: [[95, 150, 215], [170, 205, 235], [235, 240, 240]],
+      dusk: [[40, 30, 90], [200, 90, 110], [255, 190, 110]], night: [[8, 12, 40], [25, 35, 80], [70, 60, 110]], storm: [[40, 45, 60], [90, 95, 110], [160, 160, 165]]
+    }[mood];
+    S.sky = [mix(skies[0], P0, tk), mix(skies[1], P1, tk*0.8), mix(skies[2], P2, tk*0.6)];
+    S.night = mood === 'night'; S.dim = mood === 'dusk' || mood === 'dawn';
+    S.sunC = S.night ? [235, 235, 250] : mood === 'day' ? [255, 250, 225] : mix([255, 200, 120], P2, 0.3);
+    S.haze = S.sky[2];
+    S.ink = S.night ? mix([14, 16, 40], P0, tk) : mood === 'storm' ? mix([50, 55, 70], P0, tk) : mix([60, 62, 90], P0, tk);   // near tower wash
+    S.warm = mix([255, 205, 120], P2, 0.3); S.cool = mix([170, 210, 240], P1, 0.3);
+    S.waterC = mix(S.sky[0], [30, 50, 90], 0.4); S.waterLit = mix(S.sky[2], S.sunC, 0.5);
+    // three depth rows of towers, far -> near; each row hazed more with distance
+    // Manhattan-style massing: 14 depth rows, each row's heights shaped by a district envelope (2-3 clusters of
+    // tall towers with lower fabric between), narrow slivers squeezed between wide blocks, and stepped crowns,
+    // spires, twin slabs, tapered tops, water tanks and antennas. Far rows are smaller, paler and packed tighter.
+    const NROWS = 14, nD = 2 + Math.floor(r()*2), districts = [];
+    for(let d = 0; d < nD; d++) districts.push({ x: 0.1 + r()*0.8, w: 0.06 + r()*0.16, k: 0.6 + r()*0.9 });
+    S.envelope = (x) => { let e = 0.15; for(const d of districts){ const q = (x - d.x)/d.w; e += d.k*Math.exp(-q*q); } return e; };
+    for(let row = 0; row < NROWS; row++){
+      const depth = row/(NROWS - 1), list = []; let x = -0.05 - r()*0.1;
+      const rowShift = (r() - 0.5)*0.15;                                   // each row's districts drift a little so towers don't line up
+      while(x < 1.1){
+        const sliver = r() < 0.3, w = (sliver ? 0.006 + r()*0.012 : 0.015 + r()*(0.03 + depth*0.06))*(0.55 + depth*0.45);
+        const env = S.envelope(x + rowShift), tall = r() < 0.3 ? r()*r()*0.9 : 0;
+        const h = Math.min((0.05 + r()*r()*0.3 + tall)*env*(0.3 + depth*0.8)*(1 - S.horizon)*1.45, 0.8*(0.5 + depth*0.5));   // nearest district peaks capped near ~0.8x the frame
+        const kind = r(), kindN = kind < 0.12 ? 'spire' : kind < 0.3 ? 'setback' : kind < 0.42 ? 'crown' : kind < 0.5 ? 'twin' : kind < 0.58 ? 'taper' : 'block';
+        list.push({ x, w, h, kind: sliver ? (kind < 0.5 ? 'block' : 'setback') : kindN, ant: r() < 0.35, tank: r() < 0.3, lit: 0.25 + r()*0.65, tint: r(), win: 2 + Math.floor(r()*3) });
+        x += w*(0.75 + depth*0.3) + r()*0.012*(1 - depth*0.7);
+      }
+      S.rows.push({ depth, list });
+    }
+    S.boats = []; const nB = S.water ? Math.floor(r()*5) : 0; for(let i = 0; i < nB; i++) S.boats.push({ x: r(), y: 0.25 + r()*0.6, s: 0.02 + r()*0.03, spd: (r() - 0.5)*0.01 });
+    SK.S = S; SK.key = key; SK.built0 = false; SK.fade = 1;
+    const g = SK.grain.getContext('2d'); g.clearRect(0, 0, W, H);                    // paper: granulation flecks + faint fibre streaks
+    for(let i = 0; i < W*H*0.14; i++){ const x = r()*W, y = r()*H, l = r(); g.fillStyle = l < 0.5 ? `rgba(255,255,255,${0.03 + l*0.08})` : `rgba(40,30,20,${0.02 + (l - 0.5)*0.08})`; g.fillRect(x, y, 1 + r()*2, 1); }
+    for(let i = 0; i < 60; i++){ g.strokeStyle = `rgba(255,255,255,${0.02 + r()*0.03})`; g.lineWidth = 1; g.beginPath(); const y = r()*H; g.moveTo(0, y); g.lineTo(W, y + (r() - 0.5)*6); g.stroke(); }
+  }
+  const S = SK.S, horizon = H*S.horizon, sunX = W*S.sunX, sunY = H*S.sunY;
+  // ---- watercolour brush: soft translucent dab; a "wash" is a rect of stacked low-alpha strokes with a darker bleeding rim ----
+  const dab = (c, x, y, len, ang, w, col, a, jit = 12) => {
+    const q = [col[0] + (Math.random() - 0.5)*jit, col[1] + (Math.random() - 0.5)*jit, col[2] + (Math.random() - 0.5)*jit];
+    c.strokeStyle = rgb(q, 1, a); c.lineWidth = w;
+    const dx = Math.cos(ang)*len*0.5, dy = Math.sin(ang)*len*0.5;
+    c.beginPath(); c.moveTo(x - dx, y - dy); c.lineTo(x + dx, y + dy); c.stroke();
+  };
+  const wash = (c, x, y, w, h, col, a) => {                             // building body: 3 uneven translucent passes + rim bleed
+    for(let p = 0; p < 3; p++){ const e = (Math.random() - 0.5)*2; c.fillStyle = rgb(col, 1 + (p - 1)*0.06, a*0.45); c.fillRect(x + e, y + e*0.6, w + (Math.random() - 0.5)*1.5, h - e*0.6 + 2); }
+    c.strokeStyle = rgb(mix(col, [0, 0, 0], 0.35), 1, a*0.5); c.lineWidth = 1.2; c.strokeRect(x + 0.5, y + 0.5, w - 1, h + 1);
+    c.strokeStyle = rgb(mix(col, [255, 255, 255], 0.25), 1, a*0.25); c.lineWidth = 0.8; c.strokeRect(x - 1, y - 1, w + 2, h + 3);
+  };
+  const tierOf = (i) => i % 3;
+  // ---- sky layer: gradient + sun/moon in the base; horizontal washes and cloud blooms across the tiers ----
+  const paintSky = (L) => {
+    const c = L.base.getContext('2d'); c.clearRect(0, 0, W, H); c.lineCap = 'round';
+    const g = c.createLinearGradient(0, 0, 0, horizon*1.05); g.addColorStop(0, rgb(S.sky[0])); g.addColorStop(0.6, rgb(S.sky[1])); g.addColorStop(1, rgb(S.sky[2]));
+    c.fillStyle = g; c.fillRect(0, 0, W, Math.ceil(horizon) + 2);
+    if(S.sunVisible){
+      const rg = c.createRadialGradient(sunX, sunY, 0, sunX, sunY, W*0.28); rg.addColorStop(0, rgb(S.sunC, 1, S.night ? 0.25 : 0.4)); rg.addColorStop(1, rgb(S.sunC, 1, 0));
+      c.fillStyle = rg; c.fillRect(0, 0, W, Math.ceil(horizon) + 1);
+      const R = W*S.sunR*(S.night ? 0.7 : 1); c.fillStyle = rgb(S.sunC, 1, 0.85); c.beginPath(); c.arc(sunX, sunY, R, 0, TAU); c.fill();
+      if(S.night){ c.fillStyle = rgb(mix(S.sunC, S.sky[0], 0.4), 1, 0.7); c.beginPath(); c.arc(sunX - R*0.25, sunY - R*0.15, R*0.28, 0, TAU); c.fill(); c.beginPath(); c.arc(sunX + R*0.3, sunY + R*0.3, R*0.18, 0, TAU); c.fill(); }   // maria
+    }
+    if(S.night){ for(let i = 0; i < 90; i++){ const x = Math.random()*W, y = Math.random()*horizon*0.8; c.fillStyle = `rgba(255,255,255,${0.3 + Math.random()*0.6})`; c.fillRect(x, y, 1, 1); } }
+    const strokes = (cc, n) => { for(let i = 0; i < n; i++){                       // long soft horizontal washes
+      const y = Math.random()*horizon, u = clamp(y/horizon, 0, 1), col = u < 0.6 ? mix(S.sky[0], S.sky[1], u/0.6) : mix(S.sky[1], S.sky[2], (u - 0.6)/0.4);
+      const near = S.sunVisible ? clamp(1 - Math.hypot(Math.random()*W - sunX, y - sunY)/(W*0.35), 0, 1) : 0;
+      dab(cc, Math.random()*W, y, 30 + Math.random()*90, (Math.random() - 0.5)*0.12, 4 + Math.random()*9, mix(col, S.sunC, near*0.3), 0.12 + Math.random()*0.18, 14);
+    } };
+    const nS = Math.round(W*H*0.0035);
+    strokes(c, Math.round(nS*0.2));
+    for(let tier = 0; tier < 3; tier++){
+      const cc = L.det[tier].getContext('2d'); cc.clearRect(0, 0, W, H); cc.lineCap = 'round';
+      strokes(cc, Math.round(nS*0.27));
+      const nC = tier === 0 ? 1 : 2;                                        // cloud blooms: clusters of pale round dabs with a shaded belly
+      for(let i = 0; i < nC; i++){
+        const cx = Math.random()*W, cy = horizon*(0.08 + Math.random()*0.5), cw = W*(0.1 + Math.random()*0.2), ch = cw*0.25;
+        const top = S.mood === 'storm' ? mix(S.sky[0], [60, 60, 70], 0.4) : mix(S.sky[2], [255, 255, 255], 0.6), belly = mix(top, S.dim ? S.sunC : S.sky[0], 0.4);
+        for(let d = 0; d < 30; d++){ const u = Math.random(), v = Math.random(); dab(cc, cx + (u - 0.5)*cw, cy + (v - 0.5)*ch, cw*0.12, 0, cw*(0.06 + Math.random()*0.08), v < 0.55 ? top : belly, 0.22, 8); }
+      }
+    }
+  };
+  // ---- city layer: hills, tower washes (all rows in the base so the silhouette is always complete), windows/texture in tiers ----
+  const paintCity = (L) => {
+    const c = L.base.getContext('2d'); c.clearRect(0, 0, W, H); c.lineCap = 'round';
+    const det = L.det.map(k => { const cc = k.getContext('2d'); cc.clearRect(0, 0, W, H); cc.lineCap = 'round'; return cc; });
+    if(S.hills){                                                           // distant hills behind everything
+      const hc = mix(S.ink, S.haze, 0.8); c.fillStyle = rgb(hc, 1, 0.9); c.beginPath(); c.moveTo(0, horizon + 2);
+      for(let x = 0; x <= W; x += 3) c.lineTo(x, horizon - H*(0.05 + 0.06*Math.abs(Math.sin(x*0.011 + S.k)) + 0.03*Math.abs(Math.sin(x*0.031))));
+      c.lineTo(W, horizon + 2); c.closePath(); c.fill();
+    }
+    let bi = 0;
+    for(const row of S.rows){
+      const hz = Math.pow(1 - row.depth, 0.7)*0.86, col = mix(S.ink, S.haze, hz);
+      for(const b of row.list){
+        const x = b.x*W, w = b.w*W, h = b.h*H, y = horizon - h, tint = mix(col, pal.rgb[Math.floor(b.tint*np)], 0.12*(1 - hz));
+        const wa = 0.9, dark = mix(tint, [0, 0, 0], 0.3);
+        if(b.kind === 'setback'){ wash(c, x, y + h*0.35, w, h*0.65, tint, wa); wash(c, x + w*0.2, y, w*0.6, h*0.4, tint, wa); }
+        else if(b.kind === 'crown'){ wash(c, x, y + h*0.25, w, h*0.75, tint, wa); wash(c, x + w*0.12, y + h*0.12, w*0.76, h*0.15, tint, wa); wash(c, x + w*0.3, y, w*0.4, h*0.14, tint, wa); }   // art-deco stepped top
+        else if(b.kind === 'twin'){ wash(c, x, y, w*0.44, h, tint, wa); wash(c, x + w*0.56, y + h*0.08, w*0.44, h*0.92, tint, wa); }
+        else if(b.kind === 'taper'){ wash(c, x, y + h*0.3, w, h*0.7, tint, wa); c.fillStyle = rgb(tint, 1, 0.75); c.beginPath(); c.moveTo(x, y + h*0.3); c.lineTo(x + w*0.35, y); c.lineTo(x + w*0.65, y); c.lineTo(x + w, y + h*0.3); c.closePath(); c.fill(); }
+        else wash(c, x, y, w, h, tint, wa);
+        let topY = y;
+        if(b.kind === 'spire'){ c.fillStyle = rgb(tint, 1, 0.8); c.beginPath(); c.moveTo(x, y); c.lineTo(x + w*0.5, y - h*0.3); c.lineTo(x + w, y); c.closePath(); c.fill(); topY = y - h*0.3; }
+        if(b.tank && w > 5 && row.depth > 0.5){ c.fillStyle = rgb(dark, 1, 0.85); c.fillRect(x + w*0.6, topY - 3, Math.min(4, w*0.25), 3); }   // rooftop water tank
+        if(b.ant){ c.strokeStyle = rgb(dark, 1, 0.8); c.lineWidth = 1; c.beginPath(); c.moveTo(x + w*0.5, topY); c.lineTo(x + w*0.5, topY - h*0.12 - 3); c.stroke(); if(S.night || S.dim){ c.fillStyle = 'rgba(255,60,60,0.8)'; c.fillRect(x + w*0.5 - 0.5, topY - h*0.12 - 4, 1, 1); } }
+        // windows + facade texture into the tiers (nearer rows get more)
+        const cc = det[tierOf(bi)], cols = Math.max(1, Math.round(w/(b.win*0.9 + 1.5))), rows2 = Math.max(1, Math.round(h/(b.win + 1.2)*(0.3 + row.depth*0.7)));
+        const litP = S.night ? b.lit : S.dim ? b.lit*0.45 : b.lit*0.12, wc = Math.random() < 0.7 ? S.warm : S.cool;
+        for(let j = 0; j < rows2; j++) for(let i = 0; i < cols; i++){
+          const wx = x + (i + 0.5)*w/cols, wy = y + (j + 0.5)*h/rows2 + (b.kind === 'setback' && j < rows2*0.35 ? h*0.35*(i < cols*0.2 || i > cols*0.8 ? 1 : 0) : 0);
+          if(wy > horizon - 2) continue;
+          if(Math.random() < litP) dab(cc, wx, wy, 1.2, 0, 1.2 + row.depth*0.8, wc, 0.6 + Math.random()*0.35, 20);
+          else if(Math.random() < 0.3) dab(cc, wx, wy, 1.2, 0, 1.0 + row.depth*0.6, mix(tint, [0, 0, 0], 0.3), 0.35, 10);
+        }
+        for(let s = 0; s < 3; s++) dab(det[tierOf(bi + s + 1)], x + Math.random()*w, y + Math.random()*h, h*0.4, Math.PI/2 + (Math.random() - 0.5)*0.1, 1 + Math.random()*2, mix(tint, s ? [0, 0, 0] : [255, 255, 255], 0.2), 0.12, 8);   // vertical wash streaks
+        bi++;
+      }
+    }
+    const lakeTop = horizon + 1, lakeBot = S.water ? H*(S.horizon + (1 - S.horizon)*0.75) : lakeTop;
+    if(S.water){                                                           // water: inverted sky wash + long ripples, reflections of the near towers
+      const g = c.createLinearGradient(0, lakeTop, 0, H); g.addColorStop(0, rgb(mix(S.waterC, S.haze, 0.45))); g.addColorStop(1, rgb(S.waterC, 0.8));
+      c.fillStyle = g; c.fillRect(0, lakeTop, W, H - lakeTop + 1);
+      for(const b of S.rows[S.rows.length - 1].list){ const x = b.x*W, w = b.w*W, h = Math.min(b.h*H, (lakeBot - lakeTop)*0.9); c.fillStyle = rgb(mix(S.ink, S.waterC, 0.5), 1, 0.28); c.fillRect(x, lakeTop, w, h*0.6); }
+      const n = Math.round(W*(lakeBot - lakeTop)*0.03);
+      const ripple = (cc, cnt) => { for(let i = 0; i < cnt; i++){
+        const y = lakeTop + Math.random()*(H - lakeTop), u = (y - lakeTop)/(H - lakeTop), x = Math.random()*W;
+        const refl = mix(S.sky[2], S.waterC, 0.3 + u*0.6), path = S.sunVisible ? clamp(1 - Math.abs(x - sunX)/(W*0.1*(0.5 + u)), 0, 1) : 0;
+        dab(cc, x, y, 10 + Math.random()*36*(0.4 + u), (Math.random() - 0.5)*0.04, 1.5 + u*3, mix(refl, S.waterLit, path*0.8), 0.25 + Math.random()*0.3, 10);
+      } };
+      ripple(c, Math.round(n*0.2)); for(let tier = 0; tier < 3; tier++) ripple(det[tier], Math.round(n*0.27));
+      for(const bt of S.boats){ const x = bt.x*W, y = lakeTop + bt.y*(H - lakeTop), s = bt.s*W; c.fillStyle = rgb(mix(S.ink, [0, 0, 0], 0.2), 1, 0.85); c.fillRect(x - s*0.5, y - s*0.15, s, s*0.15); c.fillRect(x - s*0.1, y - s*0.5, s*0.1, s*0.35); }
+    } else {                                                               // dry foreground: dark promenade wash with a few street lights
+      c.fillStyle = rgb(mix(S.ink, [0, 0, 0], 0.3), 1, 0.9); c.fillRect(0, horizon, W, H - horizon + 1);
+      for(let i = 0; i < 8; i++){ const x = (i + 0.5)/8*W + (Math.random() - 0.5)*10; dab(det[i % 3], x, horizon + 4, 3, 0, 3, S.warm, S.night || S.dim ? 0.8 : 0.3, 10); }
+    }
+    if(S.bridge){                                                          // suspension bridge silhouette across the water/foreground
+      const y0 = horizon - H*0.02, bc = mix(S.ink, [0, 0, 0], 0.25);
+      c.strokeStyle = rgb(bc, 1, 0.9); c.lineWidth = 1.5; c.beginPath(); c.moveTo(0, y0); c.lineTo(W, y0); c.stroke();
+      const tx = [W*0.28, W*0.72];
+      for(const x of tx){ c.fillStyle = rgb(bc, 1, 0.9); c.fillRect(x - 2, y0 - H*0.12, 4, H*0.12); }
+      c.lineWidth = 1; c.beginPath(); c.moveTo(0, y0 - H*0.04); c.quadraticCurveTo(tx[0]*0.5, y0, tx[0], y0 - H*0.12); c.quadraticCurveTo(W*0.5, y0 + H*0.02, tx[1], y0 - H*0.12); c.quadraticCurveTo(W - tx[0]*0.5, y0, W, y0 - H*0.04); c.stroke();
+      for(let i = 0; i < 30; i++){ const x = i/29*W, sag = x < tx[0] ? lerp(y0 - H*0.04, y0 - H*0.12, x/tx[0]) : x > tx[1] ? lerp(y0 - H*0.12, y0 - H*0.04, (x - tx[1])/(W - tx[1])) : y0 - H*0.12 + H*0.14*4*((x - tx[0])/(tx[1] - tx[0]))*(1 - (x - tx[0])/(tx[1] - tx[0]))*0.5; c.beginPath(); c.moveTo(x, sag); c.lineTo(x, y0); c.stroke(); }
+    }
+    c.globalAlpha = 0.9; c.drawImage(SK.grain, 0, 0); c.globalAlpha = 1;
+  };
+  // ---- variants: paint the first pair, then re-dab one every ~7 s and crossfade ----
+  if(!SK.built0){
+    paintSky(SK.sky[0]); paintCity(SK.city[0]);
+    const dup = (dst, srcCv) => { const cc = dst.getContext('2d'); cc.globalCompositeOperation = 'copy'; cc.drawImage(srcCv, 0, 0); cc.globalCompositeOperation = 'source-over'; };
+    dup(SK.sky[1].base, SK.sky[0].base); dup(SK.city[1].base, SK.city[0].base);
+    for(let j = 0; j < 3; j++){ dup(SK.sky[1].det[j], SK.sky[0].det[j]); dup(SK.city[1].det[j], SK.city[0].det[j]); }
+    SK.built0 = true; SK.cur = 0; SK.fade = 1; SK.nextAt = t + 2;
+  }
+  let dt = t - SK.lastT; SK.lastT = t; if(dt < 0 || dt > 0.25) dt = 0;
+  for(let b = 0; b < 4; b++) SK.sm[b] += (clamp(A[b]*gain*1.3, 0, 1) - SK.sm[b]) * Math.min(1, dt*8);
+  if(t >= SK.nextAt){ const nx = 1 - SK.cur; paintSky(SK.sky[nx]); paintCity(SK.city[nx]); SK.cur = nx; SK.fade = 0; SK.nextAt = t + 6 + Math.random()*4; }
+  SK.fade = Math.min(1, SK.fade + dt*0.35);
+  SK.glow = lerp(SK.glow, SK.sm[0], Math.min(1, dt*0.4));                 // glow follows bass very slowly (a swell, never a flash)
+  // ---- compose: sky (skippable for BACKGROUND OFF) -> live glow -> city -> live windows, water shimmer, birds ----
+  const c = SK.c, prev = 1 - SK.cur, fa = SK.fade, tierA = (j) => clamp(eff.density*3 - j, 0, 1);
+  c.clearRect(0, 0, W, H); c.lineCap = 'round';
+  const layer = (L) => {
+    c.globalAlpha = 1; c.drawImage(L[prev].base, 0, 0);
+    for(let j = 0; j < 3; j++){ const a = tierA(j); if(a > 0.01){ c.globalAlpha = a; c.drawImage(L[prev].det[j], 0, 0); } }
+    c.globalAlpha = fa; c.drawImage(L[SK.cur].base, 0, 0);
+    for(let j = 0; j < 3; j++){ const a = tierA(j)*fa; if(a > 0.01){ c.globalAlpha = a; c.drawImage(L[SK.cur].det[j], 0, 0); } }
+    c.globalAlpha = 1;
+  };
+  if(!bgStrip){
+    layer(SK.sky);
+    if(S.sunVisible){ const rg = c.createRadialGradient(sunX, sunY, 0, sunX, sunY, W*(0.18 + SK.glow*0.08)); rg.addColorStop(0, rgb(S.sunC, 1, 0.22 + SK.glow*0.12)); rg.addColorStop(1, rgb(S.sunC, 1, 0)); c.fillStyle = rg; c.fillRect(0, 0, W, Math.ceil(horizon) + 1); }
+    // birds: small V flocks drifting across, more with mids
+    const want = Math.round(SK.sm[1]*4*(0.3 + eff.density));
+    if(SK.birds.length < want && Math.random() < dt*0.6) SK.birds.push({ x: Math.random() < 0.5 ? -20 : W + 20, y: horizon*(0.15 + Math.random()*0.5), n: 3 + Math.floor(Math.random()*7), dir: 0, ph: Math.random()*TAU });
+    for(let i = SK.birds.length - 1; i >= 0; i--){
+      const f = SK.birds[i]; if(!f.dir) f.dir = f.x < 0 ? 1 : -1; f.x += f.dir*dt*18; if(f.x < -40 || f.x > W + 40){ SK.birds.splice(i, 1); continue; }
+      c.strokeStyle = rgb(mix(S.ink, [0, 0, 0], 0.4), 1, 0.7); c.lineWidth = 1;
+      for(let b = 0; b < f.n; b++){ const bx = f.x - f.dir*b*5, by = f.y + Math.abs(b - f.n*0.5)*2.5, fl = Math.sin(t*9 + f.ph + b)*1.5; c.beginPath(); c.moveTo(bx - 2.5, by - fl); c.lineTo(bx, by + 1); c.lineTo(bx + 2.5, by - fl); c.stroke(); }
+    }
+  }
+  layer(SK.city);
+  if(S.night || S.dim){                                                    // window lights slowly coming on and going off (no flashing)
+    if(!SK.lights) SK.lights = [];
+    const want = Math.round((6 + SK.sm[3]*30)*(0.3 + eff.density));
+    if(SK.lights.length < want && Math.random() < dt*3){
+      const row = S.rows[S.rows.length - 1 - Math.floor(Math.random()*3)], b = row.list[Math.floor(Math.random()*row.list.length)];
+      if(b){ const cols = Math.max(1, Math.round(b.w*W/(b.win*0.9 + 1.5))), rows2 = Math.max(1, Math.round(b.h*H/(b.win + 1.2)));
+        SK.lights.push({ x: b.x*W + (Math.floor(Math.random()*cols) + 0.5)*b.w*W/cols, y: horizon - (Math.floor(Math.random()*rows2) + 0.5)*b.h*H/rows2, age: 0, life: 5 + Math.random()*9, col: Math.random() < 0.75 ? S.warm : S.cool, s: 1.2 + row.depth }); }
+    }
+    for(let i = SK.lights.length - 1; i >= 0; i--){
+      const l = SK.lights[i]; l.age += dt; if(l.age > l.life){ SK.lights.splice(i, 1); continue; }
+      const u = l.age/l.life, a = u < 0.3 ? u/0.3 : u > 0.7 ? (1 - u)/0.3 : 1;                                       // slow ramp on, hold, slow ramp off
+      c.fillStyle = rgb(l.col, 1.2, a*0.9); c.fillRect(l.x - l.s*0.5, l.y - l.s*0.5, l.s, l.s);
+    }
+  }
+  if(S.water){                                                             // boats drift with steady lamps
+    const lakeTop = horizon + 1;
+    for(const bt of S.boats){ bt.x = ((bt.x + bt.spd*dt) % 1 + 1) % 1; const x = bt.x*W, y = lakeTop + bt.y*(H - lakeTop), s = bt.s*W; c.fillStyle = rgb([255, 240, 200], 1, 0.75 + 0.2*Math.sin(t*0.4 + bt.y*20)); c.fillRect(x - s*0.05, y - s*0.5, 1.5, 1.5); }   // steady boat lamps
+  }
+  const z = 1.03 + Math.sin(t*0.1)*0.012 + SK.glow*0.01;
+  bctx.imageSmoothingEnabled = true;
+  bctx.save();
+  bctx.translate(bw*0.5 + Math.sin(t*0.06)*bw*0.006, bh*0.5 + Math.cos(t*0.08)*bh*0.006); bctx.scale(z, z);
+  bctx.drawImage(SK.cv, -bw*0.5, -bh*0.5, bw, bh);
+  bctx.restore();
+}
+
+// AMOEBAS: a microscope field of amoebae crawling about. Each cell is a morphing membrane (layered sinusoids
+// plus pseudopods that bulge out, pull the body along, then retract) with a translucent cytoplasm, a lighter
+// ectoplasm rim, a nucleus with nucleolus, a contractile vacuole that slowly swells and empties, food vacuoles,
+// and streaming granules that flow toward the leading pseudopod. Debris and bacteria drift in the field.
+// Bass pushes pseudopods out faster, mids speed the wandering, treble stirs the granules; DENSITY sets how
+// many amoebae, granules and bacteria there are.
+function drawAmoebas(t){
+  const pal = PALETTES[state.palette], gain = 0.25 + state.audio * 1.25, np = pal.rgb.length, minD = Math.min(bw, bh);
+  bctx.globalCompositeOperation = 'source-over';
+  const AM = drawAmoebas;
+  if(!AM.cells){ AM.cells = []; AM.lastT = t; AM.sm = new Float32Array(4); AM.debris = []; AM.bact = []; }
+  let dt = t - AM.lastT; AM.lastT = t; if(dt < 0 || dt > 0.25) dt = 0;
+  for(let b = 0; b < 4; b++) AM.sm[b] += (clamp(A[b]*gain*1.3, 0, 1) - AM.sm[b]) * Math.min(1, dt*8);
+  const rgb = (c, m = 1, a = 1) => `rgba(${clamp(c[0]*m,0,255)|0},${clamp(c[1]*m,0,255)|0},${clamp(c[2]*m,0,255)|0},${clamp(a,0,1)})`;
+  const mix = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
+  const N = 64;                                                              // membrane samples
+  const newCell = (i) => {
+    const r = mulberry32((state.seed|0)*31 + i*977 + AM.cells.length);
+    const c = { x: r()*bw, y: r()*bh, R: minD*(0.05 + r()*0.075), col: pal.rgb[i % np], dir: r()*TAU, ph: r()*TAU, wob: [], pods: [], gran: [], food: [], vac: { r: 0, ph: r()*TAU, period: 5 + r()*5 }, nuc: { a: r()*TAU, d: 0.25 + r()*0.2, r: 0.14 + r()*0.06, rot: r()*TAU }, seed: r()*100, boundary: new Float32Array(N) };
+    for(let k = 2; k <= 6; k++) c.wob.push({ k, a: (0.03 + r()*0.05)/(k*0.6), w: (0.15 + r()*0.3)*(r() < 0.5 ? 1 : -1), p: r()*TAU });
+    for(let k = 0; k < 3; k++) c.pods.push({ a: r()*TAU, L: 0, tgt: 0, w: 0.35 + r()*0.3, next: t + r()*2 });
+    for(let k = 0; k < 50; k++) c.gran.push({ a: r()*TAU, d: Math.sqrt(r())*0.85, s: 0.6 + r()*1.6, ph: r()*TAU });
+    for(let k = 0; k < 2 + Math.floor(r()*3); k++) c.food.push({ a: r()*TAU, d: 0.3 + r()*0.45, r: 0.05 + r()*0.06, drift: r()*TAU, tint: pal.rgb[(i + k + 1) % np] });
+    return c;
+  };
+  const want = clamp(4 + Math.round(eff.density*20), 4, 24);
+  while(AM.cells.length < want) AM.cells.push(newCell(AM.cells.length));
+  if(AM.cells.length > want) AM.cells.length = want;
+  // membrane radius at angle a (in units of R): base wobble + pseudopod bulges
+  const radiusAt = (c, a, tt) => {
+    let r = 1;
+    for(const w of c.wob) r += w.a*Math.sin(w.k*a + w.p + tt*w.w);
+    for(const p of c.pods){ let d = a - p.a; d = Math.atan2(Math.sin(d), Math.cos(d)); r += p.L*Math.exp(-(d*d)/(p.w*p.w)); }
+    return r;
+  };
+  // ---- background: dark field with a microscope vignette, drifting debris and bacteria ----
+  bctx.fillStyle = pal.bg; bctx.fillRect(0, 0, bw, bh);
+  const vg = bctx.createRadialGradient(bw*0.5, bh*0.5, minD*0.2, bw*0.5, bh*0.5, minD*0.75);
+  vg.addColorStop(0, rgb(pal.rgb[0], 1, 0.06)); vg.addColorStop(0.7, rgb(pal.rgb[0], 1, 0.02)); vg.addColorStop(1, 'rgba(0,0,0,0.45)');
+  bctx.fillStyle = vg; bctx.fillRect(0, 0, bw, bh);
+  const wantDeb = Math.round(40 + eff.density*120), wantBact = Math.round(3 + eff.density*14);
+  while(AM.debris.length < wantDeb) AM.debris.push({ x: Math.random()*bw, y: Math.random()*bh, s: 0.5 + Math.random()*1.5, vx: (Math.random() - 0.5)*4, vy: (Math.random() - 0.5)*4, a: 0.15 + Math.random()*0.35 });
+  if(AM.debris.length > wantDeb) AM.debris.length = wantDeb;
+  bctx.fillStyle = rgb(pal.rgb[1 % np], 1, 0.4);
+  for(const d of AM.debris){ d.x = (d.x + d.vx*dt + bw) % bw; d.y = (d.y + d.vy*dt + bh) % bh; bctx.globalAlpha = d.a; bctx.fillRect(d.x, d.y, d.s, d.s); }
+  bctx.globalAlpha = 1;
+  while(AM.bact.length < wantBact) AM.bact.push({ x: Math.random()*bw, y: Math.random()*bh, a: Math.random()*TAU, spd: 8 + Math.random()*14, turn: 0, len: 4 + Math.random()*6, ph: Math.random()*TAU });
+  if(AM.bact.length > wantBact) AM.bact.length = wantBact;
+  bctx.lineCap = 'round';
+  for(const b of AM.bact){                                                 // rods that tumble and run
+    if(Math.random() < dt*0.8) b.turn = (Math.random() - 0.5)*6;
+    b.a += b.turn*dt; b.turn *= 1 - dt*2; b.x = (b.x + Math.cos(b.a)*b.spd*dt + bw) % bw; b.y = (b.y + Math.sin(b.a)*b.spd*dt + bh) % bh;
+    bctx.strokeStyle = rgb(pal.rgb[2 % np], 1, 0.5); bctx.lineWidth = 1.6; bctx.beginPath(); bctx.moveTo(b.x - Math.cos(b.a)*b.len*0.5, b.y - Math.sin(b.a)*b.len*0.5); bctx.lineTo(b.x + Math.cos(b.a)*b.len*0.5, b.y + Math.sin(b.a)*b.len*0.5); bctx.stroke();
+    bctx.strokeStyle = rgb(pal.rgb[2 % np], 1, 0.25); bctx.lineWidth = 0.8; bctx.beginPath(); const fx = b.x - Math.cos(b.a)*b.len*0.5, fy = b.y - Math.sin(b.a)*b.len*0.5; bctx.moveTo(fx, fy); bctx.quadraticCurveTo(fx - Math.cos(b.a)*4 + Math.sin(t*20 + b.ph)*3, fy - Math.sin(b.a)*4 + Math.cos(t*20 + b.ph)*3, fx - Math.cos(b.a)*8, fy - Math.sin(b.a)*8); bctx.stroke();   // flagellum
+  }
+  // ---- cells ----
+  const podPush = 0.6 + AM.sm[0]*1.4, wander = 0.6 + AM.sm[1]*1.2, stir = 0.5 + AM.sm[3]*1.5;
+  for(let ci = 0; ci < AM.cells.length; ci++){
+    const c = AM.cells[ci], R = c.R;
+    // pseudopods: each one waits, picks a heading near the travel direction, extends, holds, retracts
+    let lead = 0, lx = 0, ly = 0;
+    for(const p of c.pods){
+      if(t > p.next){
+        if(p.tgt === 0){ p.a = c.dir + (Math.random() - 0.5)*2.2; p.tgt = 0.35 + Math.random()*0.55; p.next = t + 1.5 + Math.random()*2.5; }
+        else { p.tgt = 0; p.next = t + 1 + Math.random()*3; }
+      }
+      p.L += (p.tgt - p.L)*Math.min(1, dt*(p.tgt > p.L ? 0.7*podPush : 0.5));
+      if(p.L > 0.05){ lead += p.L; lx += Math.cos(p.a)*p.L; ly += Math.sin(p.a)*p.L; }
+    }
+    // the body flows toward its pseudopods; heading drifts slowly otherwise
+    if(lead > 0.05){ const ta = Math.atan2(ly, lx); let d = ta - c.dir; d = Math.atan2(Math.sin(d), Math.cos(d)); c.dir += d*Math.min(1, dt*0.8); }
+    c.dir += Math.sin(t*0.3 + c.seed)*dt*0.3;
+    const spd = R*(0.08 + lead*0.35)*wander;
+    c.x += Math.cos(c.dir)*spd*dt; c.y += Math.sin(c.dir)*spd*dt;
+    if(c.x < -R*1.4) c.x = bw + R*1.4; if(c.x > bw + R*1.4) c.x = -R*1.4; if(c.y < -R*1.4) c.y = bh + R*1.4; if(c.y > bh + R*1.4) c.y = -R*1.4;
+    // gentle repulsion between cells
+    for(let cj = 0; cj < AM.cells.length; cj++){ if(cj === ci) continue; const o = AM.cells[cj], dx = c.x - o.x, dy = c.y - o.y, d = Math.hypot(dx, dy), md = (R + o.R)*0.9; if(d < md && d > 0.1){ const push = (md - d)/md*R*0.6*dt; c.x += dx/d*push; c.y += dy/d*push; } }
+    // sample the membrane
+    const B = c.boundary;
+    for(let i = 0; i < N; i++) B[i] = radiusAt(c, i/N*TAU, t)*R;
+    const path = (scale) => {
+      bctx.beginPath();
+      for(let i = 0; i <= N; i++){
+        const i0 = i % N, i1 = (i + 1) % N, a0 = i0/N*TAU, a1 = i1/N*TAU;
+        const x0 = c.x + Math.cos(a0)*B[i0]*scale, y0 = c.y + Math.sin(a0)*B[i0]*scale, x1 = c.x + Math.cos(a1)*B[i1]*scale, y1 = c.y + Math.sin(a1)*B[i1]*scale;
+        if(i === 0) bctx.moveTo((x0 + x1)*0.5, (y0 + y1)*0.5); else bctx.quadraticCurveTo(x0, y0, (x0 + x1)*0.5, (y0 + y1)*0.5);
+      }
+      bctx.closePath();
+    };
+    const col = c.col, dark = mix(col, [0, 0, 0], 0.55), light = mix(col, [255, 255, 255], 0.5);
+    // halo (refraction) then cytoplasm fill: translucent, denser toward the centre
+    path(1.06); bctx.fillStyle = rgb(light, 1, 0.06); bctx.fill();
+    const cg = bctx.createRadialGradient(c.x, c.y, R*0.1, c.x, c.y, R*1.2); cg.addColorStop(0, rgb(col, 1, 0.34)); cg.addColorStop(0.75, rgb(col, 1, 0.22)); cg.addColorStop(1, rgb(light, 1, 0.14));
+    path(1); bctx.fillStyle = cg; bctx.fill();
+    bctx.save(); path(1); bctx.clip();
+    // ectoplasm rim: pale inner band just inside the membrane
+    path(0.93); bctx.strokeStyle = rgb(light, 1, 0.25); bctx.lineWidth = R*0.06; bctx.stroke();
+    // granules stream toward the leading pseudopod and swirl with treble
+    const flowA = lead > 0.05 ? Math.atan2(ly, lx) : c.dir;
+    bctx.fillStyle = rgb(dark, 1, 0.75);
+    for(const g of c.gran){
+      g.ph += dt*(0.8 + stir);
+      let gx = Math.cos(g.a)*g.d, gy = Math.sin(g.a)*g.d;                  // unit-body coordinates
+      gx += (Math.cos(flowA)*0.12 + Math.cos(g.ph)*0.06)*dt*(1 + lead*2); gy += (Math.sin(flowA)*0.12 + Math.sin(g.ph*1.3)*0.06)*dt*(1 + lead*2);
+      let a = Math.atan2(gy, gx), d = Math.hypot(gx, gy); const lim = radiusAt(c, a, t)*0.9;
+      if(d > lim){ d = 0.15 + Math.random()*0.25; a = flowA + Math.PI + (Math.random() - 0.5)*2; }   // recirculate from the rear
+      g.a = a; g.d = d;
+      const px = c.x + Math.cos(a)*d*R, py = c.y + Math.sin(a)*d*R;
+      bctx.beginPath(); bctx.arc(px, py, g.s, 0, TAU); bctx.fill();
+    }
+    // food vacuoles: clear bubbles with a tinted morsel inside, drifting slowly
+    for(const f of c.food){
+      f.drift += dt*0.2; f.a += Math.sin(f.drift)*dt*0.1;
+      const px = c.x + Math.cos(f.a)*f.d*R, py = c.y + Math.sin(f.a)*f.d*R, fr = f.r*R;
+      bctx.fillStyle = rgb(light, 1, 0.22); bctx.beginPath(); bctx.arc(px, py, fr, 0, TAU); bctx.fill();
+      bctx.strokeStyle = rgb(dark, 1, 0.45); bctx.lineWidth = 1; bctx.stroke();
+      bctx.fillStyle = rgb(f.tint, 1, 0.7); bctx.beginPath(); bctx.arc(px + fr*0.2, py - fr*0.1, fr*0.45, 0, TAU); bctx.fill();
+    }
+    // contractile vacuole: swells over its period then empties in a quick collapse
+    const vph = fract((t + c.vac.ph)/c.vac.period), vr = (vph < 0.85 ? vph/0.85 : (1 - vph)/0.15)*R*0.16;
+    const vx = c.x - Math.cos(c.dir)*R*0.45, vy = c.y - Math.sin(c.dir)*R*0.45;
+    if(vr > 0.5){ bctx.fillStyle = rgb(light, 1, 0.35); bctx.beginPath(); bctx.arc(vx, vy, vr, 0, TAU); bctx.fill(); bctx.strokeStyle = rgb(dark, 1, 0.5); bctx.lineWidth = 1; bctx.stroke(); }
+    // nucleus: dark oval with a nucleolus and a faint envelope, lagging behind the centre of motion
+    c.nuc.rot += dt*0.15;
+    const nx = c.x - Math.cos(c.dir)*R*c.nuc.d*0.5 + Math.cos(c.nuc.a + c.nuc.rot)*R*0.12, ny = c.y - Math.sin(c.dir)*R*c.nuc.d*0.5 + Math.sin(c.nuc.a + c.nuc.rot)*R*0.12, nr = c.nuc.r*R;
+    bctx.fillStyle = rgb(dark, 1, 0.55); bctx.beginPath(); bctx.ellipse(nx, ny, nr, nr*0.8, c.nuc.rot, 0, TAU); bctx.fill();
+    bctx.strokeStyle = rgb(dark, 1, 0.8); bctx.lineWidth = 1.2; bctx.stroke();
+    bctx.fillStyle = rgb(dark, 0.6, 0.9); bctx.beginPath(); bctx.arc(nx + nr*0.2, ny - nr*0.15, nr*0.3, 0, TAU); bctx.fill();   // nucleolus
+    bctx.fillStyle = rgb(light, 1, 0.35); bctx.beginPath(); bctx.arc(nx - nr*0.3, ny - nr*0.3, nr*0.15, 0, TAU); bctx.fill();   // highlight
+    bctx.restore();
+    // membrane: soft dark edge with a thin bright line
+    path(1); bctx.strokeStyle = rgb(dark, 1, 0.7); bctx.lineWidth = Math.max(1.2, R*0.035); bctx.stroke();
+    path(1); bctx.strokeStyle = rgb(light, 1, 0.5); bctx.lineWidth = 1; bctx.stroke();
+  }
+  bctx.lineCap = 'butt';
+}
+
+// PIXEL WORLD: auto-scrolling side-view platformer landscape in bright 8-bit colours - parallax hills, puffy
+// clouds, tiled ground with plateaus and pits, floating blocks, bobbing gems, bushes, flowers and sparkles.
+// Seeded biome (meadow / desert / snow / candy / jungle / lava / night); the world is infinite via ihash on the
+// tile column, so scrolling never repeats. Bass speeds the scroll and bounces the gems, treble adds sparkles.
+function drawPixelWorld(t){
+  const pal = PALETTES[state.palette], gain = 0.25 + state.audio * 1.25;
+  bctx.globalCompositeOperation = 'source-over';
+  const PW = drawPixelWorld;
+  if(!PW.oc){ PW.oc = document.createElement('canvas'); PW.octx = PW.oc.getContext('2d'); PW.x = 0; PW.lastT = t; PW.sm = new Float32Array(4); PW.camY = 0; PW.sparks = []; }
+  const T = 8, W = 256, H = Math.max(64, Math.round(W*bh/bw));
+  if(PW.oc.width !== W || PW.oc.height !== H){ PW.oc.width = W; PW.oc.height = H; }
+  if(PW.seed !== state.seed){
+    const r = mulberry32((state.seed|0) ^ 0x8b17);
+    const biome = ['meadow', 'desert', 'snow', 'candy', 'jungle', 'lava', 'night'][Math.floor(r()*7)];
+    PW.cfg = { biome, k: Math.floor(r()*9999), baseH: 2 + Math.floor(r()*2), hillF: 0.6 + r()*0.8, sunX: 0.15 + r()*0.7, plat: 0.25 + r()*0.4, gemD: 0.4 + r()*0.5, pitP: 0.08 + r()*0.12 };
+    PW.seed = state.seed;
+  }
+  const C = PW.cfg, c = PW.octx, k = C.k, dens = eff.density;      // DENSITY: stars, clouds, decorations, platforms, gems, sparkles
+  let dt = t - PW.lastT; PW.lastT = t; if(dt < 0 || dt > 0.25) dt = 0;
+  for(let b = 0; b < 4; b++) PW.sm[b] += (clamp(A[b]*gain*1.3, 0, 1) - PW.sm[b]) * Math.min(1, dt*8);
+  PW.x += dt*(28 + PW.sm[0]*50);                                 // scroll speed in px/s, faster with bass
+  const rgb = (col, m = 1) => `rgb(${clamp(col[0]*m,0,255)|0},${clamp(col[1]*m,0,255)|0},${clamp(col[2]*m,0,255)|0})`;
+  const mix = (a, b, q) => [lerp(a[0], b[0], q), lerp(a[1], b[1], q), lerp(a[2], b[2], q)];
+  // ---- biome colour scripts, tinted a little by the palette so it re-colours the world ----
+  const tk = 0.15, P0 = pal.rgb[0], P1 = pal.rgb[1 % pal.rgb.length];
+  const B = {
+    meadow: { skyT: [80, 160, 255], skyB: [160, 224, 255], hillF: [110, 200, 120], hillN: [60, 170, 90], grass: [80, 210, 70], grassL: [150, 240, 110], dirt: [180, 110, 60], dirtD: [140, 80, 40], bush: [40, 150, 60], bushL: [90, 210, 100], water: [50, 130, 240], block: [230, 160, 50], blockL: [255, 220, 120], cloud: [255, 255, 255] },
+    desert: { skyT: [90, 190, 250], skyB: [255, 220, 150], hillF: [230, 170, 90], hillN: [200, 130, 70], grass: [240, 200, 100], grassL: [255, 235, 160], dirt: [200, 140, 70], dirtD: [160, 100, 50], bush: [60, 160, 80], bushL: [120, 210, 110], water: [70, 200, 230], block: [200, 120, 80], blockL: [250, 190, 140], cloud: [255, 250, 235] },
+    snow:   { skyT: [120, 180, 240], skyB: [210, 235, 255], hillF: [220, 235, 255], hillN: [170, 200, 240], grass: [235, 245, 255], grassL: [255, 255, 255], dirt: [110, 130, 180], dirtD: [70, 90, 140], bush: [40, 120, 90], bushL: [90, 170, 130], water: [90, 170, 240], block: [120, 170, 230], blockL: [200, 230, 255], cloud: [255, 255, 255] },
+    candy:  { skyT: [255, 150, 210], skyB: [255, 220, 240], hillF: [180, 240, 250], hillN: [140, 220, 200], grass: [255, 120, 180], grassL: [255, 190, 230], dirt: [150, 70, 130], dirtD: [110, 40, 100], bush: [120, 220, 240], bushL: [200, 250, 255], water: [255, 240, 120], block: [255, 210, 60], blockL: [255, 245, 170], cloud: [255, 240, 250] },
+    jungle: { skyT: [40, 120, 200], skyB: [120, 220, 200], hillF: [40, 140, 120], hillN: [20, 110, 80], grass: [40, 180, 60], grassL: [120, 240, 90], dirt: [120, 80, 50], dirtD: [80, 50, 30], bush: [20, 120, 50], bushL: [70, 190, 80], water: [40, 180, 200], block: [190, 130, 60], blockL: [240, 200, 120], cloud: [240, 255, 245] },
+    lava:   { skyT: [90, 20, 40], skyB: [230, 90, 40], hillF: [120, 40, 60], hillN: [70, 20, 40], grass: [90, 60, 70], grassL: [150, 110, 120], dirt: [60, 30, 40], dirtD: [35, 15, 25], bush: [40, 20, 30], bushL: [90, 50, 60], water: [255, 120, 20], block: [90, 80, 90], blockL: [170, 160, 170], cloud: [100, 60, 70] },
+    night:  { skyT: [10, 15, 60], skyB: [60, 40, 120], hillF: [40, 50, 110], hillN: [25, 30, 80], grass: [60, 110, 90], grassL: [110, 180, 140], dirt: [60, 50, 90], dirtD: [35, 30, 60], bush: [30, 70, 70], bushL: [70, 130, 120], water: [40, 90, 200], block: [110, 100, 170], blockL: [180, 170, 240], cloud: [150, 150, 200] }
+  }[C.biome];
+  const col = {}; for(const key in B) col[key] = mix(B[key], key.startsWith('sky') || key === 'water' || key === 'cloud' ? P0 : P1, tk);
+  const outline = rgb(mix(col.dirtD, [0, 0, 0], 0.5));
+  // ---- infinite terrain: plateaus of 4-9 columns, pits, floating blocks, gems ----
+  const segOf = (i) => Math.floor(i/6);
+  const segH = (s) => { const g = ihash(s + k, 11, 1); return C.baseH + Math.floor(g*4); };
+  const colH = (i) => { const s = segOf(i); if(ihash(s + k, 12, 1) < C.pitP && (i % 6) >= 2 && (i % 6) <= 3) return 0; return segH(s); };   // tiles above bottom, 0 = pit
+  const baseY = H - T;                                          // screen y of the top of the lowest tile row
+  const scrollCol = Math.floor(PW.x/T), colOff = PW.x % T;
+  const camTarget = clamp((colH(scrollCol + 10) - C.baseH - 1)*T*0.6, 0, H*0.3);   // camera rises a little over high ground
+  PW.camY = lerp(PW.camY, camTarget, Math.min(1, dt*2));
+  const gy = (h) => Math.round(baseY - h*T + PW.camY);           // ground-top screen y for h tiles
+  // ---- sky ----
+  const sky = c.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, rgb(col.skyT)); sky.addColorStop(1, rgb(col.skyB));
+  c.fillStyle = sky; c.fillRect(0, 0, W, H);
+  if(C.biome === 'night'){                                       // stars
+    for(let i = 0; i < Math.round(10 + dens*60); i++){ const sx = ((ihash(i, k, 21)*W*2 - PW.x*0.05) % W + W) % W, sy = ihash(i, k, 22)*H*0.6, tw = Math.sin(t*3 + i) > 0.6 ? 2 : 1; c.fillStyle = tw === 2 ? '#ffffff' : 'rgb(200,200,255)'; c.fillRect(Math.round(sx), Math.round(sy), tw, tw); }
+  }
+  // sun / moon: chunky pixel disc with a highlight
+  const sunX = Math.round(((C.sunX*W - PW.x*0.02) % W + W) % W), sunY = Math.round(H*0.16), sunC = C.biome === 'night' ? [235, 235, 255] : C.biome === 'lava' ? [255, 90, 40] : [255, 240, 120];
+  c.fillStyle = rgb(sunC); c.fillRect(sunX - 6, sunY - 10, 12, 20); c.fillRect(sunX - 10, sunY - 6, 20, 12); c.fillRect(sunX - 8, sunY - 8, 16, 16);
+  c.fillStyle = rgb(mix(sunC, [255, 255, 255], 0.6)); c.fillRect(sunX - 6, sunY - 6, 5, 3); c.fillRect(sunX - 6, sunY - 3, 2, 3);
+  // ---- clouds: rounded pixel puffs on two parallax layers ----
+  for(let L = 0; L < 2; L++){
+    const par = L ? 0.22 : 0.12, n = Math.round(2 + dens*8);
+    for(let i = 0; i < n; i++){
+      const cw = 22 + ihash(i, k, 30 + L)*30, cx = Math.round(((ihash(i, k, 31 + L)*W*2 - PW.x*par - t*(3 + L*2)) % (W + cw*2) + W + cw*2) % (W + cw*2) - cw), cy = Math.round(6 + ihash(i, k, 32 + L)*H*0.32), ch = 8 + (cw*0.2|0);
+      const cc = L ? col.cloud : mix(col.cloud, col.skyB, 0.4);
+      c.fillStyle = outline; c.fillRect(cx - 1, cy + 3, cw + 2, ch - 4); c.fillRect(cx + 3, cy - 1, cw - 6, ch);   // dark rim
+      c.fillStyle = rgb(cc); c.fillRect(cx, cy + 3, cw, ch - 5); c.fillRect(cx + 4, cy, cw - 8, ch - 2); c.fillRect(cx + cw*0.3, cy - 3, cw*0.35, 4);
+      c.fillStyle = rgb(mix(cc, col.skyB, 0.4)); c.fillRect(cx + 2, cy + ch - 3, cw - 4, 2);                           // shaded underside
+    }
+  }
+  // ---- parallax hills: far (rounded lumps) and near (bigger lumps) ----
+  const hillLayers = [[0.15, col.hillF, 0.55, 0.28], [0.32, col.hillN, 0.72, 0.36]];   // parallax, colour, baseline (frac of H), amplitude
+  for(const [par, hc, base, amp] of hillLayers){
+    const hy = H*base + PW.camY*0.5;
+    for(let x = 0; x < W; x += 2){
+      const wx = (x + PW.x*par)*0.012*C.hillF;
+      const h = (Math.abs(Math.sin(wx*1.1 + k)) *0.65 + Math.abs(Math.sin(wx*2.9 + k*0.3))*0.25 + Math.abs(Math.sin(wx*0.4))*0.1)*H*amp;
+      const top = Math.round(hy - h);
+      c.fillStyle = outline; c.fillRect(x, top - 1, 2, 1);
+      c.fillStyle = rgb(hc); c.fillRect(x, top, 2, H - top);
+      c.fillStyle = rgb(mix(hc, [255, 255, 255], 0.35)); c.fillRect(x, top, 2, 2);                                       // lit ridge
+      if(((x + (PW.x*par|0)) & 15) === 0 && h > 6){ c.fillStyle = rgb(hc, 0.85); c.fillRect(x, top + 6, 2, H - top); }  // faint vertical shading stripes
+    }
+  }
+  // ---- ground columns (drawn per tile column, with pits, water in pits, bushes/flowers on top) ----
+  const cols = Math.ceil(W/T) + 2;
+  const waterY = gy(0) + T*0.5;
+  for(let ci = -1; ci < cols; ci++){
+    const i = scrollCol + ci, h = colH(i), x = Math.round(ci*T - colOff);
+    if(h === 0){                                                 // pit: water / lava with animated surface
+      c.fillStyle = rgb(col.water); c.fillRect(x, waterY, T, H - waterY);
+      c.fillStyle = rgb(mix(col.water, [255, 255, 255], 0.5)); if(((i + Math.floor(t*4)) & 1) === 0) c.fillRect(x + 2, waterY, 4, 2);
+      continue;
+    }
+    const top = gy(h), hl = colH(i - 1), hr = colH(i + 1);
+    // dirt body: checker of two browns, dark outline at edges
+    for(let y = top + T; y < H; y += T){ c.fillStyle = rgb(((i + ((y/T)|0)) & 1) ? col.dirt : col.dirtD); c.fillRect(x, y, T, T); c.fillStyle = rgb(col.dirtD, 0.8); c.fillRect(x + (i & 1 ? 1 : 4), y + 3, 3, 2); }
+    // grass cap: light top, main, dark underline
+    c.fillStyle = rgb(col.grass); c.fillRect(x, top, T, T);
+    c.fillStyle = rgb(col.grassL); c.fillRect(x, top, T, 2); c.fillRect(x + (i % 3)*2, top + 3, 2, 1);
+    c.fillStyle = outline; c.fillRect(x, top - 1, T, 1); c.fillRect(x, top + T - 1, T, 1);
+    if(hl < h) c.fillRect(x, top, 1, (hl === 0 ? H : gy(hl)) - top);                 // left cliff edge
+    if(hr < h) c.fillRect(x + T - 1, top, 1, (hr === 0 ? H : gy(hr)) - top);         // right cliff edge
+    // top decorations
+    const d = ihash(i + k, 41, 1)/(0.35 + dens*0.9);                 // more decoration as DENSITY rises
+    if(d < 0.12){                                                // bush
+      c.fillStyle = outline; c.fillRect(x - 3, top - 6, T + 6, 6); c.fillRect(x - 1, top - 8, T + 2, 2);
+      c.fillStyle = rgb(col.bush); c.fillRect(x - 2, top - 5, T + 4, 5); c.fillRect(x, top - 7, T, 2);
+      c.fillStyle = rgb(col.bushL); c.fillRect(x, top - 6, 3, 2); c.fillRect(x + 5, top - 4, 2, 1);
+    } else if(d < 0.30){                                         // flower in a palette colour
+      const fc = pal.rgb[Math.floor(ihash(i + k, 42, 1)*pal.rgb.length) % pal.rgb.length], sw = Math.round(Math.sin(t*2 + i)*0.6);
+      c.fillStyle = rgb(col.grass, 0.7); c.fillRect(x + 3 + sw, top - 4, 1, 4);
+      c.fillStyle = rgb(fc); c.fillRect(x + 2 + sw, top - 6, 3, 3); c.fillStyle = '#ffffff'; c.fillRect(x + 3 + sw, top - 5, 1, 1);
+    } else if(d < 0.36){                                         // spotted toadstool
+      c.fillStyle = 'rgb(240,230,210)'; c.fillRect(x + 3, top - 4, 2, 4);
+      c.fillStyle = rgb(P0); c.fillRect(x + 1, top - 7, 6, 3); c.fillRect(x + 2, top - 8, 4, 1);
+      c.fillStyle = '#ffffff'; c.fillRect(x + 2, top - 7, 1, 1); c.fillRect(x + 5, top - 6, 1, 1);
+    } else if(d > 0.94 && C.biome !== 'lava'){                   // tall tree: trunk + stacked round canopy
+      const th = 3 + Math.floor(ihash(i + k, 43, 1)*3);
+      c.fillStyle = rgb(col.dirtD); c.fillRect(x + 3, top - th*T, 2, th*T);
+      c.fillStyle = outline; c.fillRect(x - 4, top - th*T - 8, T + 8, 10);
+      c.fillStyle = rgb(col.bush); c.fillRect(x - 3, top - th*T - 7, T + 6, 8); c.fillRect(x - 1, top - th*T - 9, T + 2, 2);
+      c.fillStyle = rgb(col.bushL); c.fillRect(x - 1, top - th*T - 7, 4, 3);
+    }
+    // floating block platforms: 2-4 tiles wide, 3-5 tiles up, at the start of some segments
+    const s = segOf(i);
+    if((i % 6) === 1 && ihash(s + k, 51, 1) < C.plat*(0.3 + dens*1.3)){
+      const len = 2 + Math.floor(ihash(s + k, 52, 1)*3), up = 3 + Math.floor(ihash(s + k, 53, 1)*3), py = gy(segH(s) + up);
+      for(let b = 0; b < len; b++){
+        const bx = x + b*T; const gem = ihash(s + k, 60 + b, 1) < 0.25;
+        c.fillStyle = outline; c.fillRect(bx, py, T, T);
+        c.fillStyle = rgb(col.block); c.fillRect(bx + 1, py + 1, T - 2, T - 2);
+        c.fillStyle = rgb(col.blockL); c.fillRect(bx + 1, py + 1, T - 2, 1); c.fillRect(bx + 1, py + 1, 1, T - 2);
+        c.fillStyle = rgb(col.block, 0.7); c.fillRect(bx + 1, py + T - 2, T - 2, 1); c.fillRect(bx + T - 2, py + 1, 1, T - 2);
+        if(gem){ c.fillStyle = '#ffffff'; c.fillRect(bx + 3, py + 3, 2, 2); }                                       // rivet
+      }
+    }
+    // gems: bob up and down, bounce higher with bass; arcs over pits
+    const gemHere = h > 0 ? ihash(i + k, 71, 1) < C.gemD*0.22*(0.3 + dens*1.6) : ((i % 6) === 2 || (i % 6) === 3);
+    if(gemHere){
+      const gemC = pal.rgb[(i + k) % pal.rgb.length];
+      const bob = Math.sin(t*4 + i*0.9)*2 - PW.sm[0]*5, lift = h > 0 ? 2 + Math.floor(ihash(i + k, 72, 1)*3) : 3;
+      const gyy = Math.round((h > 0 ? gy(h) : gy(colH(i - 2) || colH(i + 2) || C.baseH)) - lift*T + bob), spin = Math.abs(Math.sin(t*3 + i)), gw = Math.max(1, Math.round(6*spin));
+      const gx = x + 4 - (gw >> 1);
+      c.fillStyle = outline; c.fillRect(gx - 1, gyy - 4, gw + 2, 8);
+      c.fillStyle = rgb(gemC); c.fillRect(gx, gyy - 3, gw, 6);
+      c.fillStyle = rgb(mix(gemC, [255, 255, 255], 0.6)); c.fillRect(gx, gyy - 3, Math.max(1, gw >> 1), 2);
+    }
+  }
+  // ---- sparkles: little plus-shaped glints, more with treble ----
+  const want = Math.round((3 + PW.sm[3]*18)*(0.4 + eff.density));
+  while(PW.sparks.length < want) PW.sparks.push({ x: Math.random()*W, y: Math.random()*H*0.85, age: 0, life: 0.3 + Math.random()*0.5, c: pal.rgb[Math.floor(Math.random()*pal.rgb.length)] });
+  for(let i = PW.sparks.length - 1; i >= 0; i--){
+    const s = PW.sparks[i]; s.age += dt; s.x -= dt*(28 + PW.sm[0]*50)*0.5; if(s.age > s.life || s.x < -4){ PW.sparks.splice(i, 1); continue; }
+    const big = s.age/s.life < 0.5, x = Math.round(s.x), y = Math.round(s.y);
+    c.fillStyle = rgb(s.c); c.fillRect(x, y, 1, 1); if(big){ c.fillRect(x - 1, y, 1, 1); c.fillRect(x + 1, y, 1, 1); c.fillRect(x, y - 1, 1, 1); c.fillRect(x, y + 1, 1, 1); }
+  }
+  bctx.imageSmoothingEnabled = false;
+  bctx.drawImage(PW.oc, 0, 0, bw, bh);
+  bctx.imageSmoothingEnabled = true;
+}
+
+// NEON CITY: a dense wireframe vector city in true 3D - the camera glides smoothly (no bob) down a boulevard
+// between deep blocks of towers, ziggurats, spired towers, wedges, drum towers and bridged slabs, every one drawn
+// purely with lines: all twelve edges of every box (hidden edges dimmer), floor lines, window mullions, cross
+// bracing, mast lattices, and glowing neon outlines. Pipes and cables run along and across the street, braced
+// gantries span it, dart-shaped cars and drones trace light lines between the towers, and a perspective grid
+// fades into haze. Seeded via ihash along the boulevard. Bass surges edge glow and speed, mids add traffic,
+// treble flickers the neon; DENSITY sets block depth, line detail and traffic.
+function drawNeonCity(t){
+  const pal = PALETTES[state.palette], gain = 0.25 + state.audio * 1.25, np = pal.rgb.length;
+  bctx.globalCompositeOperation = 'source-over';
+  const NC = drawNeonCity;
+  if(!NC.init){ NC.init = true; NC.z = 0; NC.lastT = t; NC.sm = new Float32Array(4); NC.cars = []; }
+  if(NC.seed !== state.seed){
+    const r = mulberry32((state.seed|0) ^ 0x6e0c);
+    NC.cfg = { k: Math.floor(r()*9999), street: 3 + r()*1.6, blockL: 3 + r()*1.5, camH: 2.2 + r()*1.4, fogK: 0.9 + r()*0.5, gantry: 0.3 + r()*0.25, base: [4 + r()*6, 3 + r()*5, 10 + r()*12] };
+    NC.seed = state.seed; NC.cars.length = 0;
+  }
+  const C = NC.cfg, k = C.k, dens = eff.density;
+  let dt = t - NC.lastT; NC.lastT = t; if(dt < 0 || dt > 0.25) dt = 0;
+  for(let b = 0; b < 4; b++) NC.sm[b] += (clamp(A[b]*gain*1.3, 0, 1) - NC.sm[b]) * Math.min(1, dt*8);
+  const pace = (2.4 + NC.sm[0]*3)*10;                                 // 10x glide; the traffic below is camera-relative so it keeps its own pace
+  NC.z += dt*pace;
+  const tt = t*10;                                                  // fast clock for camera sway and every blinking / chasing / flickering light
+  // ---- camera: smooth glide, gentle lateral sway, slow banked yaw and roll ----
+  const camX = Math.sin(tt*0.07)*C.street*0.45, camY = C.camH + Math.sin(tt*0.05)*0.4, yaw = Math.sin(tt*0.06)*0.14, roll = Math.sin(tt*0.045)*0.05;
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cr = Math.cos(roll), sr = Math.sin(roll);
+  const f = bw*0.7, near = 0.25, far = 48;
+  const proj = (x, y, z) => {
+    const dx = x - camX, dy = y - camY, dz = z - NC.z;
+    const rx = dx*cy - dz*sy, rz = dx*sy + dz*cy;
+    const ex = rx*cr - dy*sr, ey = rx*sr + dy*cr;
+    return [bw*0.5 + ex*f/rz, bh*0.5 - ey*f/rz, rz];
+  };
+  const rgb = (c, m = 1, a = 1) => `rgba(${clamp(c[0]*m,0,255)|0},${clamp(c[1]*m,0,255)|0},${clamp(c[2]*m,0,255)|0},${clamp(a,0,1)})`;
+  const mix = (a, b, q) => [lerp(a[0], b[0], q), lerp(a[1], b[1], q), lerp(a[2], b[2], q)];
+  const fogAt = (z) => clamp(1 - Math.exp(-Math.max(0, z)/(far*0.3)/C.fogK), 0, 1);
+  const glow = 0.5 + NC.sm[0]*0.5, flick = NC.sm[3];
+  const paper = C.base, ink = pal.rgb, inkAt = (i) => ink[((Math.round(i) % np) + np) % np];
+  const hzY = proj(camX, camY, NC.z + 1000)[1], hzX = bw*0.5 - yaw*f*0.6;
+  // ---- backdrop (the only fill): near-black gradient ----
+  const g = bctx.createLinearGradient(0, 0, 0, bh); g.addColorStop(0, rgb(mix(paper, [0, 0, 0], 0.6))); g.addColorStop(0.55, rgb(paper)); g.addColorStop(1, rgb(mix(paper, [0, 0, 0], 0.4)));
+  bctx.fillStyle = g; bctx.fillRect(0, 0, bw, bh);
+  // ---- line primitives ----
+  bctx.lineCap = 'round';
+  // pen pressure: every line gets its own stable, skewed-random thickness (mostly fine, sometimes heavy), buffer-scaled
+  const S = bw/512, wv = (hid) => S*(0.55 + Math.pow(ihash(hid, k, 99), 1.8)*2.0);
+  const seg = (p, q, col, a, w = 1, hid = 0) => { bctx.strokeStyle = rgb(col, 1, a); bctx.lineWidth = w*wv(hid); bctx.beginPath(); bctx.moveTo(p[0], p[1]); bctx.lineTo(q[0], q[1]); bctx.stroke(); };
+  const dropP = 0.4 - dens*0.35;                                     // low DENSITY leaves more edges undrawn
+  const edge = (p, q, col, a, w, hid) => {                          // hand-drawn edge: sometimes missing, partial or doubled
+    const h = ihash(hid, k, 7);
+    if(h < dropP) return;
+    if(h < dropP + 0.2){ const u = 0.4 + ihash(hid, k, 8)*0.5; seg(p, [lerp(p[0], q[0], u), lerp(p[1], q[1], u)], col, a, w); }
+    else seg(p, q, col, a, w, hid);
+    if(h > 0.84) seg([p[0] + 1.5, p[1] + 1], [q[0] + 1.5, q[1] + 1], col, a*0.35, w, hid + 1);
+  };
+  const ok = (...ps) => ps.every(p => p[2] >= near);
+  // ---- ground grid ----
+  const gridC = inkAt(1);
+  const nL = 6 + Math.round(dens*8);
+  for(let i = -nL; i <= nL; i++){
+    const x = i*C.street*(0.5 - dens*0.2), p0 = proj(x, 0, NC.z + near + 0.1), p1 = proj(x, 0, NC.z + far);
+    if(!ok(p0, p1)) continue;
+    seg(p0, p1, gridC, Math.abs(i) <= 2 ? 0.4 : 0.16, 1, i + 400);
+  }
+  const zs = 1.6 - dens*0.8;
+  for(let i = 0; i < Math.round(far/zs); i++){
+    const z = Math.floor(NC.z/zs)*zs + i*zs, p0 = proj(-C.street*4, 0, z), p1 = proj(C.street*4, 0, z), fog = fogAt(z - NC.z);
+    if(!ok(p0, p1)) continue;
+    seg(p0, p1, gridC, (1 - fog)*0.25, 1, i + 450);
+  }
+  // ---- wireframe solids ----
+  const drawBox = (x0, x1, y0, y1, z0, z1, col, id, opts) => {
+    const zc = (z0 + z1)*0.5 - NC.z, fog = fogAt(zc); if(fog > 0.985 || z1 - NC.z < near + 0.05) return;
+    const c000 = proj(x0, y0, z0), c100 = proj(x1, y0, z0), c010 = proj(x0, y1, z0), c110 = proj(x1, y1, z0);
+    const c001 = proj(x0, y0, z1), c101 = proj(x1, y0, z1), c011 = proj(x0, y1, z1), c111 = proj(x1, y1, z1);
+    if(!ok(c000, c100, c010, c110, c001, c101, c011, c111)) return;
+    const line = mix(col, paper, fog*0.85), aL = (1 - fog)*(0.55 + glow*0.45), aH = aL*0.4;
+    const camSide = camX < x0 ? -1 : camX > x1 ? 1 : 0, above = camY > y1;
+    // near face
+    edge(c000, c100, line, aL, 1, id*13 + 1); edge(c010, c110, line, aL, 1.3, id*13 + 2); edge(c000, c010, line, aL, 1, id*13 + 3); edge(c100, c110, line, aL, 1, id*13 + 4);
+    // far face (hidden, dim)
+    edge(c001, c101, line, aH, 1, id*13 + 5); edge(c011, c111, line, above ? aL*0.8 : aH, 1, id*13 + 6); edge(c001, c011, line, camSide < 0 ? aL : aH, 1, id*13 + 7); edge(c101, c111, line, camSide > 0 ? aL : aH, 1, id*13 + 8);
+    // depth edges
+    edge(c000, c001, line, camSide < 0 ? aL : aH, 1, id*13 + 9); edge(c010, c011, line, camSide < 0 || above ? aL : aH, 1.2, id*13 + 10);
+    edge(c100, c101, line, camSide > 0 ? aL : aH, 1, id*13 + 11); edge(c110, c111, line, camSide > 0 || above ? aL : aH, 1.2, id*13 + 12);
+    if(opts.plain || fog > 0.8) return;
+    // stray diagonal (impressionist slash) across the near face
+    if(ihash(id, k, 9) < 0.1 + dens*0.4){ const u = 0.2 + ihash(id, k, 10)*0.6; seg(c010, [lerp(c000[0], c100[0], u), lerp(c000[1], c100[1], u)], inkAt(id + 2), aL*0.5, 1, id*13 + 20); }
+    // floor lines + mullions on the visible side face and the near face
+    const faces = [[c000, c010, c100, c110]];
+    if(camSide < 0) faces.push([c000, c010, c001, c011]); else if(camSide > 0) faces.push([c100, c110, c101, c111]);
+    const nF = Math.max(2, Math.round((y1 - y0)*(0.5 + dens*1.4))), nM = 2 + Math.round(dens*5);
+    bctx.strokeStyle = rgb(line, 1, aL*0.35); bctx.lineWidth = wv(id*13 + 21)*0.8; bctx.beginPath();
+    for(const [b0, t0, b1, t1] of faces){
+      for(let i = 1; i < nF; i++){ if(ihash(id, i, 11) < 0.25) continue; const v = i/nF; bctx.moveTo(lerp(b0[0], t0[0], v), lerp(b0[1], t0[1], v)); bctx.lineTo(lerp(b1[0], t1[0], v), lerp(b1[1], t1[1], v)); }
+      for(let i = 1; i < nM; i++){ if(ihash(id, i + 50, 11) < 0.3) continue; const u = i/nM; bctx.moveTo(lerp(b0[0], b1[0], u), lerp(b0[1], b1[1], u)); bctx.lineTo(lerp(t0[0], t1[0], u), lerp(t0[1], t1[1], u)); }
+    }
+    bctx.stroke();
+    // cross bracing on the side face
+    if(faces.length > 1 && ihash(id, k, 18) < 0.1 + dens*0.5){ const [b0, t0, b1, t1] = faces[1]; bctx.strokeStyle = rgb(line, 1, aL*0.3); bctx.beginPath(); for(let i = 0; i < 3; i++){ const v0 = i/3, v1 = (i + 1)/3; bctx.moveTo(lerp(b0[0], t0[0], v0), lerp(b0[1], t0[1], v0)); bctx.lineTo(lerp(b1[0], t1[0], v1), lerp(b1[1], t1[1], v1)); bctx.moveTo(lerp(b1[0], t1[0], v0), lerp(b1[1], t1[1], v0)); bctx.lineTo(lerp(b0[0], t0[0], v1), lerp(b0[1], t0[1], v1)); } bctx.stroke(); }
+    // neon outline on the side face (glow stroke + bright stroke + inner glyph lines)
+    if(faces.length > 1 && ihash(id, k, 12) < 0.2 + dens*0.6){
+      const [b0, t0, b1, t1] = faces[1], nc = inkAt(id*3 + 1), u0 = 0.15 + ihash(id, k, 13)*0.4, u1 = u0 + 0.2 + ihash(id, k, 14)*0.3, v0 = 0.1 + ihash(id, k, 15)*0.5, v1 = v0 + 0.1 + ihash(id, k, 16)*0.25;
+      const fl = ihash(id, k, 17) < 0.3 ? (Math.sin(tt*19 + id) > -0.2 - flick ? 1 : 0.3) : 1, a = (1 - fog)*fl;
+      const q = (u, v) => [lerp(lerp(b0[0], b1[0], u), lerp(t0[0], t1[0], u), v), lerp(lerp(b0[1], b1[1], u), lerp(t0[1], t1[1], u), v)];
+      const r0 = q(u0, v0), r1 = q(u1, v0), r2 = q(u1, v1), r3 = q(u0, v1);
+      bctx.lineJoin = 'round';
+      const pw = wv(id*13 + 22);
+      for(const [w, aa] of [[7, 0.18*glow], [3.5, 0.35*glow], [1.2, 0.95]]){ bctx.strokeStyle = rgb(w > 2 ? nc : mix(nc, [255, 255, 255], 0.5), 1, a*aa); bctx.lineWidth = w*pw; bctx.beginPath(); bctx.moveTo(r0[0], r0[1]); bctx.lineTo(r1[0], r1[1]); bctx.lineTo(r2[0], r2[1]); bctx.lineTo(r3[0], r3[1]); bctx.closePath(); bctx.stroke(); }
+      bctx.strokeStyle = rgb([255, 255, 255], 1, a*0.8); bctx.lineWidth = 1; bctx.beginPath();
+      const ng = 3 + Math.floor(ihash(id, k, 19)*4);
+      for(let i = 0; i < ng; i++){ const u = lerp(u0, u1, (i + 0.5)/ng), g0 = q(u, lerp(v0, v1, 0.2 + ihash(id, i, 21)*0.3)), g1 = q(u, lerp(v0, v1, 0.6 + ihash(id, i, 22)*0.3)); bctx.moveTo(g0[0], g0[1]); bctx.lineTo(g1[0], g1[1]); }
+      bctx.stroke(); bctx.lineJoin = 'miter';
+    }
+  };
+  const drawSpire = (x0, x1, y0, h, z0, z1, col, id) => {
+    const apex = proj((x0 + x1)*0.5, y0 + h, (z0 + z1)*0.5), b = [proj(x0, y0, z0), proj(x1, y0, z0), proj(x1, y0, z1), proj(x0, y0, z1)];
+    if(!ok(apex, ...b)) return;
+    const fog = fogAt((z0 + z1)*0.5 - NC.z), line = mix(col, paper, fog*0.85), aL = (1 - fog)*(0.55 + glow*0.45);
+    for(let i = 0; i < 4; i++){ edge(b[i], apex, line, aL, 1, id*17 + i); edge(b[i], b[(i + 1) % 4], line, aL*0.6, 1, id*17 + 5 + i); }
+    for(let j = 1; j < 3; j++){ const v = j/3; bctx.strokeStyle = rgb(line, 1, aL*0.35); bctx.lineWidth = wv(id*17 + 9 + j); bctx.beginPath(); for(let i = 0; i <= 4; i++){ const p = b[i % 4], x = lerp(p[0], apex[0], v), y = lerp(p[1], apex[1], v); if(i) bctx.lineTo(x, y); else bctx.moveTo(x, y); } bctx.stroke(); }   // contour rings up the spire
+  };
+  const drawPrism = (cx, cz, r, y0, y1, col, id) => {
+    const fog = fogAt(cz - NC.z), line = mix(col, paper, fog*0.85), aL = (1 - fog)*(0.55 + glow*0.45);
+    const N = 8, bot = [], top = [];
+    for(let i = 0; i < N; i++){ const a = i/N*TAU; bot.push(proj(cx + Math.cos(a)*r, y0, cz + Math.sin(a)*r)); top.push(proj(cx + Math.cos(a)*r, y1, cz + Math.sin(a)*r)); }
+    if(!ok(...bot, ...top)) return;
+    for(let i = 0; i < N; i++){
+      const j = (i + 1) % N, a = i/N*TAU + Math.PI/N, front = Math.cos(a)*(camX - cx) + Math.sin(a)*(NC.z - cz) > 0;
+      edge(top[i], top[j], line, front ? aL : aL*0.4, 1.2, id*23 + i); edge(bot[i], bot[j], line, front ? aL*0.7 : aL*0.3, 1, id*23 + 8 + i); edge(bot[i], top[i], line, front ? aL : aL*0.4, 1, id*23 + 16 + i);
+    }
+    const nR = 2 + Math.round(dens*4);
+    bctx.strokeStyle = rgb(line, 1, aL*0.35); bctx.lineWidth = wv(id*23 + 24); bctx.beginPath();
+    for(let j = 1; j < nR; j++){ const v = j/nR; for(let i = 0; i <= N; i++){ const x = lerp(bot[i % N][0], top[i % N][0], v), y = lerp(bot[i % N][1], top[i % N][1], v); if(i) bctx.lineTo(x, y); else bctx.moveTo(x, y); } }
+    bctx.stroke();
+  };
+  // ---- block list: 2-5 rows deep per side, sorted far -> near ----
+  const firstBlock = Math.floor(NC.z/C.blockL), nBlocks = Math.ceil(far/C.blockL) + 1, rows = 2 + Math.round(dens*3);
+  const items = [], gantries = [];
+  for(let bi = firstBlock; bi <= firstBlock + nBlocks; bi++){
+    const z0 = bi*C.blockL, z1 = z0 + C.blockL;
+    if(ihash(bi, k, 40) < C.gantry*(0.35 + dens*1.1)) gantries.push({ bi, z: (z0 + z1)*0.5 });
+    for(let side = -1; side <= 1; side += 2){
+      for(let row = 0; row < rows; row++){
+        const id = bi*7 + side*3 + row*31, h1 = ihash(id, k, 1), h2 = ihash(id, k, 2), h3 = ihash(id, k, 3);
+        if(h1 < 0.3 - dens*0.26) continue;                              // sparser blocks at low DENSITY
+        const depth = 1.6 + h3*2.4, gap = 0.4 + h2*0.9;
+        const xin = side*(C.street + row*(depth + gap)), xout = xin + side*depth, x0 = Math.min(xin, xout), x1 = Math.max(xin, xout);
+        const zz0 = z0 + h2*0.8, zz1 = z1 - h1*0.8, H = 4 + h3*h3*28 + row*3, kind = Math.floor(ihash(id, k, 4)*6);
+        items.push({ z: zz0, x0, x1, zz0, zz1, H, kind, col: inkAt(bi + row + (side > 0 ? 1 : 0)), id, side, row });
+      }
+    }
+  }
+  items.sort((a, b) => b.z - a.z);
+  for(const it of items){
+    const { x0, x1, zz0, zz1, H, kind, col, id } = it;
+    if(kind === 0) drawBox(x0, x1, 0, H, zz0, zz1, col, id, {});
+    else if(kind === 1){ let a = x0, b = x1, c = zz0, d = zz1, y = 0; for(let s = 0; s < 3; s++){ const hh = H*(0.5 - s*0.12); drawBox(a, b, y, y + hh, c, d, col, id + s*101, { plain: s > 0 }); y += hh; const in_ = (b - a)*0.16, inz = (d - c)*0.16; a += in_; b -= in_; c += inz; d -= inz; } }
+    else if(kind === 2){ drawBox(x0, x1, 0, H*0.7, zz0, zz1, col, id, {}); drawSpire(x0, x1, H*0.7, H*0.6, zz0, zz1, col, id); }
+    else if(kind === 3){
+      drawBox(x0, x1, 0, H*0.6, zz0, zz1, col, id, {});
+      const hi = it.side < 0 ? x1 : x0, lo = it.side < 0 ? x0 : x1, p0 = proj(lo, H*0.6, zz0), p1 = proj(hi, H, zz0), p2 = proj(hi, H, zz1), p3 = proj(lo, H*0.6, zz1), p4 = proj(hi, H*0.6, zz0), p5 = proj(hi, H*0.6, zz1);
+      if(ok(p0, p1, p2, p3, p4, p5)){ const fog = fogAt(it.z - NC.z), line = mix(col, paper, fog*0.85), aL = (1 - fog)*0.85; edge(p0, p1, line, aL, 1.2, id*5 + 1); edge(p1, p2, line, aL, 1.2, id*5 + 2); edge(p3, p2, line, aL*0.6, 1, id*5 + 3); edge(p4, p1, line, aL, 1, id*5 + 4); edge(p5, p2, line, aL*0.5, 1, id*5 + 5); }
+    }
+    else if(kind === 4){ drawPrism((x0 + x1)*0.5, (zz0 + zz1)*0.5, Math.min(x1 - x0, zz1 - zz0)*0.5, 0, H, col, id); drawBox(x0 + (x1 - x0)*0.3, x1 - (x1 - x0)*0.3, H, H + 1.5, zz0 + (zz1 - zz0)*0.3, zz1 - (zz1 - zz0)*0.3, col, id + 7, { plain: true }); }
+    else { const mz = (zz0 + zz1)*0.5, gz = (zz1 - zz0)*0.18; drawBox(x0, x1, 0, H, zz0, mz - gz, col, id, {}); drawBox(x0, x1, 0, H*0.85, mz + gz, zz1, col, id + 3, {}); drawBox(x0 + (x1 - x0)*0.35, x1 - (x1 - x0)*0.35, H*0.55, H*0.62, mz - gz, mz + gz, col, id + 9, { plain: true }); }
+    // mast lattice with beacon
+    if(H > 10 && ihash(id, k, 20) < 0.15 + dens*0.6){
+      const mx = (x0 + x1)*0.5, mz = (zz0 + zz1)*0.5, top = kind === 2 ? H*1.3 : kind === 4 ? H + 1.5 : H, mh = 3 + ihash(id, k, 21)*5, fog = fogAt(mz - NC.z), line = mix(col, paper, fog*0.8), aL = (1 - fog)*0.8;
+      const p0 = proj(mx, top, mz), p1 = proj(mx, top + mh, mz), l0 = proj(mx - 0.5, top, mz), r0 = proj(mx + 0.5, top, mz);
+      if(ok(p0, p1, l0, r0)){ seg(p0, p1, line, aL, 1, id*19 + 1); seg(l0, p1, line, aL*0.5, 1, id*19 + 2); seg(r0, p1, line, aL*0.5, 1, id*19 + 3); seg(l0, r0, line, aL*0.5, 1, id*19 + 4);
+        for(let j = 1; j < 3; j++){ const q0 = proj(mx - 0.35, top + mh*j/3, mz), q1 = proj(mx + 0.35, top + mh*j/3, mz); if(ok(q0, q1)) seg(q0, q1, line, aL*0.5, 1, id*19 + 5 + j); }
+        if(Math.sin(tt*3 + id) > 0.2){ bctx.strokeStyle = rgb([255, 70, 70], 1, 1 - fog); bctx.lineWidth = 1.5; bctx.beginPath(); bctx.arc(p1[0], p1[1], 2, 0, TAU); bctx.stroke(); } }
+    }
+  }
+  // ---- cables sagging across the boulevard with hanging lamps ----
+  for(let i = 0; i < Math.round(3 + dens*7); i++){                      // cables between the facades
+    const z = Math.floor(NC.z/4)*4 + i*4 + ihash(i, k, 45)*3, y = 6 + ihash(i, k, 46)*9, fog = fogAt(z - NC.z), l = proj(-C.street, y, z), r = proj(C.street, y, z), m = proj(0, y - 1.2, z);
+    if(!ok(l, r, m) || fog > 0.95) continue;
+    bctx.strokeStyle = rgb(inkAt(i + 3), 1, (1 - fog)*0.55); bctx.lineWidth = wv(i + 600); bctx.beginPath(); bctx.moveTo(l[0], l[1]); bctx.quadraticCurveTo(m[0], m[1] + (m[1] - l[1])*0.6, r[0], r[1]); bctx.stroke();
+    const nLp = Math.round(2 + dens*6);
+    for(let j = 1; j < nLp; j++){ const u = j/nLp, x = lerp(l[0], r[0], u), yy = lerp(l[1], r[1], u) + (m[1] - (l[1] + r[1])*0.5)*4*u*(1 - u)*0.9; bctx.strokeStyle = rgb(inkAt(i + j), 1, (1 - fog)*(0.4 + 0.5*Math.abs(Math.sin(tt*2 + i + j)))); bctx.beginPath(); bctx.arc(x, yy, 1.5, 0, TAU); bctx.stroke(); }   // hanging lamps
+  }
+  // ---- gantries: braced beams across the street with chasing lights and hanging neon outline ----
+  for(const gt of gantries){
+    const y = 7 + ihash(gt.bi, k, 41)*5, xl = -C.street - 0.4, xr = C.street + 0.4, fog = fogAt(gt.z - NC.z), col = inkAt(gt.bi);
+    const p = [proj(xl, y, gt.z), proj(xr, y, gt.z), proj(xr, y + 0.6, gt.z), proj(xl, y + 0.6, gt.z), proj(xl, 0, gt.z), proj(xr, 0, gt.z), proj(xl, y, gt.z + 0.5), proj(xr, y, gt.z + 0.5)];
+    if(!ok(...p) || fog > 0.97) continue;
+    const line = mix(col, paper, fog*0.85), aL = (1 - fog)*0.9;
+    edge(p[0], p[1], line, aL, 1.3, gt.bi*29 + 1); edge(p[3], p[2], line, aL, 1, gt.bi*29 + 2); edge(p[4], p[0], line, aL*0.6, 1, gt.bi*29 + 3); edge(p[5], p[1], line, aL*0.6, 1, gt.bi*29 + 4); edge(p[6], p[7], line, aL*0.5, 1, gt.bi*29 + 5); edge(p[0], p[3], line, aL, 1, gt.bi*29 + 6); edge(p[1], p[2], line, aL, 1, gt.bi*29 + 7);
+    const nB = 4 + Math.round(dens*8);
+    bctx.strokeStyle = rgb(line, 1, aL*0.45); bctx.lineWidth = wv(gt.bi*29 + 10); bctx.beginPath();
+    for(let i = 0; i < nB; i++){ const u0 = i/nB, u1 = (i + 1)/nB; bctx.moveTo(lerp(p[0][0], p[1][0], u0), lerp(p[0][1], p[1][1], u0)); bctx.lineTo(lerp(p[3][0], p[2][0], u1), lerp(p[3][1], p[2][1], u1)); bctx.moveTo(lerp(p[3][0], p[2][0], u0), lerp(p[3][1], p[2][1], u0)); bctx.lineTo(lerp(p[0][0], p[1][0], u1), lerp(p[0][1], p[1][1], u1)); }
+    bctx.stroke();
+    const nLt = Math.round(5 + dens*10);
+    for(let i = 0; i < nLt; i++){ const u = (i + 0.5)/nLt, on = ((i + Math.floor(tt*5)) % 3) === 0, q = [lerp(p[0][0], p[1][0], u), lerp(p[0][1], p[1][1], u)]; bctx.strokeStyle = rgb(on ? [255, 255, 255] : col, 1, (1 - fog)*(on ? 0.95 : 0.45)); bctx.beginPath(); bctx.arc(q[0], q[1], 1.5, 0, TAU); bctx.stroke(); }
+    if(ihash(gt.bi, k, 42) < 0.55){
+      const nc = inkAt(gt.bi + 2), b = [proj(-1.5, y - 0.5, gt.z), proj(1.5, y - 0.5, gt.z), proj(1.5, y - 2, gt.z), proj(-1.5, y - 2, gt.z)];
+      if(ok(...b)){
+        bctx.lineJoin = 'round';
+        const pw = wv(gt.bi*29 + 11);
+        for(const [w, aa] of [[7, 0.18*glow], [3.5, 0.35*glow], [1.2, 0.95]]){ bctx.strokeStyle = rgb(w > 2 ? nc : mix(nc, [255, 255, 255], 0.5), 1, (1 - fog)*aa); bctx.lineWidth = w*pw; bctx.beginPath(); bctx.moveTo(b[0][0], b[0][1]); bctx.lineTo(b[1][0], b[1][1]); bctx.lineTo(b[2][0], b[2][1]); bctx.lineTo(b[3][0], b[3][1]); bctx.closePath(); bctx.stroke(); }
+        bctx.lineJoin = 'miter';
+        bctx.strokeStyle = rgb([255, 255, 255], 1, (1 - fog)*0.8); bctx.lineWidth = 1; bctx.beginPath(); for(let i = 0; i < 5; i++){ const u = (i + 0.5)/5; bctx.moveTo(lerp(b[0][0], b[1][0], u), lerp(b[0][1], b[1][1], u) + 3); bctx.lineTo(lerp(b[3][0], b[2][0], u), lerp(b[3][1], b[2][1], u) - 3); } bctx.stroke();
+        seg(b[0], p[0].map((v, i) => lerp(b[0][i], p[3][i], 0.5)), line, aL*0.6, 1, gt.bi*29 + 8); seg(b[1], p[1].map((v, i) => lerp(b[1][i], p[2][i], 0.5)), line, aL*0.6, 1, gt.bi*29 + 9);   // hangers
+      }
+    }
+  }
+  // ---- traffic: outlined darts, chevrons and drone diamonds with light trails ----
+  const wantCars = Math.round((8 + NC.sm[1]*16)*(0.4 + dens));
+  while(NC.cars.length < wantCars){
+    const kd = Math.random(), lr = Math.random() < 0.5 ? -1 : 1, col = ink[Math.floor(Math.random()*np)];
+    // dz is distance ahead of the camera, so the ships keep their own pace no matter how fast the camera glides
+    if(kd < 0.3) NC.cars.push({ mode: 'toward', x: (Math.random() - 0.5)*C.street*1.4, y: 5 + Math.random()*12, dz: far, vz: -(7 + Math.random()*8), col });
+    else if(kd < 0.5) NC.cars.push({ mode: 'away', x: (Math.random() - 0.5)*C.street*1.4, y: 5 + Math.random()*12, dz: 2, vz: 7 + Math.random()*8, col });
+    else if(kd < 0.68) NC.cars.push({ mode: 'drone', x: (Math.random() - 0.5)*C.street*1.8, y: 4 + Math.random()*9, dz: 3 + Math.random()*14, ph: Math.random()*TAU, col });
+    else NC.cars.push({ mode: 'cross', x: -lr*(C.street*4), y: 4 + Math.random()*16, dz: 4 + Math.random()*30, vx: lr*(6 + Math.random()*10), col });
+  }
+  if(NC.cars.length > wantCars + 6) NC.cars.length = wantCars;
+  bctx.globalCompositeOperation = 'lighter';
+  for(let i = NC.cars.length - 1; i >= 0; i--){
+    const c = NC.cars[i];
+    if(c.mode === 'toward' || c.mode === 'away'){ c.dz += c.vz*dt; if(c.dz < near + 0.5 || c.dz > far + 4){ NC.cars.splice(i, 1); continue; } }
+    else if(c.mode === 'drone'){ c.x += Math.sin(t*0.9 + c.ph)*dt*2; c.y += Math.cos(t*1.3 + c.ph)*dt; }
+    else { c.x += c.vx*dt; if(Math.abs(c.x) > C.street*4.2){ NC.cars.splice(i, 1); continue; } }
+    const cz = NC.z + c.dz, p = proj(c.x, c.y, cz); if(p[2] < near) continue;
+    const fog = fogAt(c.dz), s = f/p[2]*0.16, a = (1 - fog)*0.9;
+    if(p[0] < -40 || p[0] > bw + 40) continue;
+    const dir = c.mode === 'toward' ? [0, -1] : c.mode === 'away' ? [0, 1] : c.mode === 'cross' ? [Math.sign(c.vx), 0] : [0, 0];
+    const tail = proj(c.x - dir[0]*3, c.y, cz - dir[1]*3);
+    if(c.mode !== 'drone' && tail[2] > near){ const g2 = bctx.createLinearGradient(p[0], p[1], tail[0], tail[1]); g2.addColorStop(0, rgb(c.col, 1, a*0.8)); g2.addColorStop(1, rgb(c.col, 1, 0)); bctx.strokeStyle = g2; bctx.lineWidth = Math.max(1, s*0.35); bctx.beginPath(); bctx.moveTo(p[0], p[1]); bctx.lineTo(tail[0], tail[1]); bctx.stroke(); }
+    if(c.pw === undefined) c.pw = S*(0.6 + Math.pow(Math.random(), 1.8)*1.6);
+    bctx.strokeStyle = rgb(c.col, 1.2, a); bctx.lineWidth = c.pw; bctx.beginPath();
+    if(c.mode === 'drone'){ bctx.moveTo(p[0], p[1] - s*0.5); bctx.lineTo(p[0] + s*0.8, p[1]); bctx.lineTo(p[0], p[1] + s*0.5); bctx.lineTo(p[0] - s*0.8, p[1]); bctx.closePath(); bctx.moveTo(p[0] - s*0.8, p[1]); bctx.lineTo(p[0] + s*0.8, p[1]); }
+    else if(c.mode === 'cross'){ const d = Math.sign(c.vx); bctx.moveTo(p[0] + d*s*1.4, p[1]); bctx.lineTo(p[0] - d*s*1.0, p[1] - s*0.45); bctx.lineTo(p[0] - d*s*0.6, p[1]); bctx.lineTo(p[0] - d*s*1.0, p[1] + s*0.45); bctx.closePath(); }
+    else { bctx.moveTo(p[0], p[1] - s*0.35); bctx.lineTo(p[0] + s*1.1, p[1] + s*0.35); bctx.lineTo(p[0], p[1] + s*0.15); bctx.lineTo(p[0] - s*1.1, p[1] + s*0.35); bctx.closePath(); }
+    bctx.stroke();
+    bctx.strokeStyle = rgb(c.mode === 'away' ? [255, 70, 60] : [255, 255, 255], 1, a); bctx.beginPath(); bctx.arc(p[0], p[1], 1.2, 0, TAU); bctx.stroke();
+  }
+  bctx.globalCompositeOperation = 'source-over';
+  bctx.lineCap = 'butt'; bctx.lineJoin = 'miter';
+}
+
+// SCRATCH: a pencil line frantically scrubbing side to side, like someone sloppily filling in a box to scratch
+// out the display - overshooting the edges, drifting down the box a row at a time, occasionally jumping to a new
+// box. Each stroke fades out over a few seconds so the screen never fills. Draws only lines (no backdrop), so it
+// works as an overlay in slot B. Bass speeds the hand, treble makes it shakier, DENSITY adds more pencils.
+function drawScratch(t){
+  const pal = PALETTES[state.palette], gain = 0.25 + state.audio * 1.25;
+  bctx.globalCompositeOperation = pal.blend === 'lighter' ? 'lighter' : 'source-over';
+  const SC = drawScratch;
+  if(!SC.pens){ SC.pens = []; SC.lastT = t; SC.sm = new Float32Array(4); }
+  let dt = t - SC.lastT; SC.lastT = t; if(dt < 0 || dt > 0.25) dt = 0;
+  for(let b = 0; b < 4; b++) SC.sm[b] += (clamp(A[b]*gain*1.3, 0, 1) - SC.sm[b]) * Math.min(1, dt*8);
+  const FADE = 2.0, want = clamp(1 + Math.round(eff.density*2.4), 1, 3);
+  const S = bw/512;                                                  // scale so speed/thickness look the same at every FIDELITY
+  const newW = () => S*(0.7 + Math.pow(Math.random(), 1.6)*4.5);      // random pencil pressure: mostly thin, sometimes heavy
+  const newBox = (p) => {                                            // pick a box somewhere on screen, slightly tilted
+    p.vert = Math.random() < 0.2;                                     // 20% of boxes are scrubbed up-and-down instead
+    // box in scrub space: u = scrub axis (spans the full display), v = the axis the rows step along
+    const L = p.vert ? bh : bw, span = p.vert ? bw : bh, h = span*(0.2 + Math.random()*0.5);
+    p.box = { u0: 0, uLen: L, v0: Math.random()*(span - h), vLen: h, tilt: (Math.random() - 0.5)*0.12 };
+    p.u = Math.random()*L; p.v = p.box.v0 + (Math.random() < 0.5 ? 0 : h); p.dir = Math.random() < 0.5 ? -1 : 1;
+    p.down = p.v > p.box.v0 + h*0.5 ? -1 : 1; p.rowStep = 4 + Math.random()*9; p.slope = (Math.random() - 0.5)*0.5; p.rows = 0; p.rowsMax = 10 + Math.random()*30;
+    p.col = pal.rgb[Math.floor(Math.random()*pal.rgb.length)]; p.w = newW();
+  };
+  while(SC.pens.length < want){ const p = { pts: [] }; newBox(p); p.t = t; p.pause = 0; SC.pens.push(p); }
+  if(SC.pens.length > want) SC.pens.length = want;
+  const speed = S*(9500 + SC.sm[0]*5000)*dt, shake = S*(1.2 + SC.sm[3]*4);   // frantic scrubbing hand (buffer-scaled); treble shakes it
+  for(const p of SC.pens){
+    if(p.pause > 0){ p.pause -= dt; }
+    else {
+      let left = speed;
+      while(left > 0){                                               // advance the pencil in short jittered steps
+        const step = Math.min(left, S*(6 + Math.random()*8)); left -= step;
+        // sloppy: mostly horizontal, jitter grows with treble, small random slope, occasional wobble
+        const jit = (Math.random() - 0.5)*shake*2;
+        // each pass is a straight stroke along the scrub axis at an angle chosen when the direction last flipped, plus hand jitter
+        p.u += p.dir*step; p.v += jit + (p.box.tilt + p.slope)*p.dir*step;
+        const over = S*(4 + Math.random()*30);                           // how far past the edge this pass overshoots
+        if((p.dir > 0 && p.u > p.box.u0 + p.box.uLen + over) || (p.dir < 0 && p.u < p.box.u0 - over)){
+          p.dir = -p.dir; p.v += p.down*p.rowStep*(0.6 + Math.random()*0.9); p.rows++; p.slope = (Math.random() - 0.5)*0.5;                          // new stroke angle for this pass
+          if(Math.random() < 0.7) p.w = newW();                                 // and usually a new pressure
+          if(Math.random() < 0.06) p.down = -p.down;                  // lose the plot and go back for a bit
+          if(p.v < p.box.v0 - 6 || p.v > p.box.v0 + p.box.vLen + 6) p.down = -p.down;
+          p.v = clamp(p.v, -(p.vert ? bw : bh)*0.05, (p.vert ? bw : bh)*1.05);
+        }
+        p.x = p.vert ? p.v : p.u; p.y = p.vert ? p.u : p.v;
+        if(Math.random() < 0.02) p.w = newW();                               // pressure also wanders mid-stroke
+        p.pts.push({ x: p.x, y: p.y, t, w: p.w });
+        if(p.pts.length > 30000) p.pts.shift();
+        if(p.rows > p.rowsMax){                                       // done with this box: lift the pencil, start another
+          p.pts.push(null); newBox(p); p.pause = 0.15 + Math.random()*0.7; break;
+        }
+      }
+    }
+    while(p.pts.length && (p.pts[0] === null || t - p.pts[0].t > FADE)) p.pts.shift();
+    // draw: one path per alpha band so the fade reads without a strokeStyle change per segment
+    const bands = 10;
+    for(let b = 0; b < bands; b++){
+      const a0 = b/bands, a1 = (b + 1)/bands, alpha = (1 - (a0 + a1)*0.5)*0.95;
+      bctx.strokeStyle = `rgba(${p.col[0]},${p.col[1]},${p.col[2]},${alpha})`; bctx.lineCap = 'round'; bctx.lineJoin = 'round';
+      let curW = -1, pen = false;
+      for(let i = 1; i < p.pts.length; i++){
+        const q = p.pts[i], q0 = p.pts[i - 1];
+        if(!q || !q0){ pen = false; continue; }
+        const age = (t - q.t)/FADE;
+        if(age < a0 || age >= a1){ pen = false; continue; }
+        if(q.w !== curW){ if(curW >= 0) bctx.stroke(); curW = q.w; bctx.lineWidth = curW*(1 - a0*0.35); bctx.beginPath(); pen = false; }   // width changes start a new path
+        if(!pen){ bctx.moveTo(q0.x, q0.y); pen = true; }
+        bctx.lineTo(q.x, q.y);
+      }
+      if(curW >= 0) bctx.stroke();
+    }
+    // graphite smudge under the freshest strokes: a faint wide echo of the last few points
+    if(p.pts.length > 12){
+      bctx.strokeStyle = `rgba(${p.col[0]},${p.col[1]},${p.col[2]},0.12)`; bctx.lineWidth = p.w*3.5; bctx.beginPath(); let pen = false;
+      for(let i = Math.max(1, p.pts.length - 40); i < p.pts.length; i++){ const q = p.pts[i], q0 = p.pts[i - 1]; if(!q || !q0){ pen = false; continue; } if(!pen){ bctx.moveTo(q0.x, q0.y); pen = true; } bctx.lineTo(q.x, q.y); }
+      bctx.stroke();
+    }
+  }
+  bctx.lineCap = 'butt'; bctx.lineJoin = 'miter';
+  bctx.globalCompositeOperation = 'source-over';
+}
+
 // ---------------------------------------------------------------------------------------------
 // Registry: SHAPES (UI order/labels) and DRAW (id -> render function). Ids are what presets store.
 // ---------------------------------------------------------------------------------------------
@@ -4607,7 +5591,10 @@ const SHAPES = [
   { id:'solar', label:'SOLAR' }, { id:'liminal', label:'LIMINAL' }, { id:'sequencer', label:'SEQUENCER' },
   { id:'modsynth', label:'SYNTH' }, { id:'web', label:'WEB' }, { id:'daisies', label:'DAISIES' },
   { id:'vaporland', label:'VAPORWAVE' }, { id:'asteroids', label:'ASTEROIDS' }, { id:'stickdancer', label:'DANCER' },
-  { id:'cityflyover', label:'CITY' }, { id:'jellyfish', label:'JELLYFISH' }
+  { id:'cityflyover', label:'CITY' }, { id:'jellyfish', label:'JELLYFISH' },
+  { id:'oilscape', label:'OIL PAINT' }, { id:'pixelworld', label:'PIXEL WORLD' },
+  { id:'neoncity', label:'NEON CITY' }, { id:'scratch', label:'SCRATCH' },
+  { id:'skyline', label:'SKYLINE' }, { id:'amoebas', label:'AMOEBAS' }
 ];
 
 const DRAW = {
@@ -4624,7 +5611,8 @@ const DRAW = {
   liminal:drawLiminalMaze, sequencer:drawSequencer, modsynth:drawModularSynth,
   web:drawWeb, daisies:drawDaisyGarden, vaporland:drawVaporLandscape,
   asteroids:drawAsteroids, stickdancer:drawStickDancer, cityflyover:drawPixelCity,
-  jellyfish:drawJellyfish
+  jellyfish:drawJellyfish, oilscape:drawOilscape, pixelworld:drawPixelWorld,
+  neoncity:drawNeonCity, scratch:drawScratch, skyline:drawSkylinePaint, amoebas:drawAmoebas
 };
 
 // Film/video filters. FX holds each filter's parameters, read by postProcess() and filmOverlays().
@@ -4653,59 +5641,70 @@ const PP = { lut:new Float32Array(256), lutF:-1, rowSh:null, blk:null, blkSeed:-
 
 // INVERT COLORS: flips RGB of every drawn pixel in the low-res buffer. Transparent pixels (the override
 // background layer) are left alone so BLACK / WHITE / GREEN SCREEN keep their exact colour.
-function invertBuffer(){
-  const img = bctx.getImageData(0, 0, bw, bh), d = img.data;
-  for(let i = 0; i < d.length; i += 4){
+function invertData(d){
+  for(let i = 0, n = d.length; i < n; i += 4){
     if(d[i+3] === 0) continue;
     d[i] = 255 - d[i]; d[i+1] = 255 - d[i+1]; d[i+2] = 255 - d[i+2];
   }
+}
+
+// One readback / one upload for the whole per-pixel chain (INVERT -> COMIC INK -> post-process). Each stage
+// used to do its own getImageData/putImageData; sharing the ImageData saves a GPU sync per active stage.
+function pixelStage(){
+  const doInv = state.invert, doComic = eff.comic > 0.01, doPost = postNeeded();
+  if(!doInv && !doComic && !doPost) return;
+  const img = bctx.getImageData(0, 0, bw, bh), d = img.data;
+  if(doInv) invertData(d);
+  if(doComic) comicInkData(d, eff.comic);
+  if(doPost) postProcessData(d);
   bctx.putImageData(img, 0, 0);
 }
 
 // COMIC INK (first stage of the effects chain): Sobel edge detection lays down black ink outlines, colours are
 // flattened to a few poster levels and saturation is pushed, giving the Final Cut "Comic" look. `a` = 0..1.
-const CI = { lum:null };
-function comicInk(a){
-  const img = bctx.getImageData(0, 0, bw, bh), d = img.data, n = bw*bh;
+const CI = { lum:null, post:new Float32Array(256), postLevels:-1 };
+function comicInkData(d, a){
+  const n = bw*bh;
   if(!CI.lum || CI.lum.length !== n) CI.lum = new Float32Array(n);
   const L = CI.lum;
   for(let i = 0, p = 0; i < n; i++, p += 4) L[i] = d[p]*0.299 + d[p+1]*0.587 + d[p+2]*0.114;
 
   const levels = Math.round(lerp(14, 4, a)), step = 255/(levels - 1);
+  if(CI.postLevels !== levels){ for(let v = 0; v < 256; v++) CI.post[v] = Math.round(v/step)*step; CI.postLevels = levels; }   // poster LUT instead of 3 rounds per pixel
+  const post = CI.post;
   const thr = lerp(170, 44, a), invThr = 1/thr;   // lower threshold = more edges become ink
   const satB = 1 + a*0.6;                          // punchier flat colour
   const inkA = Math.min(1, a*1.6);                 // ink opacity ramps up quickly
 
+  const xMax = bw - 1;
   for(let y = 0; y < bh; y++){
     const yA = (y > 0 ? y - 1 : y)*bw, yB = y*bw, yC = (y < bh - 1 ? y + 1 : y)*bw;
     for(let x = 0; x < bw; x++){
-      const xA = x > 0 ? x - 1 : x, xC = x < bw - 1 ? x + 1 : x;
-      const gx = (L[yA + xC] + 2*L[yB + xC] + L[yC + xC]) - (L[yA + xA] + 2*L[yB + xA] + L[yC + xA]);
-      const gy = (L[yC + xA] + 2*L[yC + x] + L[yC + xC]) - (L[yA + xA] + 2*L[yA + x] + L[yA + xC]);
+      // Sobel; the row above/below is pre-clamped per row, only the two edge columns need the x clamp
+      const xA = x > 0 ? x - 1 : 0, xC = x < xMax ? x + 1 : xMax;
+      const a0 = L[yA + xA], a1 = L[yA + x], a2 = L[yA + xC], c0 = L[yC + xA], c1 = L[yC + x], c2 = L[yC + xC];
+      const gx = (a2 + 2*L[yB + xC] + c2) - (a0 + 2*L[yB + xA] + c0);
+      const gy = (c0 + 2*c1 + c2) - (a0 + 2*a1 + a2);
       let ink = ((gx < 0 ? -gx : gx) + (gy < 0 ? -gy : gy) - thr)*invThr;
       ink = (ink < 0 ? 0 : ink > 1 ? 1 : ink)*inkA;
 
       const p = (yB + x)*4, l = L[yB + x];
       let r = l + (d[p] - l)*satB, g = l + (d[p+1] - l)*satB, b = l + (d[p+2] - l)*satB;
-      r += (Math.round(r/step)*step - r)*a; g += (Math.round(g/step)*step - g)*a; b += (Math.round(b/step)*step - b)*a;
+      r += (post[r < 0 ? 0 : r > 255 ? 255 : r|0] - r)*a; g += (post[g < 0 ? 0 : g > 255 ? 255 : g|0] - g)*a; b += (post[b < 0 ? 0 : b > 255 ? 255 : b|0] - b)*a;
       const k = 1 - ink;
-      r *= k; g *= k; b *= k;
-      d[p]   = r < 0 ? 0 : r > 255 ? 255 : r;
-      d[p+1] = g < 0 ? 0 : g > 255 ? 255 : g;
-      d[p+2] = b < 0 ? 0 : b > 255 ? 255 : b;
+      d[p] = r*k; d[p+1] = g*k; d[p+2] = b*k;                       // Uint8ClampedArray clamps + rounds on store
       if(ink > 0.02){ const ia = ink*255; if(d[p+3] < ia) d[p+3] = ia; }   // ink also outlines shapes over a transparent backdrop
     }
   }
-  bctx.putImageData(img, 0, 0);
 }
 
-function postProcess(){
+function postNeeded(){
+  const F = FX[state.filter];
+  return !(eff.fidelity >= 0.999 && (!F || state.filter === 'none') && eff.fxLevel <= 0.001);
+}
+function postProcessData(d){
   const f = eff.fidelity;
   const F = FX[state.filter];
-  if(f >= 0.999 && (!F || state.filter === 'none') && eff.fxLevel <= 0.001) return;
-
-  const img = bctx.getImageData(0, 0, bw, bh);
-  const d = img.data;
   const npx = bw*bh*4;
 
   // posterise LUT (blend between two level counts so the slider is continuous)
@@ -4753,22 +5752,31 @@ function postProcess(){
   if(needSrc) sharedSrcBuffer.set(d.subarray(0, npx));
   const src = needSrc ? sharedSrcBuffer : null;
 
+  // fast path (filter NONE / nothing but posterise + grain): tight loop, no per-pixel feature branches
+  if(!src && !tinted && sat >= 1 && !blk && staticP <= 0){
+    for(let i = 0; i < npx; i += 4){
+      const gn = (frand()*2 - 1)*grain;
+      d[i] = lut[d[i]] + gn; d[i+1] = lut[d[i+1]] + gn; d[i+2] = lut[d[i+2]] + gn;
+    }
+    return;
+  }
+
   for(let y = 0; y < bh; y++){
-    let i = y*bw*4;
-    const rs = rowSh ? rowSh[y] : 0;
-    const blkRow = blk ? (y >> 3)*bxs : 0;
+    const row = y*bw, rsI = rowSh ? (rowSh[y]|0) : 0, blkRow = blk ? (y >> 3)*bxs : 0, xMax = bw - 1;
+    let i = row*4;
     for(let x = 0; x < bw; x++, i += 4){
       let r, g, b2;
       if(src){
-        let xr = x + rs; xr = xr < 0 ? 0 : (xr >= bw ? bw - 1 : xr);
-        const xi = i + ((xr - x)|0)*4;
+        // integer row shift + chroma offsets, clamped at the frame edges
+        let xs = x + rsI; xs = xs < 0 ? 0 : (xs > xMax ? xMax : xs);
+        const xi = (row + xs) << 2;
         if(ca > 0){
-          let xR = xr + ca; xR = xR >= bw ? bw - 1 : xR;
-          let xL = xr - ca; xL = xL < 0 ? 0 : xL;
-          r = src[xi + ((xR - xr)|0)*4]; g = src[xi + 1]; b2 = src[xi + ((xL - xr)|0)*4 + 2];
+          let xR = xs + ca; if(xR > xMax) xR = xMax;
+          let xL = xs - ca; if(xL < 0) xL = 0;
+          r = src[(row + xR) << 2]; g = src[xi + 1]; b2 = src[((row + xL) << 2) + 2];
         } else { r = src[xi]; g = src[xi + 1]; b2 = src[xi + 2]; }
         if(soft){
-          const xi2 = i + ((x < bw - 1 ? 1 : 0))*4;
+          const xi2 = x < xMax ? i + 4 : i;
           r = r*invSoft + src[xi2]*soft; g = g*invSoft + src[xi2 + 1]*soft; b2 = b2*invSoft + src[xi2 + 2]*soft;
         }
       } else { r = d[i]; g = d[i+1]; b2 = d[i+2]; }
@@ -4779,13 +5787,9 @@ function postProcess(){
       if(staticP > 0 && frand() < staticP){ const sv = (frand()*255)|0; r = r*0.2 + sv*0.8; g = g*0.2 + sv*0.8; b2 = b2*0.2 + sv*0.8; }
 
       const gn = (frand()*2 - 1)*grain;
-      r = lut[r < 0 ? 0 : r > 255 ? 255 : r|0] + gn; g = lut[g < 0 ? 0 : g > 255 ? 255 : g|0] + gn; b2 = lut[b2 < 0 ? 0 : b2 > 255 ? 255 : b2|0] + gn;
-      d[i]   = r < 0 ? 0 : r > 255 ? 255 : r;
-      d[i+1] = g < 0 ? 0 : g > 255 ? 255 : g;
-      d[i+2] = b2 < 0 ? 0 : b2 > 255 ? 255 : b2;
+      d[i] = lut[r < 0 ? 0 : r > 255 ? 255 : r|0] + gn; d[i+1] = lut[g < 0 ? 0 : g > 255 ? 255 : g|0] + gn; d[i+2] = lut[b2 < 0 ? 0 : b2 > 255 ? 255 : b2|0] + gn;   // store clamps
     }
   }
-  bctx.putImageData(img, 0, 0);
 }
 
 // Vector overlays on the buffer for the film filters: scratches, dust, hairs, stains.
@@ -5029,9 +6033,7 @@ function frame(now){
   bctx.globalAlpha = 1.0;
   bctx.globalCompositeOperation = 'source-over';
 
-  if(state.invert) invertBuffer();
-  if(eff.comic > 0.01) comicInk(eff.comic);   // effects chain stage 1
-  postProcess();
+  pixelStage();                        // INVERT -> COMIC INK (effects chain stage 1) -> posterise/grain/filter, one readback
   filmOverlays(tw);
 
   const targetScale = lerp(0.12, 1.0, Math.pow(eff.fidelity, 1.25));
