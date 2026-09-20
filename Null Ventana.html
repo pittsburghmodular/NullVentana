@@ -138,6 +138,10 @@
     </feComponentTransfer>
     <feColorMatrix id="ogSat" type="saturate" values="1"/>
   </filter>
+  <!-- FEEDBACK KEY: alpha is computed from colour (chroma) or brightness (luma); the matrix is set by fbKeyBuild() -->
+  <filter id="fbKey" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feColorMatrix id="fbKeyM" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/>
+  </filter>
   <filter id="caR" x="-10%" y="-10%" width="120%" height="120%"><feColorMatrix type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/><feOffset id="caRO" dx="2" dy="0"/></filter>
   <filter id="caB" x="-10%" y="-10%" width="120%" height="120%"><feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 1 0  0 0 0 1 0"/><feOffset id="caBO" dx="-2" dy="0"/></filter>
   <!-- RGB SPLIT: pure channel isolation (offsets are applied by drawImage position) -->
@@ -410,6 +414,14 @@
         <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModFeedback">0%</b></span>
         <input type="range" class="aud-mod-slider" id="cAudModFeedback" min="-100" max="100" value="0"/>
       </div>
+      <span class="sub-lbl" style="display:block;margin-top:6px;" title="like the key section of a video mixer: the chosen colour (or brightness) of the live picture is cut out, and the feedback loop shows through the hole">FEEDBACK KEY</span>
+      <div class="seg" id="fbKeys"></div>
+      <div class="mod-group" style="border-left-color:rgba(120,255,160,0.5);">
+        <span class="sub-lbl">KEY LEVEL <b id="vFbKeyLevel">50%</b></span>
+        <input type="range" id="cFbKeyLevel" min="0" max="100" value="50" title="how much of the picture is keyed out: low = only the pure key colour, high = a wide range around it"/>
+        <span class="sub-lbl">KEY GAIN <b id="vFbKeyGain">50%</b></span>
+        <input type="range" id="cFbKeyGain" min="0" max="100" value="50" title="edge of the key: low = soft, semi-transparent edges, high = hard cut"/>
+      </div>
     </div>
   </div>
   <div class="feature-box compact">
@@ -427,6 +439,10 @@
       <input type="range" id="cOutMid" min="-100" max="100" value="0" title="raise or lower the mids"/>
       <span class="sub-lbl">HIGHLIGHTS <b id="vOutHi">0</b></span>
       <input type="range" id="cOutHi" min="-100" max="100" value="0" title="boost or roll off the brights"/>
+      <span class="sub-lbl">TINT COLOR <b id="vOutTintHue">0°</b></span>
+      <input type="range" id="cOutTintHue" min="0" max="360" value="0" title="hue of the colour tint: red, yellow, green, cyan, blue, magenta, back to red" style="background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);border-radius:4px;"/>
+      <span class="sub-lbl">TINT AMOUNT <b id="vOutTintAmt">0%</b></span>
+      <input type="range" id="cOutTintAmt" min="0" max="100" value="0" title="how strongly the output is pushed toward the tint colour"/>
     </div>
     <button id="bOutReset" class="toggle-full" style="margin-top:4px;" title="return all output grade controls to neutral">RESET GRADE</button>
   </div>
@@ -594,10 +610,10 @@ const state = {
   fidelity:0.50, palette:0, filter:'none', fxLevel:0.7, audio:0.5, scan:true,
   trails:0, blur:0, glitch:0, seed:(Math.random()*0xffff)|0, beatReseed: false,
   comic:0, split:0, modComic:0.0, modSplit:0.0, lfoRateComic:0.25, lfoRateSplit:0.25, audModComic:0.0, audModSplit:0.0,
-  feedback:0, fbZoom:0.12, fbRot:5.7, fbHue:0, modFeedback:0.0, lfoRateFeedback:0.25, audModFeedback:0.0,
+  feedback:0, fbZoom:0.12, fbRot:5.7, fbHue:0, fbKey:'off', fbKeyLevel:0.5, fbKeyGain:0.5, modFeedback:0.0, lfoRateFeedback:0.25, audModFeedback:0.0,
   invert:false, bgMode:'palette', noBgA:false, noBgB:false, videoLoop:false, videoGranular:false, grainMax:2.0, grainFade:0.15, srcMix:0, vidIn:0, vidOut:1, palAudio:false,
   camExp:0, camTemp:0, camSat:1, camSh:0, camMid:0, camHi:0,
-  outExp:0, outTemp:0, outSat:1, outSh:0, outMid:0, outHi:0,
+  outExp:0, outTemp:0, outSat:1, outSh:0, outMid:0, outHi:0, outTintHue:0, outTintAmt:0,
   modRate: 0.0, modMix: 0.0, modDen: 0.0, modFid: 0.0, modFxLvl: 0.0, modTrails: 0.0, modBlur: 0.0, modGlitch: 0.0,
   lfoRateRate: 0.25, lfoRateMix: 0.25, lfoRateDen: 0.25, lfoRateFid: 0.25, lfoRateFxLvl: 0.25, lfoRateTrails: 0.25, lfoRateBlur: 0.25, lfoRateGlitch: 0.25,
   audModRate: 0.0, audModMix: 0.0, audModDen: 0.0, audModFid: 0.0, audModFxLvl: 0.0, audModTrails: 0.0, audModBlur: 0.0, audModGlitch: 0.0,
@@ -767,6 +783,46 @@ CanvasRenderingContext2D.prototype.fillRect = function(x, y, w, h){
   }
   return _protoFillRect.call(this, x, y, w, h);
 };
+
+// ---- FEEDBACK KEY (modelled on a video mixer's key section): the live picture is the foreground, the feedback loop
+// is the background. CHROMA keys cut out green or blue, LUMA keys cut out black or white. The key signal is a linear
+// mix of R,G,B (k: green = G - (R+B)/2, blue = B - (R+G)/2, white = luma, black = 1 - luma, all 0..1) and the
+// foreground alpha is clamp(1 - gain*(k - threshold)): KEY LEVEL lowers the threshold so more is cut, KEY GAIN sets
+// how steep the edge is. It runs on the GPU through the #fbKey colour matrix.
+const FB_KEYS = [
+  { id:'off',   label:'OFF',          tip:'no key: feedback is added over the whole picture' },
+  { id:'green', label:'CHROMA GREEN', tip:'green in the live picture is replaced by the feedback loop (try BACKGROUND: GREEN SCREEN)', w:[-0.5, 1, -0.5], o:0 },
+  { id:'blue',  label:'CHROMA BLUE',  tip:'blue in the live picture is replaced by the feedback loop', w:[-0.5, -0.5, 1], o:0 },
+  { id:'black', label:'LUMA BLACK',   tip:'dark areas of the live picture are replaced by the feedback loop', w:[-0.299, -0.587, -0.114], o:1 },
+  { id:'white', label:'LUMA WHITE',   tip:'bright areas of the live picture are replaced by the feedback loop', w:[0.299, 0.587, 0.114], o:0 }
+];
+let fbKeySig = '';
+function fbKeyBuild(){
+  const sig = state.fbKey + '|' + state.fbKeyLevel + '|' + state.fbKeyGain;
+  if(sig === fbKeySig) return; fbKeySig = sig;
+  const m = FB_KEYS.find(k => k.id === state.fbKey); if(!m || !m.w) return;
+  const g = 2 + Math.pow(state.fbKeyGain, 2)*58, thr = 0.95 - state.fbKeyLevel*0.9;     // alpha = 1 + g*thr - g*k
+  const row = [-g*m.w[0], -g*m.w[1], -g*m.w[2], 0, 1 + g*thr - g*m.o].map(v => v.toFixed(4)).join(' ');
+  const el = document.getElementById('fbKeyM'); if(el) el.setAttribute('values', '1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  ' + row);
+}
+function setFbKey(id){
+  if(!FB_KEYS.some(k => k.id === id)) id = 'off';
+  state.fbKey = id; fbArmed = false;                     // the loop memory restarts clean in the new mode
+  [document, popoutWin && !popoutWin.closed ? popoutWin.document : null].forEach(doc => {
+    const el = doc && doc.getElementById('fbKeys'); if(!el) return;
+    for(let i = 0; i < el.children.length; i++) el.children[i].classList.toggle('on', FB_KEYS[i].id === id);
+  });
+}
+function syncFbKey(){
+  [document, popoutWin && !popoutWin.closed ? popoutWin.document : null].forEach(doc => { if(!doc) return;
+    const a = doc.getElementById('vFbKeyLevel'), b = doc.getElementById('vFbKeyGain');
+    if(a) a.textContent = Math.round(state.fbKeyLevel*100) + '%'; if(b) b.textContent = Math.round(state.fbKeyGain*100) + '%'; });
+}
+function buildFbKeyButtons(targetDoc){
+  const el = targetDoc.getElementById('fbKeys'); if(!el) return;
+  el.innerHTML = '';
+  FB_KEYS.forEach(m => { const b = targetDoc.createElement('button'); b.textContent = m.label; b.title = m.tip; b.addEventListener('click', ()=>setFbKey(m.id)); el.appendChild(b); });
+}
 
 // ---- BACKGROUND MODE / INVERT helpers ----
 const BG_MODES = [
@@ -1099,16 +1155,24 @@ function setSrcMix(v){
 // Same maths as the camera grade, but applied to the whole view as the last step of the chain. With canvas
 // filters available it runs on the GPU through the #outGrade SVG filter (per-channel transfer tables + saturate
 // matrix, rebuilt only when a control moves); otherwise it falls back to a per-pixel LUT pass on the view.
+// Fully saturated RGB (0..1) for a hue in degrees.
+function tintRgb(h){ const f = n => { const k = (n + h/30) % 12; return 0.5 - 0.5*Math.max(-1, Math.min(k - 3, 9 - k, 1)); }; return [f(0), f(8), f(4)]; }
 const OGRADE = { key:'', r:new Float32Array(256), g:new Float32Array(256), b:new Float32Array(256), tables:null };
 function outGradeActive(){
-  return state.outExp !== 0 || state.outTemp !== 0 || state.outSat !== 1 || state.outSh !== 0 || state.outMid !== 0 || state.outHi !== 0;
+  return state.outExp !== 0 || state.outTemp !== 0 || state.outSat !== 1 || state.outSh !== 0 || state.outMid !== 0 || state.outHi !== 0 || state.outTintAmt > 0;
 }
 function outGradeBuild(){
-  const key = [state.outExp, state.outTemp, state.outSat, state.outSh, state.outMid, state.outHi].join('|');
+  const key = [state.outExp, state.outTemp, state.outSat, state.outSh, state.outMid, state.outHi, state.outTintHue, state.outTintAmt].join('|');
   if(OGRADE.key === key) return;
   OGRADE.key = key;
   const gainE = Math.pow(2, state.outExp), tmp = state.outTemp;
-  const mulR = 1 + 0.28*tmp, mulG = 1 + 0.06*tmp, mulB = 1 - 0.28*tmp;
+  let mulR = 1 + 0.28*tmp, mulG = 1 + 0.06*tmp, mulB = 1 - 0.28*tmp;
+  // COLOR TINT: a gel of the chosen hue. Each channel is scaled toward the tint colour by TINT AMOUNT; the tint is
+  // normalised to constant luma (capped) so moderate amounts shift the colour without darkening the picture.
+  if(state.outTintAmt > 0){
+    const tc = tintRgb(state.outTintHue), k = Math.min(2.2, 1/Math.max(0.05, tc[0]*0.299 + tc[1]*0.587 + tc[2]*0.114)), a = state.outTintAmt;
+    mulR *= (1 - a) + a*tc[0]*k; mulG *= (1 - a) + a*tc[1]*k; mulB *= (1 - a) + a*tc[2]*k;
+  }
   const sh = state.outSh*0.4, mid = state.outMid*0.4, hi = state.outHi*0.4;
   const tone = (x) => {
     x = clamp(x, 0, 1);
@@ -1156,6 +1220,10 @@ function syncOutGrade(){
   upd('vOutSh', (state.outSh > 0 ? '+' : '') + Math.round(state.outSh*100));
   upd('vOutMid', (state.outMid > 0 ? '+' : '') + Math.round(state.outMid*100));
   upd('vOutHi', (state.outHi > 0 ? '+' : '') + Math.round(state.outHi*100));
+  upd('vOutTintHue', Math.round(state.outTintHue) + '°');
+  upd('vOutTintAmt', Math.round(state.outTintAmt*100) + '%');
+  const tc = tintRgb(state.outTintHue), css = `rgb(${tc.map(v => Math.round(v*255)).join(',')})`;
+  [document, popoutWin && !popoutWin.closed ? popoutWin.document : null].forEach(d => { const e = d && d.getElementById('vOutTintHue'); if(e) e.style.color = css; });
 }
 // Cover-fit a <video> element into the buffer at the given opacity.
 function drawCover(el, alpha){
@@ -1670,7 +1738,7 @@ function drawScope(t){
   const win = Math.round(N*0.5);
   let trig = 0;
   for(let i = 1; i < N - win; i++){ if(SC.buf[i-1] < 0 && SC.buf[i] >= 0){ trig = i; break; } }
-  const cx = bw*0.5, cy = bh*0.5, W = bw*0.92, H = bh*0.84, x0 = cx - W/2;
+  const cx = bw*0.5, cy = bh*0.5, W = bw, H = bh*0.84, x0 = 0;      // trace spans the full display width
   const phos = pal.rgb[1 % pal.rgb.length], phos2 = pal.rgb[2 % pal.rgb.length];
   const vGain = (0.9 + state.audio*1.6) * (live ? 8 : 0.5);
   const hot = clamp(0.5 + A[0]*gain*0.4 + A[2]*gain*0.3, 0, 1);
@@ -1825,76 +1893,15 @@ function drawTunnel(t){
       const lit = 0.35 + 0.65*Math.max(0, -(mx*Math.cos(zc*0.4 + TU.twist) + my*Math.sin(zc*0.4 + TU.twist)) / (Math.hypot(mx, my) || 1));
       const pa = m3Proj(a, 0, f), pb = m3Proj(b, 0, f), pc = m3Proj(c, 0, f), pd = m3Proj(d, 0, f);
       bctx.fillStyle = m3Rgba(col, fog*lit*(0.5 + ((base + r + s) % 2)*0.35)*(0.8 + glow*0.4), 1);
-      bctx.beginPath(); bctx.moveTo(pa[0], pa[1]); bctx.lineTo(pb[0], pb[1]); bctx.lineTo(pc[0], pc[1]); bctx.lineTo(pd[0], pd[1]); bctx.closePath(); bctx.fill();
+      bctx.beginPath(); bctx.moveTo(pa[0], pa[1]); bctx.lineTo(pb[0], pb[1]); bctx.lineTo(pc[0], pc[1]); bctx.lineTo(pd[0], pd[1]); bctx.closePath();
+      // BACKGROUND OFF: half the panels (fixed per world ring + side, so they don't flicker as the rings scroll) are
+      // left unfilled - only their frame is drawn - so whatever is underneath shows through the tunnel wall
+      if(!(bgStrip && hash1((base + r)*31.7 + s*7.3) < 0.5)) bctx.fill();
       bctx.strokeStyle = m3Rgba(col, fog*1.6, fog*0.9); bctx.lineWidth = Math.max(1, (1 - zc/(rings*step))*3); bctx.stroke();
     }
   }
 }
 
-// PLASMA: classic plasma field.
-function drawPlasma(t){
-  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
-  const numPoles = 3 + Math.round(eff.density * 4), ringsPerPole = 4 + Math.round(eff.density * 5);
-  const poles = [];
-  for(let p = 0; p < numPoles; p++){
-    const px = bw*(0.5 + 0.38*Math.sin(t*(0.42 + 0.16*p) + p*1.7) + (p%2 ? 0.05 : -0.05)*A[0]*gain);
-    const py = bh*(0.5 + 0.38*Math.cos(t*(0.36 + 0.19*((p+2)%4)) + p*2.3) + (p%2 ? -0.05 : 0.05)*A[1]*gain);
-    const poleR = minD*(0.28 + 0.18*Math.sin(t*0.7 + p))*(1 + A[p%4]*gain*0.6);
-    poles.push({ x: px, y: py, r: Math.max(12, poleR) });
-    const c = pal.rgb[p % pal.rgb.length];
-    const g = bctx.createRadialGradient(px, py, 0, px, py, poleR);
-    g.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${clamp(0.48 + A[2]*gain*0.4, 0, 0.95)})`);
-    g.addColorStop(0.5, `rgba(${c[0]},${c[1]},${c[2]},${clamp(0.18 + A[p%4]*gain*0.2, 0, 0.6)})`);
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    bctx.fillStyle = g;
-    bctx.beginPath();
-    bctx.arc(px, py, poleR, 0, TAU);
-    bctx.fill();
-  }
-  for(let p = 0; p < numPoles; p++){
-    const pole = poles[p], c = pal.rgb[(p + 1) % pal.rgb.length];
-    for(let r = 1; r <= ringsPerPole; r++){
-      const phase = fract(t*0.42*(0.8 + 0.4*(p%3)) + r/ringsPerPole + A[p%4]*gain*0.2);
-      const ringRad = phase * minD * 0.65;
-      if(ringRad < 2) continue;
-      bctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${clamp((1 - phase)*(0.55 + A[3]*gain*0.45), 0, 1)})`;
-      bctx.lineWidth = Math.max(1, (bw/260)*(1 - phase*0.6) + A[0]*gain*3.5);
-      bctx.beginPath();
-      const steps = 30;
-      for(let s = 0; s <= steps; s++){
-        const ang = (s / steps) * TAU;
-        let wave = Math.sin(ang * 4 + t * 2 + p) * (ringRad * 0.08);
-        for(let o = 0; o < numPoles; o++){
-          if(o === p) continue;
-          const d = Math.hypot(pole.x + Math.cos(ang)*ringRad - poles[o].x, pole.y + Math.sin(ang)*ringRad - poles[o].y);
-          wave += Math.sin(d*0.08 - t*2.6) * (minD*0.02*(1 + A[1]*gain));
-        }
-        const currR = Math.max(1, ringRad + wave);
-        const qx = pole.x + Math.cos(ang)*currR, qy = pole.y + Math.sin(ang)*currR;
-        if(s === 0) bctx.moveTo(qx, qy); else bctx.lineTo(qx, qy);
-      }
-      bctx.closePath();
-      bctx.stroke();
-    }
-  }
-  const ribbonCount = 3 + Math.round(eff.density * 4);
-  for(let i = 0; i < ribbonCount; i++){
-    const c = pal.rgb[(i + Math.floor(t * 0.2)) % pal.rgb.length];
-    const yCenter = bh * ((i + 0.5) / ribbonCount);
-    bctx.beginPath();
-    bctx.lineWidth = Math.max(1.5, minD * 0.008 + A[0] * gain * 4);
-    bctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${clamp(0.4 + A[2]*gain*0.5, 0, 0.95)})`;
-    for(let x = 0; x <= bw; x += 5){
-      let yDisp = Math.sin(x*0.02 + t*1.5 + i*1.4)*(bh*0.06) + Math.sin(x*0.04 - t*0.9 + i)*(bh*0.04);
-      for(let p = 0; p < poles.length; p++){
-        const dist = Math.hypot(x - poles[p].x, (yCenter + yDisp) - poles[p].y);
-        yDisp += Math.sin(dist*0.06 - t*2.5) * (bh * 0.035 * (1 + A[p%4]*gain));
-      }
-      if(x === 0) bctx.moveTo(x, yCenter + yDisp); else bctx.lineTo(x, yCenter + yDisp);
-    }
-    bctx.stroke();
-  }
-}
 
 // LISSAJOUS: lissajous curves.
 function drawLissa(t){
@@ -1973,6 +1980,7 @@ function drawAltitudeMap(t){
     }
   }
   let i = 0;
+  const noSea = bgStrip;
   for(let y = 0; y < H; y++){
     for(let x = 0; x < W; x++, i += 4){
       const k = (y+1)*(W+2) + (x+1);
@@ -1984,6 +1992,7 @@ function drawAltitudeMap(t){
         r = seaR*bathy + 8; g = seaG*bathy + 14; b = seaB*bathy + 34;
         const cl = fract((sea - h)*levels*0.6);
         if(cl < 0.08){ r *= 0.6; g *= 0.6; b *= 0.6; }
+        if(noSea){ px[i] = r; px[i+1] = g; px[i+2] = b; px[i+3] = 0; continue; }   // BACKGROUND OFF: the sea is the backdrop
       } else {
         const e = (h - sea)/(1 - sea);                        // 0..1 above sea level
         const band = e*(nc - 1), bi = Math.min(nc - 2, band|0), bf = band - bi;
@@ -2009,6 +2018,7 @@ function drawAltitudeMap(t){
   // map grid overlay
   const cell = Math.max(24, bw/8);
   const gxo = -((ALT.ox/scale) % cell + cell) % cell * (bw/W), gyo = -((ALT.oy/scale) % cell + cell) % cell * (bh/H);
+  if(noSea) return;                                        // the grid belongs to the backdrop too
   bctx.strokeStyle = 'rgba(255,255,255,0.10)';
   bctx.lineWidth = 1;
   bctx.beginPath();
@@ -2117,86 +2127,261 @@ function drawAurora(t){
   }
 }
 
-// WOBBLE: wobbling shapes.
-function drawWobble(t){
-  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
-  const cx = bw*0.5 + n1(t*0.2)*bw*0.1, cy = bh*0.5 + n1(t*0.18+40)*bh*0.1;
-  const N = 4 + Math.round(eff.density * 10);
+
+
+// ---- shared helpers for MEMORY / SUPERNOVA / ODYSSEY / BLACKHOLE ----
+// palRamp: smooth cyclic blend through the palette (u wraps). specAt: level 0..1 of the live spectrum at position
+// u (0 = bass, 1 = air); reads the analyser bins when audio is running, otherwise interpolates the four bands.
+function palRamp(pal, u){
+  const n = pal.rgb.length, f = fract(u)*n, i = f|0, k = f - i, a = pal.rgb[i % n], b = pal.rgb[(i + 1) % n];
+  return [a[0] + (b[0] - a[0])*k, a[1] + (b[1] - a[1])*k, a[2] + (b[2] - a[2])*k];
+}
+function specAt(u){
+  u = clamp(u, 0, 1);
+  if(analyser && actx && actx.state === 'running' && aData){
+    const binHz = actx.sampleRate/analyser.fftSize, fi = clamp(45*Math.pow(180, u)/binHz, 1, aData.length - 2), i = fi|0, k = fi - i;
+    return clamp(((aData[i]*(1 - k) + aData[i + 1]*k)*0.0039215686 - 0.05)*(0.8 + u*0.9)*(0.5 + state.audio*0.875), 0, 1);
+  }
+  const f = u*3, i = f|0, k = f - i;
+  return clamp((A[i]*(1 - k) + A[Math.min(3, i + 1)]*k)*(0.25 + state.audio*1.25), 0, 1);
+}
+// smoothed copies of the four bands so shapes swell and relax instead of flickering
+function smBands(S, t){
+  if(!S.sm){ S.sm = new Float32Array(4); S.lastT = t; }
+  let dt = t - S.lastT; S.lastT = t; if(dt < 0 || dt > 0.25) dt = 0;
+  const gain = 0.25 + state.audio*1.25;
+  for(let b = 0; b < 4; b++){ const v = clamp(A[b]*gain*1.2, 0, 1); S.sm[b] += (v - S.sm[b])*Math.min(1, dt*(v > S.sm[b] ? 22 : 7)); }
+  return dt;
+}
+
+// MEMORY: a domain-warped field of soft flowing stripes with a sheet of fine lines twisting through a pinch point,
+// both bent by the same swirl so the lines ride the flow. Bass tightens the swirl, low-mids push the stripes along,
+// the lines carry the spectrum as a zigzag. DENSITY raises the stripe frequency and the number of lines.
+function drawMemory(t){
+  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), M = drawMemory, den = clamp(eff.density, 0, 1);
+  const dt = smBands(M, t), sm = M.sm;
+  if(M.ph === undefined){ M.ph = 0; M.rot = 0; }
+  M.ph += dt*(0.25 + sm[1]*1.6); M.rot += dt*(0.05 + sm[2]*0.25);
+  const W = 176, H = Math.max(16, Math.round(W*bh/bw)), asp = bw/bh;
+  if(!M.oc || M.ow !== W || M.oh !== H){ M.oc = document.createElement('canvas'); M.oc.width = W; M.oc.height = H; M.octx = M.oc.getContext('2d'); M.img = M.octx.createImageData(W, H); M.ow = W; M.oh = H; }
+  const px = M.img.data, nc = pal.rgb.length, bg = pal.bgRgb || [20, 10, 30];
+  const cA = pal.rgb[0], cB = pal.rgb[1 % nc], cC = pal.rgb[(nc - 1)], base = [bg[0]*0.6 + cC[0]*0.22, bg[1]*0.6 + cC[1]*0.12, bg[2]*0.6 + cC[2]*0.22];
+  const pcx = 0.12*n1(t*0.11), pcy = 0.10*n1(t*0.09 + 30), swirl = 1.3 + sm[0]*2.2 + 0.4*Math.sin(t*0.2);
+  const freq = 7 + den*20, phi = M.rot, cphi = Math.cos(phi), sphi = Math.sin(phi), ph = M.ph, wa = 0.16 + sm[0]*0.08, soft = 0.55 - sm[3]*0.3;
+  const warp = (u, v, out) => {
+    let dx = u - pcx, dy = v - pcy; const r = Math.sqrt(dx*dx + dy*dy), a = swirl*Math.exp(-r*2.4), ca = Math.cos(a), sa = Math.sin(a);
+    const x = pcx + dx*ca - dy*sa, y = pcy + dx*sa + dy*ca;
+    const u1 = x + wa*Math.sin(y*3.1 + ph*0.8) + 0.07*Math.sin(y*7.3 - ph*1.1 + x*2), v1 = y + wa*Math.sin(x*2.7 - ph*0.7) + 0.07*Math.sin(x*6.1 + ph);
+    out[0] = u1 + 0.05*Math.sin(v1*11 + ph*1.3); out[1] = v1 + 0.05*Math.sin(u1*9.5 - ph*0.9);      // second fold gives the marbled kinks
+  };
+  const o = [0, 0], strip = bgStrip;
+  let i = 0;
+  for(let y = 0; y < H; y++){
+    const v = y/H - 0.5;
+    for(let x = 0; x < W; x++, i += 4){
+      warp((x/W - 0.5)*asp, v, o);
+      const val = Math.sin((o[0]*cphi + o[1]*sphi)*freq + 1.5*Math.sin(o[0]*2 + o[1]*1.5 + ph*0.4));
+      let s = clamp((val + 0.25)/soft, 0, 1); s = s*s*(3 - 2*s);
+      const m = 0.5 + 0.5*Math.sin(o[0]*1.3 - o[1]*0.9 + t*0.15), k = s*0.88;
+      const r = cA[0] + (cB[0] - cA[0])*m, g = cA[1] + (cB[1] - cA[1])*m, b = cA[2] + (cB[2] - cA[2])*m;
+      px[i] = base[0] + (r*0.85 - base[0])*k; px[i + 1] = base[1] + (g*0.85 - base[1])*k; px[i + 2] = base[2] + (b*0.85 - base[2])*k;
+      px[i + 3] = strip ? 255*s : 255;                     // BACKGROUND OFF: only the bright stripes remain
+    }
+  }
+  M.octx.putImageData(M.img, 0, 0);
+  bctx.save(); bctx.globalCompositeOperation = 'source-over'; bctx.imageSmoothingEnabled = true;
+  bctx.drawImage(M.oc, 0, 0, bw, bh);
+  // the line sheet: straight lines fanned through the pinch point, then pushed through the same warp
+  const N = 12 + Math.round(den*44), SEG = 64, fan = 2.7, a0 = t*0.07 + 0.4;
+  bctx.lineJoin = 'round'; bctx.lineWidth = Math.max(1, minD*0.0045); bctx.globalAlpha *= 0.8;
   for(let k = 0; k < N; k++){
-    const base = (k+1)/N * minD * 0.46 * (1 + A[0]*gain*0.75);
-    const c = pal.rgb[(k + Math.floor(t*0.15)) % pal.rgb.length];
-    bctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${clamp(0.3 + 0.3*(0.5 + 0.5*n1(t*0.5+k*4)) + A[2]*gain*0.5, 0, 1)})`;
-    bctx.lineWidth = Math.max(1, minD*0.006 + A[1]*gain*3.5);
+    const a = k/(N - 1), th = a0 + (a - 0.5)*fan, dx = Math.cos(th), dy = Math.sin(th), off = (a - 0.5)*0.34;
+    const lvl = specAt(a), zig = 0.003 + lvl*0.035, c = palRamp(pal, a*0.75 + t*0.02);
+    bctx.strokeStyle = m3Rgba(c, 1.05 + lvl*0.5, 1);
     bctx.beginPath();
-    for(let a = 0; a <= 48; a++){
-      const th = a / 48 * TAU;
-      const r = base * (1 + (0.16 + A[3]*gain*0.28)*Math.sin(th*(3 + k%4) + t*(0.5 + 0.25*k)));
-      const x = cx + Math.cos(th)*r, y = cy + Math.sin(th)*r;
-      if(a === 0) bctx.moveTo(x, y); else bctx.lineTo(x, y);
+    for(let q = 0; q <= SEG; q++){
+      const s = (q/SEG - 0.5)*2.4*Math.max(1, asp), tri = Math.abs(fract(s*6 + k*0.13 + t*0.6)*2 - 1) - 0.5;
+      const w = zig*(tri*1.4 + Math.sin(s*23 + k + t*3)*0.6);
+      warp(pcx + dx*s - dy*(off + w), pcy + dy*s + dx*(off + w), o);
+      const X = (o[0]/asp + 0.5)*bw, Y = (o[1] + 0.5)*bh;
+      if(q) bctx.lineTo(X, Y); else bctx.moveTo(X, Y);
     }
-    bctx.closePath();
     bctx.stroke();
   }
+  bctx.restore();
 }
 
-// LATTICE: rotating cubic node/edge lattice with pulses along the edges.
-function drawLattice(t){
-  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
+// SUPERNOVA: a pinwheel of translucent triangles, each shaded in nested steps toward a dark core and trailed by
+// ghost copies, surrounded by lacy fractal clusters (webs of webs with glowing nodes) drifting out along spiral arms.
+// Bass swells the pinwheel, low-mids spin it, each cluster breathes with its own band and the highs light the
+// nodes. DENSITY adds blades, ghost trails and clusters.
+function drawSupernova(t){
+  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), S = drawSupernova, den = clamp(eff.density, 0, 1);
+  const dt = smBands(S, t), sm = S.sm;
+  if(S.spin === undefined){ S.spin = 0; S.out = 0; }
+  S.spin += dt*(0.12 + sm[1]*1.1); S.out += dt*(0.035 + sm[0]*0.09);
+  const cx = bw*0.5, cy = bh*0.5, nc = pal.rgb.length;
+  bctx.save();
+  // clusters first (they sit behind the blades)
+  bctx.globalCompositeOperation = 'lighter'; bctx.lineWidth = Math.max(0.6, minD*0.0016);
+  const nCl = 6 + Math.round(den*26), arms = 3, reach = Math.hypot(bw, bh)*0.55;
+  const web = (x, y, r, n, rot, depth, path, seed) => {
+    const pts = [];
+    for(let i = 0; i < n; i++){ const a = rot + i/n*TAU, rr = r*(0.55 + 0.75*hash1(seed + i*3.7)); pts.push([x + Math.cos(a)*rr, y + Math.sin(a)*rr]); }
+    for(let i = 0; i < n; i++) for(let j = i + 1; j < n; j++){ path.moveTo(pts[i][0], pts[i][1]); path.lineTo(pts[j][0], pts[j][1]); }
+    if(depth > 0) for(let i = 0; i < n; i++) web(pts[i][0], pts[i][1], r*0.42, Math.max(3, n - 1), rot*-1.7 + i, depth - 1, path, seed + 17.3*(i + 1));
+    return pts;
+  };
+  for(let k = 0; k < nCl; k++){
+    const h0 = hash1(k*9.17), ph = fract(h0 + S.out*(0.6 + 0.8*hash1(k*5.3))), arm = k % arms;
+    const rad = minD*0.12 + ph*reach, ang = arm/arms*TAU + ph*3.4 + S.spin*0.25 + (hash1(k*2.9) - 0.5)*0.9;
+    const x = cx + Math.cos(ang)*rad, y = cy + Math.sin(ang)*rad*0.8;
+    if(x < -60 || x > bw + 60 || y < -60 || y > bh + 60) continue;
+    const band = k % 4, life = Math.sin(ph*Math.PI), sz = minD*(0.07 + 0.09*h0)*(0.7 + sm[band]*1.1)*(0.5 + ph);
+    const col = palRamp(pal, h0*0.5 + ph*0.3), path = new Path2D();
+    const pts = web(x, y, sz, 5 + (k % 3), t*0.3*(k % 2 ? 1 : -1) + k, den > 0.35 ? 2 : 1, path, k*31.1);
+    bctx.strokeStyle = m3Rgba(col, 1, (0.26 + sm[3]*0.25)*life); bctx.stroke(path);
+    for(const p of pts){ const r = sz*(0.05 + sm[3]*0.09);
+      const g = bctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], r*2.5); g.addColorStop(0, `rgba(255,255,255,${0.85*life})`); g.addColorStop(0.35, m3Rgba(col, 1.3, 0.5*life)); g.addColorStop(1, m3Rgba(col, 1, 0));
+      bctx.fillStyle = g; bctx.fillRect(p[0] - r*2.5, p[1] - r*2.5, r*5, r*5); }
+  }
+  // pinwheel
   bctx.globalCompositeOperation = 'source-over';
-  const n = 3 + Math.round(eff.density * 3), D = 4.2, f = minD*1.25;
-  const sp = 2.4 / (n - 1) * (1 + A[0]*gain*0.25 + 0.05*Math.sin(t*1.3));
-  const ay = t*0.3, ax = 0.5 + Math.sin(t*0.17)*0.4, az = Math.sin(t*0.13)*0.3;
-  const nodes = [], idx = (i, j, k) => (i*n + j)*n + k;
-  for(let i = 0; i < n; i++) for(let j = 0; j < n; j++) for(let k = 0; k < n; k++){
-    const wob = Math.sin(t*2 + i + j*1.3 + k*1.7)*0.06*(1 + A[3]*gain*3);
-    const p = m3Rot((i - (n-1)/2)*sp + wob, (j - (n-1)/2)*sp - wob, (k - (n-1)/2)*sp, ay, ax, az);
-    nodes.push({ p, q:m3Proj(p, D, f), c:pal.rgb[(i + j + k + Math.floor(t*0.2)) % pal.rgb.length], b:(i + j + k) % 4 });
-  }
-  const edges = [];
-  for(let i = 0; i < n; i++) for(let j = 0; j < n; j++) for(let k = 0; k < n; k++){
-    const a = idx(i, j, k);
-    if(i < n-1) edges.push([a, idx(i+1, j, k)]);
-    if(j < n-1) edges.push([a, idx(i, j+1, k)]);
-    if(k < n-1) edges.push([a, idx(i, j, k+1)]);
-  }
-  const items = edges.map(e => ({ z:(nodes[e[0]].p[2] + nodes[e[1]].p[2])*0.5, e })).concat(nodes.map((nd, i) => ({ z:nd.p[2], n:i })));
-  items.sort((p, q) => q.z - p.z);
-  for(const it of items){
-    const depth = clamp(1 - (it.z + 1.8) / 4, 0.25, 1.1);
-    if(it.e){
-      const a = nodes[it.e[0]], b = nodes[it.e[1]];
-      const pulse = 0.5 + 0.5*Math.sin(t*3 - it.z*2);
-      bctx.strokeStyle = m3Rgba(a.c, depth*(0.5 + 0.5*pulse) + A[1]*gain*0.4, 0.85);
-      bctx.lineWidth = Math.max(1, 0.012*a.q[2]);
-      bctx.beginPath(); bctx.moveTo(a.q[0], a.q[1]); bctx.lineTo(b.q[0], b.q[1]); bctx.stroke();
-    } else {
-      const nd = nodes[it.n];
-      m3Ball(nd.q[0], nd.q[1], 0.09*nd.q[2]*(1 + A[nd.b]*gain*0.9), nd.c, depth, 1);
+  const nB = 3 + Math.round(den*5), ghosts = 1 + Math.round(den*4), R = minD*(0.17 + sm[0]*0.07), size = minD*(0.17 + sm[0]*0.06);
+  const tri = (x, y, r, rot) => { bctx.beginPath(); for(let v = 0; v < 3; v++){ const a = rot + v/3*TAU; if(v) bctx.lineTo(x + Math.cos(a)*r, y + Math.sin(a)*r); else bctx.moveTo(x + Math.cos(a)*r, y + Math.sin(a)*r); } bctx.closePath(); };
+  const ga = bctx.globalAlpha;
+  for(let gI = ghosts; gI >= 0; gI--){
+    const lag = gI*(0.10 + sm[1]*0.10), fade = gI === 0 ? 1 : 0.22*(1 - gI/(ghosts + 1));
+    for(let b = 0; b < nB; b++){
+      const a = S.spin - lag + b/nB*TAU, x = cx + Math.cos(a)*R*(1 + gI*0.05), y = cy + Math.sin(a)*R*(1 + gI*0.05);
+      const rot = a*1.0 + Math.PI/nB + (S.spin - lag)*0.6, col = pal.rgb[b % nc], sz = size*(1 + sm[b % 4]*0.25 + gI*0.06);
+      if(gI > 0){ bctx.globalAlpha = ga*fade; bctx.fillStyle = m3Rgba(col, 0.55, 1); tri(x, y, sz, rot); bctx.fill(); continue; }
+      const steps = 7;
+      for(let s = 0; s < steps; s++){ const u = s/(steps - 1); bctx.globalAlpha = ga*(s === 0 ? 0.62 : 0.5);
+        bctx.fillStyle = m3Rgba(col, 0.62*(1 - u*0.9), 1); tri(x, y, sz*(1 - u*0.82), rot); bctx.fill(); }
+      bctx.globalAlpha = ga*0.8; bctx.strokeStyle = m3Rgba(col, 1.1 + sm[3]*0.6, 1); bctx.lineWidth = Math.max(1, minD*0.003); tri(x, y, sz, rot); bctx.stroke();
     }
   }
+  bctx.restore();
 }
 
-// ECHO: expanding echo rings.
-function drawEcho(t){
-  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), cx = bw*0.5, cy = bh*0.5, gain = 0.25 + state.audio * 1.25;
-  const M = 5 + Math.round(eff.density * 8);
-  for(let i = 0; i < M; i++){
-    const sc = 1 - i*0.13 + A[0]*gain*0.3;
-    if(sc < 0.1) break;
-    const rot = t*(0.4 + 0.15*i) + i*0.5 + A[i%4]*gain*1.1;
-    const c = pal.rgb[(i + Math.floor(t*0.2)) % pal.rgb.length];
-    bctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${clamp((0.7*(1 - i/M)) + A[2]*gain*0.5, 0, 1)})`;
-    bctx.lineWidth = Math.max(1, minD*0.006 + A[1]*gain*3.5);
-    const R = minD * 0.34 * sc;
-    bctx.beginPath();
-    for(let v = 0; v <= 3; v++){
-      const a = rot + v / 3 * TAU;
-      const x = cx + Math.cos(a)*R, y = cy + Math.sin(a)*R;
-      if(v === 0) bctx.moveTo(x, y); else bctx.lineTo(x, y);
-    }
+// ODYSSEY: tapered ribbons of light flung out of a white-hot core. Every ribbon is a curved blade with a gradient
+// along its length; it launches, sweeps outward and fades while thin streaks cut through. Bass throws the ribbons
+// further and pulses the core, each ribbon's length follows its own slice of the spectrum, highs sharpen the
+// streaks. DENSITY sets the number of ribbons and streaks.
+function drawOdyssey(t){
+  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), O = drawOdyssey, den = clamp(eff.density, 0, 1);
+  const dt = smBands(O, t), sm = O.sm;
+  if(O.ph === undefined){ O.ph = 0; O.rot = 0; }
+  O.ph += dt*(0.10 + sm[0]*0.45); O.rot += dt*(0.06 + sm[1]*0.5);
+  const cx = bw*0.5 + n1(t*0.13)*bw*0.04, cy = bh*0.5 + n1(t*0.11 + 9)*bh*0.04, reach = Math.hypot(bw, bh)*0.5;
+  bctx.save(); bctx.globalCompositeOperation = 'lighter';
+  // soft coloured bloom drifting behind the core
+  { const a = O.rot*0.7, bx = cx + Math.cos(a)*minD*0.12, by = cy + Math.sin(a)*minD*0.12 - minD*0.05, r = minD*(0.22 + sm[1]*0.12), c = pal.rgb[2 % pal.rgb.length];
+    const g = bctx.createRadialGradient(bx, by, 0, bx, by, r); g.addColorStop(0, m3Rgba(c, 1, 0.55)); g.addColorStop(0.6, m3Rgba(c, 1, 0.18)); g.addColorStop(1, m3Rgba(c, 1, 0));
+    bctx.fillStyle = g; bctx.fillRect(bx - r, by - r, r*2, r*2); }
+  const nR = 12 + Math.round(den*40);
+  for(let k = 0; k < nR; k++){
+    const h0 = hash1(k*7.31), h1 = hash1(k*3.13 + 5), h2 = hash1(k*11.7 + 2), ph = fract(h0 + O.ph*(0.5 + h1)), life = Math.sin(ph*Math.PI);
+    const lvl = specAt(h2), ang = h1*TAU + O.rot*(0.4 + h2*0.8)*(k % 2 ? 1 : -0.6) + ph*0.8;
+    const r0 = minD*0.02 + ph*ph*reach*0.4, len = reach*(0.35 + 0.55*h0)*(0.6 + lvl*0.9 + sm[0]*0.4)*(0.4 + life*0.6);
+    const bend = (h2 - 0.5)*2.2*(0.6 + sm[2]*0.6), wid = minD*(0.03 + 0.16*h1*h1)*(0.6 + lvl*0.8)*life;
+    const dx = Math.cos(ang), dy = Math.sin(ang), x0 = cx + dx*r0, y0 = cy + dy*r0, x2 = x0 + Math.cos(ang + bend*0.5)*len, y2 = y0 + Math.sin(ang + bend*0.5)*len;
+    const mx = (x0 + x2)*0.5 - Math.sin(ang)*len*bend*0.35, my = (y0 + y2)*0.5 + Math.cos(ang)*len*bend*0.35;
+    const nx = -(y2 - y0)/len, ny = (x2 - x0)/len, col = palRamp(pal, h0 + t*0.01);
+    const g = bctx.createLinearGradient(x0, y0, x2, y2);
+    g.addColorStop(0, m3Rgba(col, 1, 0)); g.addColorStop(0.35, m3Rgba(col, 1.1, 0.75*life)); g.addColorStop(0.7, m3Rgba(col, 0.8, 0.4*life)); g.addColorStop(1, m3Rgba(col, 0.6, 0));
+    bctx.fillStyle = g; bctx.beginPath(); bctx.moveTo(x0, y0);
+    bctx.quadraticCurveTo(mx + nx*wid, my + ny*wid, x2, y2); bctx.quadraticCurveTo(mx - nx*wid*0.25, my - ny*wid*0.25, x0, y0); bctx.fill();
+    if(k % 3 === 0){                                        // streak: a hairline following the ribbon's bright edge, overshooting the tip
+      bctx.strokeStyle = m3Rgba(col, 1.5, (0.35 + sm[3]*0.6)*life); bctx.lineWidth = Math.max(1, minD*0.002);
+      bctx.beginPath(); bctx.moveTo(cx, cy); bctx.quadraticCurveTo(mx + nx*wid, my + ny*wid, x2 + (x2 - x0)*0.35, y2 + (y2 - y0)*0.35); bctx.stroke(); }
+  }
+  const cr = minD*(0.035 + sm[0]*0.03), halo = pal.rgb[1 % pal.rgb.length];
+  const cg = bctx.createRadialGradient(cx, cy, 0, cx, cy, cr*3.2);
+  cg.addColorStop(0, 'rgba(255,255,255,1)'); cg.addColorStop(0.28, 'rgba(255,255,255,0.95)'); cg.addColorStop(0.4, m3Rgba(halo, 1.2, 0.7)); cg.addColorStop(1, m3Rgba(halo, 1, 0));
+  bctx.fillStyle = cg; bctx.fillRect(cx - cr*3.2, cy - cr*3.2, cr*6.4, cr*6.4);
+  bctx.restore();
+}
+
+// BLACKHOLE: a star-filled black disc with a white-hot rim, wrapped in stacked polar blobs whose lobes are the
+// spectrum folded around the circle, a crown of radial rays, thin orbit loops and curtains of fine waves down the
+// screen edges. Each blob layer reads the spectrum at a different rotation, rays are one spectrum bin each, bass
+// breathes the disc. DENSITY adds blob layers, rays, orbits, curtain lines and stars.
+function drawBlackhole(t){
+  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), B = drawBlackhole, den = clamp(eff.density, 0, 1);
+  const dt = smBands(B, t), sm = B.sm, nc = pal.rgb.length;
+  if(B.rot === undefined) B.rot = 0;
+  B.rot += dt*(0.05 + sm[1]*0.3);
+  const cx = bw*0.5, cy = bh*0.5, R = minD*(0.2 + sm[0]*0.025), N = 96;
+  if(!B.spec) B.spec = new Float32Array(N);
+  for(let i = 0; i < N; i++){ const u = Math.abs(i/N*2 - 1), v = specAt(u); B.spec[i] += (v - B.spec[i])*Math.min(1, dt*(v > B.spec[i] ? 25 : 6)); }   // mirrored so the ring closes seamlessly
+  const specRing = a => { const f = fract(a/TAU)*N, i = f|0, k = f - i; return B.spec[i]*(1 - k) + B.spec[(i + 1) % N]*k; };
+  bctx.save(); bctx.globalCompositeOperation = 'source-over';
+  const ga = bctx.globalAlpha;
+  // background stars
+  const nSt = 30 + Math.round(den*140);
+  for(let i = 0; i < nSt; i++){ const c = pal.rgb[i % nc]; bctx.fillStyle = m3Rgba(c, 1.2, 0.35 + 0.5*Math.abs(Math.sin(t*(0.5 + hash1(i)*2) + i))); const z = 1 + (hash1(i*3.3) > 0.85 ? 1 : 0); bctx.fillRect(hash1(i*1.7)*bw, hash1(i*2.9 + 4)*bh, z, z); }
+  // BACKGROUND OFF: clip everything from here to the OUTSIDE of the disc instead of painting it black. Clipping
+  // (rather than erasing) leaves Shape A / video already in the buffer untouched, so the hole is a real window.
+  const holeClip = bgStrip;
+  if(holeClip){ bctx.save(); bctx.beginPath(); bctx.rect(0, 0, bw, bh); bctx.arc(cx, cy, R, 0, TAU); bctx.clip('evenodd'); }
+  // edge curtains: stacked flowing bands with fine line texture
+  const nCur = 2 + Math.round(den*3);
+  for(let side = -1; side <= 1; side += 2) for(let k = nCur - 1; k >= 0; k--){
+    const col = pal.rgb[(k + (side > 0 ? 1 : 0)) % nc], depth = bw*(0.04 + 0.035*k)*(1 + sm[k % 4]*0.5), edge = side < 0 ? 0 : bw;
+    const xAt = y => edge - side*(depth*(1 + 0.45*Math.sin(y/bh*3.2 + t*0.5 + k*1.4 + side) + 0.2*Math.sin(y/bh*7.1 - t*0.8 + k)));
+    bctx.beginPath(); bctx.moveTo(edge, -2); for(let y = -2; y <= bh + 8; y += 10) bctx.lineTo(xAt(y), y); bctx.lineTo(edge, bh + 2); bctx.closePath();
+    bctx.globalAlpha = ga*0.85; bctx.fillStyle = m3Rgba(col, 0.75 - k*0.08, 1); bctx.fill();
+    bctx.globalAlpha = ga*0.35; bctx.strokeStyle = m3Rgba(col, 1.4, 1); bctx.lineWidth = 1; bctx.beginPath();
+    const nl = 2 + Math.round(den*4); for(let l = 1; l <= nl; l++){ const f = l/(nl + 1); for(let y = -2; y <= bh + 8; y += 10){ const x = edge + (xAt(y) - edge)*f; if(y === -2) bctx.moveTo(x, y); else bctx.lineTo(x, y); } }
     bctx.stroke();
   }
+  // polar blobs, largest first
+  const nL = 3 + Math.round(den*4);
+  for(let L = 0; L < nL; L++){
+    const u = L/(nL - 1), last = L === nL - 1, col = last ? [255, 255, 255] : pal.rgb[L % nc];
+    const amp = R*(2.1 - u*1.75), rotL = B.rot*(L % 2 ? -1 : 1)*(0.6 + L*0.25) + L*1.9, baseR = R*(1.55 - u*0.47);
+    bctx.beginPath();
+    for(let s = 0; s <= 120; s++){
+      const a = s/120*TAU, lobe = specRing(a + rotL), slow = 0.5 + 0.5*Math.sin(a*2 + L*1.3 + t*0.4*(L % 2 ? 1 : -1));
+      const dir = Math.max(0, Math.cos(a - rotL*0.7 - L*2.4)), wing = sm[L % 4]*dir*dir*dir*amp*1.5;       // each layer throws one big wing on its own band
+      const r = baseR + amp*(lobe*lobe*0.85 + lobe*0.25)*(0.45 + 0.55*slow) + wing + R*0.06*Math.sin(a*5 + t + L);
+      const x = cx + Math.cos(a)*r, y = cy + Math.sin(a)*r; if(s) bctx.lineTo(x, y); else bctx.moveTo(x, y);
+    }
+    bctx.closePath(); bctx.globalAlpha = ga*(last ? 0.95 : 0.78); bctx.fillStyle = m3Rgba(col, last ? 1 : 0.95, 1); bctx.fill();
+  }
+  // rays
+  const nRay = 36 + Math.round(den*132); bctx.lineWidth = Math.max(1, minD*0.002);
+  const rayIn = new Path2D(), rayOut = new Path2D();
+  for(let i = 0; i < nRay; i++){
+    const a = i/nRay*TAU + B.rot*0.3, lv = specRing(a*1 + 1.1), r1 = R*1.02, r2 = R*(1.5 + lv*1.9 + 0.25*hash1(i*4.1)), rm = R*1.55, c = Math.cos(a), s = Math.sin(a);
+    rayIn.moveTo(cx + c*r1, cy + s*r1); rayIn.lineTo(cx + c*Math.min(r2, rm), cy + s*Math.min(r2, rm));
+    if(r2 > rm){ rayOut.moveTo(cx + c*rm, cy + s*rm); rayOut.lineTo(cx + c*r2, cy + s*r2); }
+  }
+  bctx.globalAlpha = ga*0.55; bctx.strokeStyle = 'rgba(255,255,255,0.9)'; bctx.stroke(rayIn);
+  bctx.globalAlpha = ga*(0.45 + sm[3]*0.4); bctx.strokeStyle = m3Rgba(pal.rgb[1 % nc], 1.2, 1); bctx.stroke(rayOut);
+  // orbit loops
+  const nO = 1 + Math.round(den*4); bctx.lineWidth = Math.max(1, minD*0.003);
+  for(let k = 0; k < nO; k++){
+    const col = palRamp(pal, 0.3 + k*0.17), tilt = t*0.08*(k % 2 ? 1 : -1) + k*1.1, ax = R*(1.9 + k*0.55)*(1 + sm[2]*0.15), ay = R*(1.2 + k*0.4), ox = R*(0.5 + 0.3*k)*Math.cos(t*0.13 + k), oy = R*0.3*Math.sin(t*0.1 + k*2);
+    bctx.beginPath();
+    for(let s = 0; s <= 90; s++){ const a = s/90*TAU, w = 1 + (0.10 + sm[(k + 1) % 4]*0.22)*Math.sin(a*3 + t*0.9 + k) + 0.06*Math.sin(a*7 - t*1.3);
+      const ex = Math.cos(a)*ax*w, ey = Math.sin(a)*ay*w, x = cx + ox + ex*Math.cos(tilt) - ey*Math.sin(tilt), y = cy + oy + ex*Math.sin(tilt) + ey*Math.cos(tilt); if(s) bctx.lineTo(x, y); else bctx.moveTo(x, y); }
+    bctx.closePath(); bctx.globalAlpha = ga*0.9; bctx.strokeStyle = m3Rgba(col, 1.25, 1); bctx.stroke();
+  }
+  // the hole: black disc, inner stars, rim
+  // BACKGROUND OFF: nothing was drawn inside the disc (see the clip above), so the layer underneath shows through
+  if(holeClip) bctx.restore();
+  else { bctx.globalAlpha = ga; bctx.fillStyle = '#000'; bctx.beginPath(); bctx.arc(cx, cy, R, 0, TAU); bctx.fill(); }
+  bctx.globalAlpha = ga;
+  const nIn = 20 + Math.round(den*70);
+  for(let i = 0; i < nIn; i++){ const a = hash1(i*5.1)*TAU + t*0.05, r = Math.sqrt(hash1(i*8.3 + 1))*R*0.9, c = pal.rgb[i % nc];
+    bctx.fillStyle = m3Rgba(c, 1.3, 0.4 + 0.6*Math.abs(Math.sin(t*1.5*hash1(i) + i)) * (0.5 + sm[3]*0.5)); bctx.fillRect(cx + Math.cos(a)*r, cy + Math.sin(a)*r, 1.3, 1.3); }
+  bctx.strokeStyle = m3Rgba(pal.rgb[1 % nc], 0.9, 1); bctx.lineWidth = Math.max(1.5, minD*0.007); bctx.beginPath(); bctx.arc(cx, cy, R, 0, TAU); bctx.stroke();
+  bctx.restore();
 }
+
 
 // CONSTELLATION: drifting stars linked by palette-coloured gradient lines.
 function drawConstellation(t){
@@ -2208,7 +2393,7 @@ function drawConstellation(t){
   }
   const link = minD * 0.28 * (1 + A[0]*gain*0.9);
   const linkSq = link * link;
-  bctx.lineWidth = 1 + A[1]*gain*3.5;
+  bctx.lineWidth = 2;                                     // fixed weight: audio drives link reach and brightness, not thickness
   for(let i = 0; i < N; i++){
     const p1 = pts[i], c = pal.rgb[i % pal.rgb.length];
     for(let j = i + 1; j < N; j++){
@@ -3737,128 +3922,253 @@ function drawDaisyGarden(t){
   }
 }
 
-// VAPORWAVE: seeded synthwave landscape - sun style, sky, mountains, grid, moon, pyramid, haze.
+// VAPORWAVE: neon spectrogram grid under a low-poly wireframe range. The floor is a height field driven by a
+// rolling 32-band spectrum history (frequency runs across the columns, time runs along the depth axis, so sound
+// travels through the grid as ridges). DENSITY scales the whole picture: grid cell size, mountain mesh resolution
+// and number of ranges, stars, light streaks, sun stripes and scanline pitch. Scene style comes from the seed.
 function drawVaporLandscape(t){
-  // VAPORWAVE: the whole scene (horizon, sun, sky, mountains, grid, extras) is generated from the seed
   const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
+  const VP = drawVaporLandscape, NB = 32, HN = 128, HZ = 30;
   bctx.globalCompositeOperation = 'source-over';
-  const VP = drawVaporLandscape;
-  if(VP.scroll === undefined){ VP.scroll = 0; VP.lastT = t; VP.sm = new Float32Array(4); }
+  if(!VP.spec){ VP.scroll = 0; VP.lastT = t; VP.sm = new Float32Array(4); VP.spec = new Float32Array(NB); VP.pk = new Float32Array(NB).fill(0.25);
+    VP.hist = new Float32Array(HN*NB); VP.head = 0; VP.acc = 0; VP.rowA = new Float32Array(NB); VP.pts = new Float32Array(0); }
+  const nc = pal.rgb.length;
   if(VP.seed !== state.seed){
     const r = mulberry32(state.seed ^ 0xa11ce);
-    const nl = 1 + Math.floor(r()*3), layers = [];
-    for(let i = 0; i < nl; i++) layers.push({ h:0.06 + r()*0.16, spd:0.2 + i*0.3 + r()*0.3, f1:1 + r()*2, f2:2.5 + r()*3, f3:6 + r()*5, ph:r()*10, col:Math.floor(r()*pal.rgb.length), jag:r() < 0.4 });
-    const stars = []; const ns = 30 + Math.floor(r()*90);
-    for(let i = 0; i < ns; i++) stars.push([r(), r()*0.8, 0.5 + r()*3, r()*TAU]);
-    VP.cfg = {
-      horizon:0.42 + r()*0.22, sunX:0.3 + r()*0.4, sunR:0.12 + r()*0.2, sunLift:r()*0.12, bands:4 + Math.floor(r()*9), bandSpd:0.03 + r()*0.08,
-      sunA:Math.floor(r()*pal.rgb.length), sunB:Math.floor(r()*pal.rgb.length), skyA:Math.floor(r()*pal.rgb.length), skyB:Math.floor(r()*pal.rgb.length), gridC:Math.floor(r()*pal.rgb.length),
-      layers, stars, gridX:6 + Math.floor(r()*10), gridZ:9 + Math.floor(r()*10), cam:0.7 + r()*0.8, edge:1.4 + r()*1.6, edgeK:r()*0.14, wave:r()*0.2,
-      moon:r() < 0.35, moonX:r(), moonY:0.1 + r()*0.3, palms:false, nPalms:(r(), r(), 0), pyramid:r() < 0.3, haze:r()*0.5, sunStyle:Math.floor(r()*2), scrollDir:r() < 0.8 ? 1 : -1
-    };
+    const mr = r(), mode = mr < 0.45 ? 0 : mr < 0.8 ? 1 : 2;                         // 0 night wireframe, 1 dusk silhouette + sun, 2 daylight pastel
+    const gridC = Math.floor(r()*nc), mtnC = (gridC + 1 + Math.floor(r()*Math.max(1, nc - 1))) % nc;
+    const ranges = []; for(let i = 0; i < 3; i++) ranges.push({ f1:0.7 + r()*0.9, f2:1.9 + r()*1.6, f3:4.5 + r()*4, p1:r()*20, p2:r()*20, p3:r()*20, h:0.75 + r()*0.5, jag:r() < 0.35, spd:0.4 + r()*0.6 });
+    const stars = []; for(let i = 0; i < 220; i++) stars.push([r(), Math.pow(r(), 1.3), 0.5 + r()*3, r()*TAU, 0.6 + r()*1.2]);
+    const streaks = []; for(let i = 0; i < 5; i++) streaks.push([r(), r()*0.6, (r() < 0.5 ? -1 : 1)*(0.9 + r()*0.5), 0.15 + r()*0.3]);
+    VP.cfg = { mode, gridC, mtnC, hotC:Math.floor(r()*nc), sunA:Math.floor(r()*nc), sunB:Math.floor(r()*nc), skyA:(() => { const k = Math.floor(r()*nc); for(let q = 0; q < nc; q++){ const c = (k + q) % nc; if(c !== gridC && c !== mtnC) return c; } return k; })(), skyB:Math.floor(r()*nc),
+      horizon:0.46 + r()*0.14, cam:0.75 + r()*0.5, sun:mode === 1 || r() < 0.45, sunX:0.38 + r()*0.24, sunR:0.16 + r()*0.12, sunLift:0.04 + r()*0.12, bandSpd:0.02 + r()*0.05,
+      mtnStyle:mode === 1 ? (r() < 0.7 ? 1 : 0) : 0,          // 0 wireframe mesh, 1 solid silhouette
+      mh:0.16 + r()*0.12, ranges, stars, streaks,
+      amp:0.55 + r()*0.4, delay:0.05 + r()*0.06, inward:r() < 0.25, flip:r() < 0.3, tiles:r() < 0.7, edgeK:r()*0.05, idle:0.03 + r()*0.05, seedF:r()*100 };
     VP.seed = state.seed;
   }
-  const C = VP.cfg;
+  const C = VP.cfg, den = clamp(eff.density, 0, 1);
   let dt = t - VP.lastT; VP.lastT = t; if(dt < 0 || dt > 0.25) dt = 0;
+
+  // ---- audio: 4 smoothed bands for global pulses + a 32-band log spectrum (auto-levelled per band) for the grid
   for(let b = 0; b < 4; b++) VP.sm[b] += (clamp(A[b]*gain*1.3, 0, 1) - VP.sm[b]) * Math.min(1, dt*10);
-  VP.scroll += dt*(0.35 + VP.sm[0]*0.6)*C.scrollDir;
-  const horizonY = bh*C.horizon, cx = bw*C.sunX;
-  // colour indices were picked at seed time; wrap them so a palette with fewer colours can't index past the end
-  const nc = pal.rgb.length;
-  const cA = pal.rgb[C.sunA % nc], cB = pal.rgb[C.sunB % nc], sA = pal.rgb[C.skyA % nc], sB = pal.rgb[C.skyB % nc], gC = pal.rgb[C.gridC % nc];
-  // sky
+  const live = analyser && actx && actx.state === 'running' && aData;
+  for(let b = 0; b < NB; b++){
+    let raw;
+    if(live){
+      const binHz = actx.sampleRate / analyser.fftSize, maxBin = aData.length - 1;
+      const lo = clamp(40*Math.pow(225, b/NB)/binHz, 1, maxBin), hi = clamp(40*Math.pow(225, (b + 1)/NB)/binHz, 1, maxBin);
+      if(hi - lo < 1.5){ const m = (lo + hi)*0.5, i0 = m|0, fr = m - i0; raw = aData[i0]*(1 - fr) + aData[Math.min(maxBin, i0 + 1)]*fr; }
+      else { let s = 0, pk = 0, n = 0; for(let i = lo|0; i <= (hi|0); i++){ const v = aData[i]; s += v; n++; if(v > pk) pk = v; } raw = (s/n)*0.5 + pk*0.5; }
+      raw = Math.max(0, raw*0.0039215686 - 0.04);
+      if(raw > VP.pk[b]) VP.pk[b] += (raw - VP.pk[b])*Math.min(1, dt*4); else VP.pk[b] = Math.max(0.18, VP.pk[b]*Math.max(0, 1 - dt*0.08));
+      raw = clamp(raw/VP.pk[b]*(0.5 + state.audio*0.875), 0, 1);
+    } else { const fb = b/(NB - 1)*3, b0 = fb|0, fr = fb - b0; raw = clamp((A[b0]*(1 - fr) + A[Math.min(3, b0 + 1)]*fr)*gain, 0, 1); }
+    VP.spec[b] += (raw - VP.spec[b]) * Math.min(1, dt*(raw > VP.spec[b] ? 28 : 8));
+  }
+  VP.acc += dt; let pushes = 0;
+  while(VP.acc >= 1/HZ && pushes < 4){ VP.acc -= 1/HZ; pushes++; VP.head = (VP.head + 1) % HN; VP.hist.set(VP.spec, VP.head*NB); }
+  if(pushes === 4) VP.acc = 0;
+  VP.hist.set(VP.spec, VP.head*NB);                          // newest frame always carries the live spectrum
+  VP.scroll += dt*(0.5 + VP.sm[0]*0.9);
+  const bass = VP.sm[0], mid = VP.sm[1], air = VP.sm[3];
+
+  // ---- colours
+  const WHITE = [255,255,255], BLACK = [0,0,0], bg = pal.bgRgb || [10,6,24];
+  const mix = (a, b, k) => [a[0] + (b[0] - a[0])*k, a[1] + (b[1] - a[1])*k, a[2] + (b[2] - a[2])*k];
+  const css = (c, a) => m3Rgba(c, 1, a);
+  const gC = pal.rgb[C.gridC % nc], mC = pal.rgb[C.mtnC % nc], hC = pal.rgb[C.hotC % nc], cA = pal.rgb[C.sunA % nc], cB = pal.rgb[C.sunB % nc], sA = pal.rgb[C.skyA % nc], sB = pal.rgb[C.skyB % nc];
+  const day = C.mode === 2;
+  const skyTop = day ? mix(sA, bg, 0.22) : mix(bg, BLACK, C.mode === 1 ? 0.45 : 0.3);
+  const skyMid = day ? mix(sA, sB, 0.35) : mix(bg, sA, C.mode === 1 ? 0.2 : 0.35);
+  const skyBot = day ? mix(mix(sA, sB, 0.5), WHITE, 0.4) : mix(bg, sB, C.mode === 1 ? 0.85 : 0.6);
+  const horizonY = Math.round(bh*C.horizon), vx = bw*0.5;
+
+  // ---- sky, stars, streaks
   const sky = bctx.createLinearGradient(0, 0, 0, horizonY);
-  sky.addColorStop(0, m3Rgba(sA, 0.12)); sky.addColorStop(0.55, m3Rgba(sB, 0.35)); sky.addColorStop(1, m3Rgba(sA, 1.0));
-  bctx.fillStyle = sky; bctx.fillRect(0, 0, bw, horizonY);
-  for(const s of C.stars){
-    const tw = 0.4 + 0.6*Math.abs(Math.sin(t*s[2] + s[3]));
-    bctx.fillStyle = `rgba(255,255,255,${tw*(0.5 + VP.sm[3]*0.5)})`; bctx.fillRect(s[0]*bw, s[1]*horizonY, 1.5, 1.5);
+  sky.addColorStop(0, css(skyTop)); sky.addColorStop(0.55, css(skyMid)); sky.addColorStop(1, css(skyBot));
+  bctx.fillStyle = sky; bctx.fillRect(0, 0, bw, horizonY + 1);
+  const nStars = Math.round(25 + den*195), sp = Math.max(1, minD*0.0022);
+  for(let i = 0; i < nStars; i++){
+    const s = C.stars[i], tw = 0.35 + 0.65*Math.abs(Math.sin(t*s[2] + s[3]));
+    bctx.fillStyle = `rgba(255,255,255,${(tw*(day ? 0.55 : 0.85)*(0.55 + air*0.45)).toFixed(3)})`;
+    const z = sp*s[4]; bctx.fillRect(s[0]*bw, s[1]*horizonY*0.92, z, z);
   }
-  if(C.moon){
-    const mx = C.moonX*bw, my = C.moonY*horizonY, mr = minD*0.035;
-    bctx.fillStyle = 'rgba(255,250,230,0.9)'; bctx.beginPath(); bctx.arc(mx, my, mr, 0, TAU); bctx.fill();
-    bctx.fillStyle = m3Rgba(sA, 0.12); bctx.beginPath(); bctx.arc(mx + mr*0.35, my - mr*0.2, mr*0.85, 0, TAU); bctx.fill();
+  bctx.globalCompositeOperation = 'lighter'; bctx.lineCap = 'round';
+  const nStreak = Math.round(den*5);
+  for(let i = 0; i < nStreak; i++){
+    const s = C.streaks[i], x0 = s[0]*bw, y0 = s[1]*horizonY, L = s[3]*minD, x1 = x0 + Math.cos(s[2])*L*(s[2] < 0 ? -1 : 1)*0.6, y1 = y0 + Math.abs(Math.sin(s[2]))*L;
+    const g = bctx.createLinearGradient(x0, y0, x1, y1), a = 0.10 + 0.25*air*(0.5 + 0.5*Math.sin(t*0.7 + i*2.1));
+    g.addColorStop(0, css(mix(sB, WHITE, 0.4), 0)); g.addColorStop(0.5, css(mix(sB, WHITE, 0.4), a)); g.addColorStop(1, css(sB, 0));
+    bctx.strokeStyle = g; bctx.lineWidth = Math.max(1, minD*0.003); bctx.beginPath(); bctx.moveTo(x0, y0); bctx.lineTo(x1, y1); bctx.stroke();
   }
-  // sun
-  const sunR = minD*C.sunR*(1 + VP.sm[0]*0.08), sunY = horizonY - minD*C.sunLift;
-  const sg = bctx.createRadialGradient(cx, sunY, sunR*0.9, cx, sunY, sunR*1.9);
-  sg.addColorStop(0, m3Rgba(cA, 1, 0.35)); sg.addColorStop(1, m3Rgba(cA, 1, 0));
-  bctx.fillStyle = sg; bctx.fillRect(cx - sunR*2, sunY - sunR*2, sunR*4, sunR*4);
-  bctx.save(); bctx.beginPath();
-  if(C.sunLift > 0.02) bctx.arc(cx, sunY, sunR, 0, TAU); else { bctx.arc(cx, sunY, sunR, Math.PI, 0); bctx.closePath(); }
-  bctx.clip();
-  const sunGrad = bctx.createLinearGradient(0, sunY - sunR, 0, sunY + sunR);
-  sunGrad.addColorStop(0, '#fff2a0'); sunGrad.addColorStop(0.5, m3Rgba(cA, 1.2)); sunGrad.addColorStop(1, m3Rgba(cB, 1.1));
-  bctx.fillStyle = sunGrad; bctx.fillRect(cx - sunR, sunY - sunR, sunR*2, sunR*2);
-  bctx.fillStyle = m3Rgba(sA, 0.15);
-  if(C.sunStyle === 0){ for(let s = 0; s < C.bands; s++){ const p = fract(s/C.bands + t*C.bandSpd), y = sunY - sunR*(1 - p*p) ; bctx.fillRect(cx - sunR, y, sunR*2, 1 + p*p*sunR*0.09); } }
-  else { for(let s = 0; s < C.bands; s++){ const p = fract(s/C.bands + t*C.bandSpd), y = sunY + sunR - p*sunR*1.3; bctx.fillRect(cx - sunR, y, sunR*2, Math.max(1, sunR*0.06)); } }
-  bctx.restore();
-  // optional pyramid on the horizon
-  if(C.pyramid){
-    const pw = minD*0.22, ph = minD*0.16, px = bw*(1 - C.sunX);
-    bctx.fillStyle = m3Rgba(sB, 0.35); bctx.beginPath(); bctx.moveTo(px - pw, horizonY); bctx.lineTo(px, horizonY - ph); bctx.lineTo(px + pw, horizonY); bctx.closePath(); bctx.fill();
-    bctx.fillStyle = m3Rgba(sB, 0.2); bctx.beginPath(); bctx.moveTo(px, horizonY); bctx.lineTo(px, horizonY - ph); bctx.lineTo(px + pw, horizonY); bctx.closePath(); bctx.fill();
+  bctx.globalCompositeOperation = 'source-over'; bctx.lineCap = 'butt';
+
+  // ---- sun: gradient disc with stripes cut out of the lower half (stripe count follows DENSITY), pulses on bass
+  const sunX = bw*C.sunX, sunR = minD*C.sunR*(1 + bass*0.07), sunY = horizonY - minD*C.sunLift - sunR*0.35;
+  if(C.sun){
+    const halo = bctx.createRadialGradient(sunX, sunY, sunR*0.85, sunX, sunY, sunR*(1.8 + bass*0.5));
+    halo.addColorStop(0, css(cB, 0.45 + bass*0.25)); halo.addColorStop(1, css(cB, 0));
+    bctx.fillStyle = halo; bctx.fillRect(sunX - sunR*2.4, sunY - sunR*2.4, sunR*4.8, sunR*4.8);
+    const nB = 3 + Math.round(den*7), zoneTop = sunY - sunR*0.05, zoneH = sunR*1.05, cuts = [];
+    for(let k = 0; k < nB; k++){ const p = fract(k/nB + t*C.bandSpd); cuts.push([zoneTop + p*zoneH, Math.max(1, (0.15 + 0.85*p)*zoneH/nB*0.8)]); }
+    cuts.sort((a, b) => a[0] - b[0]);
+    bctx.save(); bctx.beginPath();
+    let yy = sunY - sunR - 2;
+    for(const c of cuts){ if(c[0] > yy) bctx.rect(sunX - sunR - 2, yy, sunR*2 + 4, c[0] - yy); yy = Math.max(yy, c[0] + c[1]); }
+    bctx.rect(sunX - sunR - 2, yy, sunR*2 + 4, Math.max(0, sunY + sunR + 2 - yy));
+    bctx.clip(); bctx.beginPath(); bctx.arc(sunX, sunY, sunR, 0, TAU); bctx.clip();
+    const sg = bctx.createLinearGradient(0, sunY - sunR, 0, sunY + sunR);
+    sg.addColorStop(0, css(mix(cA, [255,226,120], 0.65))); sg.addColorStop(0.5, css(mix(cA, cB, 0.5))); sg.addColorStop(1, css(mix(cB, WHITE, 0.08)));
+    bctx.fillStyle = sg; bctx.fillRect(sunX - sunR, sunY - sunR, sunR*2, sunR*2);
+    bctx.restore();
   }
-  // mountains
-  C.layers.forEach((L, li) => {
-    const col = pal.rgb[L.col % nc];
-    bctx.fillStyle = m3Rgba(col, 0.18 + 0.12*li, 1);
-    bctx.beginPath(); bctx.moveTo(0, horizonY + 1);
-    const off = VP.scroll*L.spd*0.4 + L.ph;
-    for(let m = 0; m <= 48; m++){
-      const u = m/48, wx = u*6 + off;
-      let peak = Math.abs(Math.sin(wx*L.f1)*0.6 + Math.sin(wx*L.f2)*0.3 + Math.sin(wx*L.f3)*0.1);
-      if(L.jag) peak = Math.abs(fract(wx*L.f1*0.5)*2 - 1)*0.8 + Math.sin(wx*L.f3)*0.08;
-      bctx.lineTo(u*bw, horizonY - peak*bh*L.h*(1 + VP.sm[1]*0.25*(li === C.layers.length - 1 ? 1 : 0.3)));
+
+  // ---- mountains: jittered triangle meshes, far range first. DENSITY adds ranges and subdivides the mesh.
+  // The mesh is rendered into a cached layer (rebuilt when seed / palette / density step / size change); every frame
+  // the layer is stamped once, stretched slightly by the low-mids, then again additively so the highs pump the neon.
+  const dq = Math.round(den*16)/16, nRanges = 1 + Math.round(dq*2), mkey = [state.seed, state.palette, bw, bh, dq].join('|');
+  if(!VP.mc) VP.mc = document.createElement('canvas');
+  const fillBase = day ? mix(skyMid, bg, 0.14) : mix(bg, BLACK, C.mode === 1 ? 0.55 : 0.4);
+  if(VP.mkey !== mkey){
+  VP.mkey = mkey; VP.mc.width = bw; VP.mc.height = horizonY + 3;
+  const mctx = VP.mc.getContext('2d'); mctx.clearRect(0, 0, bw, horizonY + 3);
+  for(let r = nRanges - 1; r >= 0; r--){
+    const L = C.ranges[r], nC = Math.max(8, Math.round((12 + dq*40)*(1 - r*0.22))), nR = Math.max(2, 3 + Math.round(dq*4) - r), W = nC + 1;
+    const Hpx = bh*C.mh*L.h*(1 + r*0.5), far = r/3, cw = bw*1.1/nC;
+    const mx = new Float32Array(W*(nR + 1)), my = new Float32Array(W*(nR + 1));
+    for(let i = 0; i <= nC; i++){
+      const wx = (i/nC)*5.5*(1 + r*0.4);
+      let n = (0.55*Math.sin(wx*L.f1 + L.p1) + 0.3*Math.sin(wx*L.f2 + L.p2) + 0.15*Math.sin(wx*L.f3 + L.p3) + 1)*0.5;
+      if(L.jag) n = n*0.6 + 0.4*Math.abs(fract(wx*L.f1*0.45 + L.p2)*2 - 1);
+      const ridge = (0.12 + 0.88*Math.pow(n, 1.7))*1;
+      for(let j = 0; j <= nR; j++){
+        const v = j/nR, k = j*W + i, h1 = hash1(i*12.9 + j*78.2 + r*37.7 + C.seedF), h2 = hash1(i*41.3 + j*17.1 + r*91.3 + C.seedF);
+        mx[k] = -bw*0.05 + i*cw + (i === 0 || i === nC ? 0 : (h1 - 0.5)*cw*0.75);
+        const prof = j === 0 ? 0 : Math.pow(v, 0.8)*(j === nR ? 1 : 0.78 + 0.44*h2);
+        my[k] = horizonY + 2 - ridge*prof*Hpx;
+      }
     }
-    bctx.lineTo(bw, horizonY + 1); bctx.closePath(); bctx.fill();
-    bctx.strokeStyle = m3Rgba(col, 1.4, 0.5); bctx.lineWidth = 1; bctx.stroke();
-  });
-  // floor + grid
-  const floorGrad = bctx.createLinearGradient(0, horizonY, 0, bh);
-  floorGrad.addColorStop(0, m3Rgba(sB, 0.25)); floorGrad.addColorStop(1, '#000');
-  bctx.fillStyle = floorGrad; bctx.fillRect(0, horizonY, bw, bh - horizonY);
-  const gx = C.gridX + Math.round(eff.density*6), gz = C.gridZ, f = minD*0.9, camH = C.cam;
-  const zOff = fract(VP.scroll);
-  const H = (x, z) => { const edge = Math.max(0, Math.abs(x) - C.edge); return Math.min(camH*0.8, edge*edge*C.edgeK*(1 + VP.sm[2]*0.6) + C.wave*Math.sin(x*1.5 + z*0.8 + t*1.5)*(0.3 + VP.sm[1]) + 0.08*Math.sin(z*1.3 - t)*VP.sm[0]); };
-  const proj = (x, z) => { const zz = z + 0.6; return [bw*0.5 + x*f/zz, horizonY + (camH - H(x, z))*f/zz]; };
-  bctx.globalCompositeOperation = 'lighter';
-  bctx.lineWidth = 1;
-  for(let j = gz + 1; j >= 1; j--){
-    const z = j - zOff, fade = clamp(1 - j/gz, 0, 1);
-    bctx.strokeStyle = m3Rgba(gC, 1.3, 0.25 + 0.6*fade);
-    bctx.beginPath();
-    for(let i = -gx; i <= gx; i++){ const p = proj(i*0.5, z); if(i === -gx) bctx.moveTo(p[0], p[1]); else bctx.lineTo(p[0], p[1]); }
-    bctx.stroke();
-  }
-  for(let i = -gx; i <= gx; i++){
-    bctx.strokeStyle = m3Rgba(gC, 1.3, 0.55);
-    bctx.beginPath();
-    for(let j = 1; j <= gz + 1; j++){ const p = proj(i*0.5, j - zOff); if(j === 1) bctx.moveTo(p[0], p[1]); else bctx.lineTo(p[0], p[1]); }
-    bctx.stroke();
-  }
-  // palms: silhouettes gliding past on the grid edges
-  if(C.palms){
-    bctx.globalCompositeOperation = 'source-over';
-    for(let k = 0; k < C.nPalms; k++){
-      const z = 0.2 + fract(k/C.nPalms + VP.scroll*0.12*C.scrollDir)*gz, side = k % 2 ? 1 : -1;
-      const p = proj(side*(C.edge + 0.6), z), sc = f/(z + 0.6);
-      const th = sc*0.9, tw = Math.max(1, sc*0.05);
-      bctx.strokeStyle = 'rgba(0,0,0,0.9)'; bctx.lineWidth = tw; bctx.lineCap = 'round';
-      bctx.beginPath(); bctx.moveTo(p[0], p[1]); bctx.quadraticCurveTo(p[0] + side*sc*0.1, p[1] - th*0.6, p[0] + side*sc*0.2, p[1] - th); bctx.stroke();
-      const tx = p[0] + side*sc*0.2, ty = p[1] - th;
-      for(let l = 0; l < 6; l++){ const a = -Math.PI*0.9 + l/5*Math.PI*0.8 + Math.sin(t*1.5 + l)*0.08*VP.sm[3]; bctx.lineWidth = tw*0.7; bctx.beginPath(); bctx.moveTo(tx, ty); bctx.quadraticCurveTo(tx + Math.cos(a)*sc*0.25, ty + Math.sin(a)*sc*0.25 - sc*0.05, tx + Math.cos(a)*sc*0.4, ty + Math.sin(a)*sc*0.4 + sc*0.12); bctx.stroke(); }
+    const eCol = mix(mC, WHITE, day ? 0.35 : 0.15), eA = (1 - far*0.75);
+    // halo behind the ridge line
+    mctx.globalCompositeOperation = 'lighter'; mctx.lineJoin = 'round';
+    mctx.beginPath(); for(let i = 0; i <= nC; i++){ const k = nR*W + i; if(i === 0) mctx.moveTo(mx[k], my[k]); else mctx.lineTo(mx[k], my[k]); }
+    mctx.strokeStyle = css(mC, (0.07 + 0)*eA); mctx.lineWidth = minD*0.05; mctx.stroke();
+    mctx.strokeStyle = css(mC, (0.12 + 0)*eA); mctx.lineWidth = minD*0.02; mctx.stroke();
+    mctx.globalCompositeOperation = 'source-over';
+    if(C.mtnStyle === 1){
+      mctx.beginPath(); mctx.moveTo(mx[0], horizonY + 2);
+      for(let i = 0; i <= nC; i++) mctx.lineTo(mx[nR*W + i], my[nR*W + i]);
+      mctx.lineTo(mx[nC], horizonY + 2); mctx.closePath();
+      mctx.fillStyle = css(mix(fillBase, skyBot, far*0.5)); mctx.fill();
+      continue;
     }
-    bctx.lineCap = 'butt';
-    bctx.globalCompositeOperation = 'lighter';
+    // faces in 4 flat-shade buckets, then every edge as one neon path (glow pass + core pass)
+    const faces = [new Path2D(), new Path2D(), new Path2D(), new Path2D()], edges = new Path2D();
+    for(let j = 0; j < nR; j++) for(let i = 0; i < nC; i++){
+      const a = j*W + i, b = a + 1, c = a + W, d = c + 1, hd = hash1(i*7.7 + j*3.3 + r*13.1 + C.seedF), flip = hd < 0.5;
+      const t1 = flip ? [a, b, c] : [a, b, d], t2 = flip ? [b, d, c] : [a, d, c];
+      const s1 = Math.min(3, (hd*2.2 + (i + j)%2*1.2)|0), s2 = Math.min(3, (fract(hd*7.3)*2.2 + (i + j + 1)%2*1.2)|0);
+      let P = faces[s1]; P.moveTo(mx[t1[0]], my[t1[0]]); P.lineTo(mx[t1[1]], my[t1[1]]); P.lineTo(mx[t1[2]], my[t1[2]]); P.closePath();
+      P = faces[s2]; P.moveTo(mx[t2[0]], my[t2[0]]); P.lineTo(mx[t2[1]], my[t2[1]]); P.lineTo(mx[t2[2]], my[t2[2]]); P.closePath();
+      edges.moveTo(mx[c], my[c]); edges.lineTo(mx[d], my[d]); edges.lineTo(mx[b], my[b]);
+      if(flip){ edges.moveTo(mx[b], my[b]); edges.lineTo(mx[c], my[c]); } else { edges.moveTo(mx[a], my[a]); edges.lineTo(mx[d], my[d]); }
+      if(i === 0){ edges.moveTo(mx[a], my[a]); edges.lineTo(mx[c], my[c]); }
+    }
+    for(let s = 0; s < 4; s++){ mctx.fillStyle = css(mix(mix(fillBase, skyBot, far*0.5), mC, 0.03 + s*(day ? 0.1 : 0.055)), day ? 0.9 : 1); mctx.fill(faces[s]); }
+    mctx.globalCompositeOperation = 'lighter';
+    mctx.strokeStyle = css(mC, 0.22*eA); mctx.lineWidth = Math.max(2.5, minD*0.006); mctx.stroke(edges);
+    mctx.globalCompositeOperation = day ? 'source-over' : 'lighter';
+    mctx.strokeStyle = css(eCol, 0.85*eA); mctx.lineWidth = Math.max(1, minD*0.0014); mctx.stroke(edges);
+    mctx.globalCompositeOperation = 'source-over';
   }
-  // horizon glow + haze
-  const hg = bctx.createLinearGradient(0, horizonY - 4, 0, horizonY + 6);
-  hg.addColorStop(0, m3Rgba(cA, 1, 0)); hg.addColorStop(0.5, m3Rgba(cA, 1.5, 0.8)); hg.addColorStop(1, m3Rgba(cA, 1, 0));
-  bctx.fillStyle = hg; bctx.fillRect(0, horizonY - 4, bw, 10);
-  if(C.haze > 0.05){ const hz = bctx.createLinearGradient(0, horizonY - bh*0.15, 0, horizonY + bh*0.1); hz.addColorStop(0, m3Rgba(cB, 1, 0)); hz.addColorStop(0.6, m3Rgba(cB, 1, C.haze*0.35)); hz.addColorStop(1, m3Rgba(cB, 1, 0)); bctx.fillStyle = hz; bctx.fillRect(0, horizonY - bh*0.15, bw, bh*0.25); }
+  }
+  { const mh = VP.mc.height, st = mh*(1 + mid*0.07);
+    bctx.drawImage(VP.mc, 0, mh - st, bw, st);
+    if(air > 0.02 && C.mtnStyle === 0){ bctx.globalCompositeOperation = 'lighter'; bctx.globalAlpha = Math.min(0.7, air*0.8)*(day ? 0.3 : 1); bctx.drawImage(VP.mc, 0, mh - st, bw, st); bctx.globalAlpha = 1; bctx.globalCompositeOperation = 'source-over'; } }
+
+  // ---- floor
+  const floorTop = day ? mix(gC, WHITE, 0.3) : mix(bg, gC, 0.6 + bass*0.2), floorBot = day ? mix(mix(gC, sA, 0.6), bg, 0.15) : mix(bg, BLACK, 0.45);
+  const fg = bctx.createLinearGradient(0, horizonY, 0, bh);
+  fg.addColorStop(0, css(floorTop)); fg.addColorStop(0.22, css(mix(floorTop, floorBot, 0.6))); fg.addColorStop(1, css(floorBot));
+  bctx.fillStyle = fg; bctx.fillRect(0, horizonY, bw, bh - horizonY);
+  if(C.sun){ const rh = (bh - horizonY)*0.7, rg = bctx.createRadialGradient(0, 0, 0, 0, 0, 1); rg.addColorStop(0, css(cB, 0.38 + bass*0.25)); rg.addColorStop(1, css(cB, 0));
+    bctx.save(); bctx.beginPath(); bctx.rect(0, horizonY, bw, bh - horizonY); bctx.clip(); bctx.globalCompositeOperation = 'lighter';
+    bctx.translate(sunX, horizonY); bctx.scale(sunR*1.5, rh); bctx.fillStyle = rg; bctx.fillRect(-1, 0, 2, 1); bctx.restore(); bctx.globalCompositeOperation = 'source-over'; }
+
+  // ---- spectrogram grid. Square cells of size s (DENSITY), columns = frequency (mirrored about the centre lane),
+  // depth = time: each row reads the spectrum history at a delay proportional to its distance.
+  const s = 1.25 - den*0.8, f = minD*0.9, camH = C.cam, zFar = 14, zn = 0.6;
+  const gx = Math.min(64, Math.ceil((bw*0.5/f)*(zFar + zn)/s) + 1), nz = Math.ceil(zFar/s) + 1, nx = gx*2 + 1;
+  if(VP.pts.length < nx*(nz + 1)*3) VP.pts = new Float32Array(nx*(nz + 1)*3);
+  const P = VP.pts, zOff = fract(VP.scroll/s), xSpan = Math.min(gx*s, (bw*0.5/f)*(zFar + zn)*0.55), rowA = VP.rowA, hist = VP.hist;
+  const maxH = camH*0.82, ampK = C.amp*camH*1.15, halfW = bw*0.5 + 30;
+  if(!VP.i0 || VP.i0.length < nz + 1){ VP.i0 = new Int16Array(nz + 8); VP.i1 = new Int16Array(nz + 8); VP.rz = new Float32Array(nz + 8); }
+  const I0 = VP.i0, I1 = VP.i1, RZ = VP.rz;
+  for(let j = 0; j <= nz; j++){
+    const z = Math.max(-0.42, (j - zOff)*s), zz = z + zn; RZ[j] = z;
+    // only the columns that can land on screen in this row are evaluated (plus one spare either side)
+    const reach = Math.min(gx, Math.ceil(halfW*zz/(f*s)) + 1); I0[j] = gx - reach; I1[j] = gx + reach;
+    const d = clamp((C.inward ? (zFar - z) : Math.max(0, z))*C.delay*HZ, 0, HN - 2), k0 = d|0, kf = d - k0;
+    const o0 = ((VP.head - k0 + HN*2) % HN)*NB, o1 = ((VP.head - k0 - 1 + HN*2) % HN)*NB;
+    for(let b = 0; b < NB; b++) rowA[b] = hist[o0 + b]*(1 - kf) + hist[o1 + b]*kf;
+    const farFade = 1 - 0.7*clamp(z/zFar, 0, 1);              // distant rows heave less so they don't stack into a wall
+    for(let i = I0[j]; i <= I1[j]; i++){
+      const x = (i - gx)*s, ax = Math.abs(x);
+      let u = Math.min(1, Math.pow(ax/xSpan, 0.85)); if(C.flip) u = 1 - u;
+      const fb = u*(NB - 1), b0 = fb|0, bf = fb - b0, a = (rowA[b0]*(1 - bf) + rowA[Math.min(NB - 1, b0 + 1)]*bf)*farFade;
+      const e = clamp((ax - 0.35)/1.6, 0, 1), env = 0.3 + 0.7*e*e*(3 - 2*e), over = Math.max(0, ax - xSpan*0.8);
+      const h = Math.min(maxH, a*env*ampK + over*over*C.edgeK + C.idle*env*(Math.sin(x*1.3 + z*0.7 + t*1.2) + 1)*(0.4 + mid));
+      const o = (j*nx + i)*3;
+      P[o] = vx + x*f/zz; P[o + 1] = horizonY + (camH - h)*f/zz; P[o + 2] = a*env;
+    }
+  }
+  const tilePaths = [new Path2D(), new Path2D(), new Path2D()], hotPaths = [new Path2D(), new Path2D(), new Path2D()];
+  const bucket = a => a > 0.6 ? 2 : a > 0.36 ? 1 : a > 0.16 ? 0 : -1;
+  for(let j = 0; j < nz; j++){ const zq = RZ[j + 1] + zn; if(camH*f*s/(zq*zq) < 3.5) break;      // rows packed tighter than this just smear
+   for(let i = I0[j]; i < I1[j]; i++){
+    const o = (j*nx + i)*3, o2 = o + 3, o3 = o + nx*3, o4 = o3 + 3;
+    if(C.tiles){ const bk = bucket((P[o + 2] + P[o2 + 2] + P[o3 + 2] + P[o4 + 2])*0.25);
+      if(bk >= 0){ const T = tilePaths[bk]; T.moveTo(P[o], P[o + 1]); T.lineTo(P[o2], P[o2 + 1]); T.lineTo(P[o4], P[o4 + 1]); T.lineTo(P[o3], P[o3 + 1]); T.closePath(); } }
+    const hr = bucket((P[o + 2] + P[o2 + 2])*0.5), hc = bucket((P[o + 2] + P[o3 + 2])*0.5);
+    if(hr >= 0){ hotPaths[hr].moveTo(P[o], P[o + 1]); hotPaths[hr].lineTo(P[o2], P[o2 + 1]); }
+    if(hc >= 0){ hotPaths[hc].moveTo(P[o], P[o + 1]); hotPaths[hc].lineTo(P[o3], P[o3 + 1]); }
+  } }
+  bctx.globalCompositeOperation = 'lighter'; bctx.lineJoin = 'round';
+  for(let b = 0; b < 3; b++){ bctx.fillStyle = css(mix(gC, hC, 0.5), 0.10 + b*0.11); bctx.fill(tilePaths[b]); }
+  // base grid: columns in a single path (each starts at the first row where it is on screen), rows stroked one by
+  // one with a perspective weight; rows that pack closer than ~2 px near the horizon fade so they don't pile up white
+  const lw = Math.max(1, minD*0.0016), coreC = mix(gC, WHITE, day ? 0.8 : 0.4 + bass*0.3), cols = new Path2D();
+  for(let i = I0[nz]; i <= I1[nz]; i++){
+    let started = false;
+    for(let j = 0; j <= nz; j++){ if(i < I0[j] || i > I1[j]) continue; const o = (j*nx + i)*3; if(!started){ cols.moveTo(P[o], P[o + 1]); started = true; } else cols.lineTo(P[o], P[o + 1]); }
+  }
+  const glowA = (day ? 0.07 : 0.16) + bass*(day ? 0.08 : 0.16);
+  bctx.strokeStyle = css(gC, glowA); bctx.lineWidth = lw*(3.5 + bass*3); bctx.stroke(cols);
+  bctx.strokeStyle = css(coreC, 0.8); bctx.lineWidth = lw; bctx.stroke(cols);
+  for(let j = nz; j >= 0; j--){
+    const zz = RZ[j] + zn, near = clamp(1.6/zz, 0.5, 2.2), gap = camH*f*s/(zz*zz);
+    const fade = (j === nz ? 1 - zOff : 1)*clamp(gap/2.2, 0.12, 1);
+    bctx.beginPath();
+    for(let i = I0[j]; i <= I1[j]; i++){ const o = (j*nx + i)*3; if(i === I0[j]) bctx.moveTo(P[o], P[o + 1]); else bctx.lineTo(P[o], P[o + 1]); }
+    if(gap > 3){ bctx.strokeStyle = css(gC, glowA*fade); bctx.lineWidth = lw*(3 + bass*3)*near; bctx.stroke(); }
+    bctx.strokeStyle = css(coreC, 0.85*fade); bctx.lineWidth = lw*near; bctx.stroke();
+  }
+  // hot pass: segments carrying energy light up toward white / the accent colour
+  for(let b = 0; b < 3; b++){
+    if(b > 0){ bctx.strokeStyle = css(hC, 0.2 + b*0.12); bctx.lineWidth = lw*(4 + b*2.5); bctx.stroke(hotPaths[b]); }
+    bctx.strokeStyle = css(mix(hC, WHITE, 0.55 + b*0.2), 0.55 + b*0.2); bctx.lineWidth = lw*(1.3 + b*0.5); bctx.stroke(hotPaths[b]);
+  }
+
+  // ---- horizon line, haze, scanlines
+  const hgH = minD*(0.05 + bass*0.04), hz = bctx.createLinearGradient(0, horizonY - hgH, 0, horizonY + hgH*1.6);
+  hz.addColorStop(0, css(gC, 0)); hz.addColorStop(0.38, css(mix(gC, WHITE, 0.3), (day ? 0.25 : 0.45) + bass*0.3)); hz.addColorStop(1, css(gC, 0));
+  bctx.fillStyle = hz; bctx.fillRect(0, horizonY - hgH, bw, hgH*2.6);
+  bctx.fillStyle = css(mix(gC, WHITE, 0.85), 0.95); bctx.fillRect(0, horizonY - Math.max(1, lw), bw, Math.max(2, lw*2));
   bctx.globalCompositeOperation = 'source-over';
+  const pitch = Math.max(2, Math.round(minD*(0.011 - den*0.007))), th = Math.max(1, Math.round(pitch*0.4));
+  bctx.beginPath(); for(let y = Math.floor(fract(t*0.15)*pitch); y < bh; y += pitch) bctx.rect(0, y, bw, th);
+  bctx.fillStyle = day ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.16)'; bctx.fill();
 }
 
 // ASTEROIDS: vector starfield and drifting rocks.
@@ -5579,10 +5889,10 @@ const SHAPES = [
   { id:'off', label:'OFF' },
   { id:'orbs', label:'ORBS' }, { id:'rings', label:'RINGS' }, { id:'scope', label:'SCOPE' },
   { id:'waves', label:'WAVES' },
-  { id:'tunnel', label:'TUNNEL' }, { id:'plasma', label:'PLASMA' }, { id:'lissa', label:'LISSAJOUS' },
+  { id:'tunnel', label:'TUNNEL' }, { id:'memory', label:'MEMORY' }, { id:'lissa', label:'LISSAJOUS' },
   { id:'altitude', label:'ALTITUDE' }, { id:'blobs', label:'BLOBS' }, { id:'polylock', label:'POLYLOCK' },
   { id:'sonar', label:'SONAR' }, { id:'aurora', label:'AURORA' },
-  { id:'wobble', label:'WOBBLE' }, { id:'lattice', label:'LATTICE' }, { id:'echo', label:'ECHO' },
+  { id:'odyssey', label:'ODYSSEY' }, { id:'supernova', label:'SUPERNOVA' }, { id:'blackhole', label:'BLACKHOLE' },
   { id:'constellation', label:'CONSTELLATION' }, { id:'glitch', label:'GLITCH' }, { id:'hlines', label:'HLINES' },
   { id:'moire', label:'MOIRE' }, { id:'colorbars', label:'COLORBARS' }, { id:'spiro', label:'SPIROGRAPH' },
   { id:'pulses', label:'PULSES' }, { id:'forest', label:'FOREST' }, { id:'eclipse', label:'ECLIPSE' },
@@ -5600,10 +5910,10 @@ const SHAPES = [
 const DRAW = {
   off:drawOff,
   orbs:drawOrbs, rings:drawRings, scope:drawScope,
-  waves:drawWaves, tunnel:drawTunnel, plasma:drawPlasma,
+  waves:drawWaves, tunnel:drawTunnel, memory:drawMemory,
   lissa:drawLissa, altitude:drawAltitudeMap, blobs:drawBlobs, polylock:drawPolylock,
-  sonar:drawSonar, aurora:drawAurora, wobble:drawWobble,
-  lattice:drawLattice, echo:drawEcho, constellation:drawConstellation,
+  sonar:drawSonar, aurora:drawAurora, odyssey:drawOdyssey,
+  supernova:drawSupernova, blackhole:drawBlackhole, constellation:drawConstellation,
   glitch:drawGlitch, hlines:drawHLines, moire:drawMoire, colorbars:drawColorbars,
   spiro:drawSpiro, pulses:drawPulses, forest:drawForest, eclipse:drawEclipse,
   rain:drawRain, halo:drawHalo, triangulation:drawTriangulation, rising:drawRising,
@@ -5877,7 +6187,7 @@ let lastScanOpacity = -1;
 // Shapes built from many overlapping strokes/discs would show their internal structure when drawn at partial
 // opacity during a crossfade. For those we draw at full opacity, then blend the previous buffer back over the
 // result, which fades the shape as one solid layer.
-const SOLID_MIX = new Set(['rings', 'spiro', 'helix', 'lattice', 'tunnel', 'modsynth', 'stickdancer', 'orbs', 'polylock', 'vmsolid', 'triangulation', 'halo', 'rising', 'mosaic', 'waves', 'dotgrid']);
+const SOLID_MIX = new Set(['rings', 'spiro', 'helix', 'supernova', 'blackhole', 'memory', 'tunnel', 'modsynth', 'stickdancer', 'orbs', 'polylock', 'vmsolid', 'triangulation', 'halo', 'rising', 'mosaic', 'waves', 'dotgrid']);
 const mixSnap = document.createElement('canvas'), mixSnapCtx = mixSnap.getContext('2d');
 const drawErrLogged = new Set();
 // A shape that throws mid-frame must never stall the output: log it once and carry on with the rest of the frame.
@@ -6260,12 +6570,29 @@ function frame(now){
     // 100..200%: the black clip rises and the highlight gain approaches unity, so the loop holds and burns
     // instead of decaying, while noise-level pixels still fall below the clip and die out.
     const bright = 0.9 - over * 0.15, contrast = 1.12 + over * 0.3, sat = 1.0 + over * 0.25;
+    const keyed = state.fbKey !== 'off' && FILTER_OK;
     if(!fbArmed){
       fbActx.globalCompositeOperation = 'source-over'; fbActx.globalAlpha = 1; fbActx.filter = 'none';
-      fbActx.drawImage(view, 0, 0);
+      if(keyed){ fbActx.fillStyle = '#000'; fbActx.fillRect(0, 0, W, H); }   // keyed loop starts from black so the key colour never gets into the memory
+      else fbActx.drawImage(view, 0, 0);
       fbArmed = true;
     }
     fbBctx.globalCompositeOperation = 'source-over'; fbBctx.globalAlpha = 1; fbBctx.filter = 'none';
+    if(keyed){
+      // KEY: background = previous output, zoomed / rotated / hue-drifted and dimmed by the loop gain over black;
+      // foreground = the live frame with the key colour cut out. The composite is shown and becomes the next memory.
+      fbKeyBuild();
+      fbBctx.fillStyle = '#000'; fbBctx.fillRect(0, 0, W, H);
+      fbBctx.save();
+      fbBctx.translate(W*0.5, H*0.5); fbBctx.rotate(state.fbRot * Math.PI/180); fbBctx.scale(1 + state.fbZoom, 1 + state.fbZoom); fbBctx.translate(-W*0.5, -H*0.5);
+      fbBctx.globalAlpha = Math.min(1, 0.4 + eff.feedback*0.6);
+      fbBctx.filter = `hue-rotate(${state.fbHue}deg) saturate(${sat.toFixed(3)}) contrast(${(1 + over*0.15).toFixed(3)})`;
+      fbBctx.drawImage(fbA, 0, 0);
+      fbBctx.restore();
+      fbBctx.filter = 'url(#fbKey)';
+      fbBctx.drawImage(view, 0, 0);
+      fbBctx.filter = 'none';
+    } else {
     fbBctx.drawImage(view, 0, 0);
     fbBctx.save();
     fbBctx.translate(W*0.5, H*0.5);
@@ -6277,6 +6604,7 @@ function frame(now){
     if(FILTER_OK) fbBctx.filter = `hue-rotate(${state.fbHue}deg) saturate(${sat.toFixed(3)}) brightness(${bright.toFixed(3)}) contrast(${contrast.toFixed(3)})`;
     fbBctx.drawImage(fbA, 0, 0);
     fbBctx.restore();
+    }
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.filter = 'none';
     ctx.drawImage(fbB, 0, 0);
     // swap: what we just showed is next pass's memory
@@ -6837,7 +7165,7 @@ function presetCapture(){
   return {
     app:'null-ventana', version:1, saved:new Date().toISOString(),
     sliders, text:state.text, seed:state.seed, recMax:REC.max, vcamRes:OUTRES.w + 'x' + OUTRES.h,
-    seg:{ fontStyle:state.fontStyle, shape:state.shape, shapeB:state.shapeB, filter:state.filter, palette:state.palette, bgMode:state.bgMode },
+    seg:{ fontStyle:state.fontStyle, shape:state.shape, shapeB:state.shapeB, filter:state.filter, palette:state.palette, bgMode:state.bgMode, fbKey:state.fbKey },
     toggles:{ invert:state.invert, mixAuto:state.mixAuto, videoLoop:state.videoLoop, noBgA:state.noBgA, noBgB:state.noBgB,
               beatReseed:state.beatReseed, videoGranular:state.videoGranular, palAudio:state.palAudio }
   };
@@ -6854,11 +7182,14 @@ function presetApply(p){
   if(ti){ ti.value = typeof p.text === 'string' ? p.text : ''; fire(ti); }
   const sg = p.seg || {};
   if(sg.fontStyle) setFontStyle(sg.fontStyle);
-  if(sg.shape) setShape(sg.shape);
-  if(sg.shapeB) setShapeB(sg.shapeB);
+  // presets saved before PLASMA / WOBBLE / LATTICE / ECHO were replaced load the shape that took each slot
+  const SHAPE_ALIAS = { plasma:'memory', wobble:'odyssey', lattice:'supernova', echo:'blackhole' };
+  if(sg.shape) setShape(SHAPE_ALIAS[sg.shape] || sg.shape);
+  if(sg.shapeB) setShapeB(SHAPE_ALIAS[sg.shapeB] || sg.shapeB);
   if(sg.filter) setFilter(sg.filter);
   if(Number.isInteger(sg.palette) && sg.palette >= 0 && sg.palette < PALETTES.length) setPalette(sg.palette);
   if(sg.bgMode) setBgMode(sg.bgMode);
+  setFbKey(sg.fbKey || 'off');
   const tg = p.toggles || {};
   setInvert(Boolean(tg.invert)); setMixAuto(Boolean(tg.mixAuto)); setVideoLoop(Boolean(tg.videoLoop));
   setNoBg('A', Boolean(tg.noBgA)); setNoBg('B', Boolean(tg.noBgB));
@@ -7073,6 +7404,7 @@ function wireControls(targetDoc = document){
   buildFilterButtons(targetDoc);
   buildPaletteButtons(targetDoc);
   buildBgModeButtons(targetDoc);
+  buildFbKeyButtons(targetDoc);
   setupCollapsibles(targetDoc);
 
   const cVideoFile = targetDoc.getElementById('cVideoFile');
@@ -7154,9 +7486,10 @@ function wireControls(targetDoc = document){
   };
   bindOut('cOutExp', 'outExp', 0.01); bindOut('cOutTemp', 'outTemp', 0.01); bindOut('cOutSat', 'outSat', 0.01);
   bindOut('cOutSh', 'outSh', 0.01);   bindOut('cOutMid', 'outMid', 0.01);   bindOut('cOutHi', 'outHi', 0.01);
+  bindOut('cOutTintHue', 'outTintHue', 1); bindOut('cOutTintAmt', 'outTintAmt', 0.01);
   const bOutReset = targetDoc.getElementById('bOutReset');
   if(bOutReset) bOutReset.addEventListener('click', ()=>{
-    ['cOutExp','cOutTemp','cOutSat','cOutSh','cOutMid','cOutHi'].forEach(id => {
+    ['cOutExp','cOutTemp','cOutSat','cOutSh','cOutMid','cOutHi','cOutTintHue','cOutTintAmt'].forEach(id => {
       const el = document.getElementById(id); if(!el) return;
       el.value = el.defaultValue; el.dispatchEvent(new Event('input'));
     });
@@ -7257,6 +7590,9 @@ function wireControls(targetDoc = document){
   if(cSplit)  cSplit.addEventListener('input',  ()=>{ state.split = cSplit.value * 0.01; syncFx(); });
   const cFeedback = targetDoc.getElementById('cFeedback');
   if(cFeedback) cFeedback.addEventListener('input', ()=>{ state.feedback = cFeedback.value * 0.01; syncFx(); });
+  const cFbKeyLevel = targetDoc.getElementById('cFbKeyLevel'), cFbKeyGain = targetDoc.getElementById('cFbKeyGain');
+  if(cFbKeyLevel) cFbKeyLevel.addEventListener('input', ()=>{ state.fbKeyLevel = cFbKeyLevel.value * 0.01; syncFbKey(); });
+  if(cFbKeyGain) cFbKeyGain.addEventListener('input', ()=>{ state.fbKeyGain = cFbKeyGain.value * 0.01; syncFbKey(); });
 
   const bindDepth = (sliderId, readoutId, stateProp) => {
     const el = targetDoc.getElementById(sliderId);
@@ -7438,6 +7774,7 @@ function openPopoutWindow(){
   setFilter(state.filter);
   setPalette(state.palette);
   setBgMode(state.bgMode);
+  setFbKey(state.fbKey); syncFbKey();
   setInvert(state.invert);
   setNoBg('A', state.noBgA);
   setNoBg('B', state.noBgB);
@@ -7509,6 +7846,7 @@ setShapeB('rings');
 setFilter('none');
 setPalette(0);
 setBgMode('palette');
+setFbKey('off');
 setInvert(false);
 setNoBg('A', false);
 setNoBg('B', false);
