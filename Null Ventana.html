@@ -534,6 +534,8 @@ const clamp = (v,a,b) => v < a ? a : v > b ? b : v;
 const lerp  = (a,b,t) => a + (b - a) * t;
 const fract = x => x - Math.floor(x);
 const hash1 = i => fract(Math.sin(i * 127.1 + 311.7) * 43758.5453);
+// hyp: 2-D length. Math.hypot is several times slower than a plain sqrt in V8 and sits in a lot of per-point loops.
+const hyp = (x, y) => Math.sqrt(x*x + y*y);
 
 // '#rrggbb' -> [r, g, b]
 function hex2rgb(h) {
@@ -697,7 +699,7 @@ function updateAudio(dt){
     for(let i = AUDIO_BINS[0][0]; i < AUDIO_BINS[0][1]; i++) rawKickSum += aData[i];
     const instantBass = ((rawKickSum / (AUDIO_BINS[0][1] - AUDIO_BINS[0][0])) * 0.0039215686) * sens;
 
-    if(state.beatReseed || state.videoGranular || state.palAudio){
+    if(state.beatReseed || state.videoGranular || state.palAudio || eff.glitch > 0.01){
       const now = performance.now();
       rawBassAvg += (instantBass - rawBassAvg) * Math.min(1, dt * 6.0);
       const onsetThreshold = Math.max(0.06, rawBassAvg * 1.18 + 0.02);
@@ -705,6 +707,7 @@ function updateAudio(dt){
 
       if(instantBass > onsetThreshold && isRising && (now - lastBeatTime) > 170){
         lastBeatTime = now;
+        if(eff.glitch > 0.01) glitchOnBeat(clamp((instantBass - rawBassAvg)*4, 0, 1));
         if(state.beatReseed) reseedNew();
         if(state.palAudio) paletteRandomFromAudio();
       }
@@ -1279,6 +1282,115 @@ let sharedSrcBuffer = new Uint8ClampedArray(BASE_BW * BASE_BW * 4);
 
 // Feature test for CanvasRenderingContext2D.filter (used for chromatic aberration and blur).
 const FILTER_OK = (()=>{ try{ const c = document.createElement('canvas').getContext('2d'); c.filter = 'blur(1px)'; return c.filter === 'blur(1px)'; }catch(e){ return false; } })();
+// ---- GLITCH: fired by the beat of the incoming audio, never by a clock. Each detected onset rolls the dice: whether
+// to glitch at all, for how long (a few frames up to ~0.45 s), how hard, and which faults are in the burst - slice
+// tearing, block scatter, vertical roll, colour-plane split, frame stutter, mirrored bands, mosaic bands, inverted
+// bars. Inside a burst the layout is re-rolled every 1-4 frames, so no two hits look the same. The GLITCH amount
+// scales the odds, the length and the violence. With no audio running, bursts arrive at random intervals instead.
+const GL = { until:0, start:0, amt:0, modes:0, seed:1, hold:0, idleAt:0, holdC:null, holdX:null, held:false };
+const GLM = { TEAR:1, BLOCKS:2, ROLL:4, SPLIT:8, STUTTER:16, MIRROR:32, MOSAIC:64, INVERT:128 };
+function glitchOnBeat(punch){
+  const g = eff.glitch, now = performance.now()*0.001;
+  if(Math.random() > 0.45 + g*0.55) return;                       // some beats pass clean
+  if(now < GL.until && Math.random() < 0.5){ GL.until += 0.05 + Math.random()*0.15; return; }   // already glitching: sometimes just extend
+  GL.start = now;
+  GL.until = now + (0.05 + Math.random()*Math.random()*0.4)*(0.6 + g*0.8);
+  GL.amt = clamp(g*(0.55 + Math.random()*0.6 + (punch || 0)*0.4), 0, 1.4);
+  let m = GLM.TEAR;
+  const roll = (bit, p) => { if(Math.random() < p*(0.5 + g)) m |= bit; };
+  roll(GLM.BLOCKS, 0.6); roll(GLM.ROLL, 0.3); roll(GLM.SPLIT, 0.65); roll(GLM.STUTTER, 0.3); roll(GLM.MIRROR, 0.3); roll(GLM.MOSAIC, 0.35); roll(GLM.INVERT, 0.3);
+  if(Math.random() < 0.15) m &= ~GLM.TEAR;
+  if(m === 0) m = GLM.TEAR;
+  GL.modes = m; GL.hold = 0; GL.held = false;
+}
+function glitchPass(ctx, W, H, tw){
+  const now = performance.now()*0.001;
+  if(!(analyser && actx && actx.state === 'running')){            // no input: random bursts stand in for beats
+    if(now > GL.idleAt){ GL.idleAt = now + lerp(3.5, 0.35, eff.glitch)*(0.3 + Math.random()*1.4); if(now >= GL.until) { const e = eff.glitch; glitchOnBeat(0); if(now >= GL.until && e > 0.5) glitchOnBeat(0); } }
+  }
+  if(now >= GL.until) return;
+  const ga = GL.amt, m = GL.modes, R = Math.random;
+  if(--GL.hold <= 0){ GL.seed = (R()*1e6) | 0; GL.hold = 1 + ((R()*R()*4) | 0); }
+  const sd = GL.seed, h = (k) => hash1(k*1.618 + sd*0.013);
+  if(!GL.holdC){ GL.holdC = document.createElement('canvas'); GL.holdX = GL.holdC.getContext('2d'); }
+  if(GL.holdC.width !== W || GL.holdC.height !== H){ GL.holdC.width = W; GL.holdC.height = H; GL.held = false; }
+  // STUTTER: grab the first frame of the burst and keep jamming it back in
+  if(m & GLM.STUTTER){
+    if(!GL.held){ GL.holdX.globalCompositeOperation = 'copy'; GL.holdX.drawImage(view, 0, 0); GL.held = true; }
+    else if(h(91) < 0.8) { ctx.save(); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.drawImage(GL.holdC, 0, 0); ctx.restore(); }
+  }
+  fxctx.save(); fxctx.globalCompositeOperation = 'copy'; fxctx.globalAlpha = 1; fxctx.filter = 'none'; fxctx.drawImage(view, 0, 0); fxctx.globalCompositeOperation = 'source-over';
+  // ROLL: the whole picture slips vertically and wraps, like lost vertical hold
+  if(m & GLM.ROLL){
+    const dy = Math.round((h(3) - 0.5)*H*0.9*Math.min(1, ga)) || 7;
+    const sy = ((dy % H) + H) % H;
+    fxctx.drawImage(view, 0, 0, W, H - sy, 0, sy, W, H - sy); fxctx.drawImage(view, 0, H - sy, W, sy, 0, 0, W, sy);
+  }
+  // TEAR: horizontal slices thrown sideways; a few of them are huge
+  if(m & GLM.TEAR){
+    const nS = 6 + Math.floor(ga*34);
+    for(let k = 0; k < nS; k++){
+      const big = h(k*11 + 5) < 0.18, y = (h(k*3 + 1)*H) | 0, hgt = Math.max(2, (H*(big ? 0.06 + h(k*5)*0.2 : 0.004 + h(k*5)*0.05)*Math.min(1.2, 0.4 + ga)) | 0);
+      const dx = Math.round((h(k*7 + 2)*2 - 1)*W*(big ? 0.45 : 0.22)*ga), wrap = dx > 0 ? dx - W : dx + W;
+      fxctx.drawImage(view, 0, y, W, hgt, dx, y, W, hgt); fxctx.drawImage(view, 0, y, W, hgt, wrap, y, W, hgt);
+    }
+  }
+  // MIRROR: bands flipped left-right or upside down
+  if(m & GLM.MIRROR){
+    const nM = 1 + ((h(41)*3*ga) | 0);
+    for(let k = 0; k < nM; k++){
+      const y = (h(k*13 + 43)*H*0.85) | 0, hgt = Math.max(4, (H*(0.05 + h(k*17 + 44)*0.3)) | 0), vert = h(k*19 + 45) < 0.4;
+      fxctx.save(); if(vert){ fxctx.translate(0, y*2 + hgt); fxctx.scale(1, -1); } else { fxctx.translate(W, 0); fxctx.scale(-1, 1); }
+      fxctx.drawImage(view, 0, y, W, hgt, 0, y, W, hgt); fxctx.restore();
+    }
+  }
+  // MOSAIC: bands crushed to fat pixels
+  if(m & GLM.MOSAIC){
+    const nQ = 1 + ((h(51)*3) | 0), sm0 = fxctx.imageSmoothingEnabled;
+    for(let k = 0; k < nQ; k++){
+      const y = (h(k*23 + 52)*H*0.9) | 0, hgt = Math.max(8, (H*(0.04 + h(k*29 + 53)*0.22)) | 0), q = Math.max(6, (W*(0.01 + h(k*31 + 54)*0.04*(0.5 + ga))) | 0);
+      const sw = Math.max(1, (W/q) | 0), sh = Math.max(1, (hgt/q) | 0);
+      if(!GL.mosC){ GL.mosC = document.createElement('canvas'); GL.mosC.width = 256; GL.mosC.height = 64; GL.mosX = GL.mosC.getContext('2d'); }
+      const mw = Math.min(256, sw), mh = Math.min(64, sh);
+      GL.mosX.globalCompositeOperation = 'copy'; GL.mosX.drawImage(view, 0, y, W, hgt, 0, 0, mw, mh);
+      fxctx.imageSmoothingEnabled = false; fxctx.clearRect(0, y, W, hgt); fxctx.drawImage(GL.mosC, 0, 0, mw, mh, 0, y, W, hgt);
+    }
+    fxctx.imageSmoothingEnabled = sm0;
+  }
+  // BLOCKS: rectangles lifted from one place and dropped in another, sometimes stretched
+  if(m & GLM.BLOCKS){
+    const nb = 2 + Math.floor(h(61)*10*ga);
+    for(let k = 0; k < nb; k++){
+      const bw0 = W*(0.04 + h(k*37 + 62)*0.35), bh0 = H*(0.03 + h(k*41 + 63)*0.25), st = h(k*43 + 64) < 0.3 ? 1 + h(k*47)*2.5 : 1;
+      fxctx.drawImage(view, (h(k*53 + 65)*(W - bw0)) | 0, (h(k*59 + 66)*(H - bh0)) | 0, bw0, bh0, (h(k*61 + 67)*(W - bw0)) | 0, (h(k*67 + 68)*(H - bh0)) | 0, bw0*st, bh0);
+    }
+  }
+  // INVERT: negative bars
+  if(m & GLM.INVERT){
+    fxctx.globalCompositeOperation = 'difference'; fxctx.fillStyle = '#fff';
+    const nI = 1 + ((h(71)*3) | 0);
+    for(let k = 0; k < nI; k++){ const y = (h(k*71 + 72)*H) | 0, hgt = Math.max(3, (H*(0.01 + h(k*73 + 73)*0.18)) | 0); _protoFillRect.call(fxctx, 0, y, W, hgt); }
+    fxctx.globalCompositeOperation = 'source-over';
+  }
+  fxctx.restore();
+  ctx.save(); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.filter = 'none';
+  ctx.drawImage(fxc, 0, 0);
+  // SPLIT: red and blue planes pulled far apart, plus a whole-frame sideways kick
+  if(m & GLM.SPLIT){
+    const off = Math.min(Math.round(W*0.08), Math.round((0.01 + h(81)*0.06)*W*ga) + 2);
+    if(FILTER_OK){
+      setGlitchCA(off);
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = clamp(0.45 + 0.4*ga, 0, 0.9);
+      ctx.filter = 'url(#caR)'; ctx.drawImage(fxc, 0, 0);
+      ctx.filter = 'url(#caB)'; ctx.drawImage(fxc, 0, 0);
+      ctx.filter = 'none'; setGlitchCA(2);
+    } else {
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35; ctx.drawImage(fxc, off, 0); ctx.drawImage(fxc, -off, 0);
+    }
+  }
+  ctx.restore();
+}
+
 let glitchCA = 2;
 // Update the SVG displacement filters used for chromatic aberration.
 function setGlitchCA(px){
@@ -1396,7 +1508,14 @@ function m3Proj(p, D, f){
   return [bw*0.5 + p[0]*s, bh*0.5 - p[1]*s, s, zc];
 }
 // rgba() string from an [r,g,b] array, brightness multiplier m and alpha a.
-const m3Rgba = (c, m, a) => `rgba(${clamp(c[0]*m,0,255)|0},${clamp(c[1]*m,0,255)|0},${clamp(c[2]*m,0,255)|0},${a === undefined ? 1 : clamp(a,0,1)})`;
+// (the most-called helper in the file: clamps are inlined and alpha is rounded to 3 decimals - finer than the 8-bit alpha the
+// canvas keeps - so the colour strings stay short and cheap for the browser to parse)
+const m3Rgba = (c, m, a) => {
+  let r = c[0]*m, g = c[1]*m, b = c[2]*m;
+  r = r < 0 ? 0 : r > 255 ? 255 : r|0; g = g < 0 ? 0 : g > 255 ? 255 : g|0; b = b < 0 ? 0 : b > 255 ? 255 : b|0;
+  if(a === undefined || a >= 1) return 'rgba(' + r + ',' + g + ',' + b + ',1)';
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + (a > 0 ? ((a*1000 + 0.5)|0)/1000 : 0) + ')';
+};
 // flat-shaded mesh: verts are rotated 3D points, faces are index lists, colorOf(faceIndex) -> rgb
 function m3Mesh(verts, faces, D, f, colorOf, opts = {}){
   const L = opts.light || [0.4, 0.7, -0.6], amb = opts.amb === undefined ? 0.35 : opts.amb, alpha = opts.alpha === undefined ? 1 : opts.alpha;
@@ -1890,7 +2009,7 @@ function drawTunnel(t){
       const a = A0[s], b = A0[(s+1)%sides], c = B0[(s+1)%sides], d = B0[s];
       const col = pal.rgb[((base + r) + (s%2)) % pal.rgb.length];
       const mx = (a[0]+b[0]+c[0]+d[0])*0.25, my = (a[1]+b[1]+c[1]+d[1])*0.25;
-      const lit = 0.35 + 0.65*Math.max(0, -(mx*Math.cos(zc*0.4 + TU.twist) + my*Math.sin(zc*0.4 + TU.twist)) / (Math.hypot(mx, my) || 1));
+      const lit = 0.35 + 0.65*Math.max(0, -(mx*Math.cos(zc*0.4 + TU.twist) + my*Math.sin(zc*0.4 + TU.twist)) / (hyp(mx, my) || 1));
       const pa = m3Proj(a, 0, f), pb = m3Proj(b, 0, f), pc = m3Proj(c, 0, f), pd = m3Proj(d, 0, f);
       bctx.fillStyle = m3Rgba(col, fog*lit*(0.5 + ((base + r + s) % 2)*0.35)*(0.8 + glow*0.4), 1);
       bctx.beginPath(); bctx.moveTo(pa[0], pa[1]); bctx.lineTo(pb[0], pb[1]); bctx.lineTo(pc[0], pc[1]); bctx.lineTo(pd[0], pd[1]); bctx.closePath();
@@ -2139,7 +2258,11 @@ function palRamp(pal, u){
 function specAt(u){
   u = clamp(u, 0, 1);
   if(analyser && actx && actx.state === 'running' && aData){
-    const binHz = actx.sampleRate/analyser.fftSize, fi = clamp(45*Math.pow(180, u)/binHz, 1, aData.length - 2), i = fi|0, k = fi - i;
+    // bin position for u comes from a 257-entry table (rebuilt only if the sample rate / FFT size changes) - no pow() per call
+    const binHz = actx.sampleRate/analyser.fftSize, T = specAt;
+    if(T.binHz !== binHz || T.len !== aData.length){ T.binHz = binHz; T.len = aData.length; T.tab = new Float32Array(258);
+      for(let q = 0; q < 258; q++) T.tab[q] = clamp(45*Math.pow(180, q/256)/binHz, 1, aData.length - 2); }
+    const tu = u*256, ti = tu|0, fi = T.tab[ti] + (T.tab[ti + 1] - T.tab[ti])*(tu - ti), i = fi|0, k = fi - i;
     return clamp(((aData[i]*(1 - k) + aData[i + 1]*k)*0.0039215686 - 0.05)*(0.8 + u*0.9)*(0.5 + state.audio*0.875), 0, 1);
   }
   const f = u*3, i = f|0, k = f - i;
@@ -2224,7 +2347,7 @@ function drawSupernova(t){
   bctx.save();
   // clusters first (they sit behind the blades)
   bctx.globalCompositeOperation = 'lighter'; bctx.lineWidth = Math.max(0.6, minD*0.0016);
-  const nCl = 6 + Math.round(den*26), arms = 3, reach = Math.hypot(bw, bh)*0.55;
+  const nCl = 6 + Math.round(den*26), arms = 3, reach = hyp(bw, bh)*0.55;
   const web = (x, y, r, n, rot, depth, path, seed) => {
     const pts = [];
     for(let i = 0; i < n; i++){ const a = rot + i/n*TAU, rr = r*(0.55 + 0.75*hash1(seed + i*3.7)); pts.push([x + Math.cos(a)*rr, y + Math.sin(a)*rr]); }
@@ -2274,7 +2397,7 @@ function drawOdyssey(t){
   const dt = smBands(O, t), sm = O.sm;
   if(O.ph === undefined){ O.ph = 0; O.rot = 0; }
   O.ph += dt*(0.10 + sm[0]*0.45); O.rot += dt*(0.06 + sm[1]*0.5);
-  const cx = bw*0.5 + n1(t*0.13)*bw*0.04, cy = bh*0.5 + n1(t*0.11 + 9)*bh*0.04, reach = Math.hypot(bw, bh)*0.5;
+  const cx = bw*0.5 + n1(t*0.13)*bw*0.04, cy = bh*0.5 + n1(t*0.11 + 9)*bh*0.04, reach = hyp(bw, bh)*0.5;
   bctx.save(); bctx.globalCompositeOperation = 'lighter';
   // soft coloured bloom drifting behind the core
   { const a = O.rot*0.7, bx = cx + Math.cos(a)*minD*0.12, by = cy + Math.sin(a)*minD*0.12 - minD*0.05, r = minD*(0.22 + sm[1]*0.12), c = pal.rgb[2 % pal.rgb.length];
@@ -2305,9 +2428,9 @@ function drawOdyssey(t){
 }
 
 // BLACKHOLE: a star-filled black disc with a white-hot rim, wrapped in stacked polar blobs whose lobes are the
-// spectrum folded around the circle, a crown of radial rays, thin orbit loops and curtains of fine waves down the
-// screen edges. Each blob layer reads the spectrum at a different rotation, rays are one spectrum bin each, bass
-// breathes the disc. DENSITY adds blob layers, rays, orbits, curtain lines and stars.
+// spectrum folded around the circle, thin orbit loops and curtains of fine waves down the screen edges. Each blob
+// layer reads the spectrum at a different rotation, bass breathes the disc. DENSITY adds blob layers, orbits,
+// curtain lines and stars.
 function drawBlackhole(t){
   const pal = PALETTES[state.palette], minD = Math.min(bw, bh), B = drawBlackhole, den = clamp(eff.density, 0, 1);
   const dt = smBands(B, t), sm = B.sm, nc = pal.rgb.length;
@@ -2351,16 +2474,6 @@ function drawBlackhole(t){
     }
     bctx.closePath(); bctx.globalAlpha = ga*(last ? 0.95 : 0.78); bctx.fillStyle = m3Rgba(col, last ? 1 : 0.95, 1); bctx.fill();
   }
-  // rays
-  const nRay = 36 + Math.round(den*132); bctx.lineWidth = Math.max(1, minD*0.002);
-  const rayIn = new Path2D(), rayOut = new Path2D();
-  for(let i = 0; i < nRay; i++){
-    const a = i/nRay*TAU + B.rot*0.3, lv = specRing(a*1 + 1.1), r1 = R*1.02, r2 = R*(1.5 + lv*1.9 + 0.25*hash1(i*4.1)), rm = R*1.55, c = Math.cos(a), s = Math.sin(a);
-    rayIn.moveTo(cx + c*r1, cy + s*r1); rayIn.lineTo(cx + c*Math.min(r2, rm), cy + s*Math.min(r2, rm));
-    if(r2 > rm){ rayOut.moveTo(cx + c*rm, cy + s*rm); rayOut.lineTo(cx + c*r2, cy + s*r2); }
-  }
-  bctx.globalAlpha = ga*0.55; bctx.strokeStyle = 'rgba(255,255,255,0.9)'; bctx.stroke(rayIn);
-  bctx.globalAlpha = ga*(0.45 + sm[3]*0.4); bctx.strokeStyle = m3Rgba(pal.rgb[1 % nc], 1.2, 1); bctx.stroke(rayOut);
   // orbit loops
   const nO = 1 + Math.round(den*4); bctx.lineWidth = Math.max(1, minD*0.003);
   for(let k = 0; k < nO; k++){
@@ -2866,44 +2979,6 @@ function drawRain(t){
   bctx.fillStyle = lg; bctx.fillRect(0, 0, bw, bh);
 }
 
-// HALO: shaded planet with a tilted particle ring passing behind and in front of it.
-function drawHalo(t){
-  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
-  bctx.globalCompositeOperation = 'source-over';
-  const D = 7.5, f = minD*2.4, N = 600 + Math.round(eff.density * 900);
-  const tilt = 0.45 + Math.sin(t*0.12)*0.25, yaw = t*0.12, roll = 0.35;
-  const pc = pal.rgb[Math.floor(t*0.03) % pal.rgb.length], Rp = 0.62*(1 + A[0]*gain*0.15);
-  const centre = m3Proj([0, 0, 0], D, f);
-  const parts = [];
-  for(let i = 0; i < N; i++){
-    const h = cityHash(i, 1, 0), rad = 0.95 + h*0.9 + A[1]*gain*0.25*Math.sin(i), ang = cityHash(i, 2, 0)*TAU + t*(0.5/Math.sqrt(rad)) ;
-    const p = m3Rot(Math.cos(ang)*rad, (cityHash(i, 3, 0) - 0.5)*0.03, Math.sin(ang)*rad, yaw, tilt, roll);
-    const lit = (1.0 + 0.35*Math.cos(ang - 0.6)) * (1 + A[3]*gain*0.6);
-    parts.push({ p, c:pal.rgb[(i % 3 + Math.floor(rad*3)) % pal.rgb.length], lit, s:0.0035 + cityHash(i, 4, 0)*0.007 });
-  }
-  const drawParts = (front) => { for(const q of parts){ if((q.p[2] < 0) !== front) continue; const pr = m3Proj(q.p, D, f);
-    bctx.fillStyle = m3Rgba(q.c, q.lit, 0.9); bctx.beginPath(); bctx.arc(pr[0], pr[1], Math.max(0.5, q.s*pr[2]), 0, TAU); bctx.fill(); } };
-  // shadow of the planet on the far ring, ring behind planet, planet, ring in front
-  drawParts(false);
-  const R = Rp*centre[2];
-  const sg = bctx.createRadialGradient(centre[0] - R*0.4, centre[1] - R*0.35, R*0.05, centre[0], centre[1], R);
-  sg.addColorStop(0, m3Rgba(pc, 1.4, 1)); sg.addColorStop(0.5, m3Rgba(pc, 0.9, 1)); sg.addColorStop(1, m3Rgba(pc, 0.12, 1));
-  bctx.fillStyle = sg; bctx.beginPath(); bctx.arc(centre[0], centre[1], R, 0, TAU); bctx.fill();
-  // cloud bands
-  bctx.save(); bctx.beginPath(); bctx.arc(centre[0], centre[1], R, 0, TAU); bctx.clip();
-  for(let b = -4; b <= 4; b++){
-    const yy = centre[1] + b*R*0.2 + Math.sin(t*0.5 + b)*R*0.03;
-    bctx.fillStyle = `rgba(255,255,255,${0.05 + 0.05*(b & 1)})`;
-    bctx.fillRect(centre[0] - R, yy - R*0.05, R*2, R*0.1);
-  }
-  bctx.restore();
-  // atmosphere glow
-  const ag = bctx.createRadialGradient(centre[0], centre[1], R*0.95, centre[0], centre[1], R*1.35*(1 + A[2]*gain*0.3));
-  ag.addColorStop(0, m3Rgba(pc, 1.2, 0.35)); ag.addColorStop(1, m3Rgba(pc, 1, 0));
-  bctx.fillStyle = ag; bctx.beginPath(); bctx.arc(centre[0], centre[1], R*1.4, 0, TAU); bctx.fill();
-  drawParts(true);
-}
-
 // TRIANGLES: low-poly gem (subdivided icosahedron) deforming with the audio.
 function drawTriangulation(t){
   const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
@@ -3149,8 +3224,8 @@ function drawLiminalMaze(t){
 
   // ---- walk ----
   const speed = 2.4 + A[0]*gain*1.4;
-  let dx = MZ.tx - MZ.px, dy = MZ.ty - MZ.py, dist = Math.hypot(dx, dy);
-  if(dist < 0.05){ mzPickNext(); dx = MZ.tx - MZ.px; dy = MZ.ty - MZ.py; dist = Math.hypot(dx, dy); }
+  let dx = MZ.tx - MZ.px, dy = MZ.ty - MZ.py, dist = hyp(dx, dy);
+  if(dist < 0.05){ mzPickNext(); dx = MZ.tx - MZ.px; dy = MZ.ty - MZ.py; dist = hyp(dx, dy); }
   let da = MZ.tAng - MZ.ang; da = Math.atan2(Math.sin(da), Math.cos(da));
   MZ.ang += da * Math.min(1, dt * 4.5);
   const turnSlow = clamp(1 - Math.abs(da)*0.7, 0.25, 1);
@@ -3545,7 +3620,7 @@ function drawModularSynth(t){
   for(const cb of SYN.cables){
     const cc = cols[cb.col % nc];
     const ax = cb.a.x, ay = cb.a.y, bx = cb.b.x, by = cb.b.y;
-    const len = Math.hypot(bx - ax, by - ay);
+    const len = hyp(bx - ax, by - ay);
     const sway = Math.sin(t*1.3 + cb.ph)*0.03 + A[0]*gain*0.05;
     const sag = cb.sag*0.7 + len*0.16;
     const zOut = -0.08 - len*0.12;
@@ -4253,180 +4328,247 @@ function drawAsteroids(t){
   }
 }
 
-// ---- DANCER: generative interpretive dance driven by the audio bands ----
-// Each dancer holds a set of joint parameters that spring toward randomly generated target poses.
-// New poses are picked on bass onsets (or on a timer when the music is quiet) from a library of motifs,
-// weighted by the current energy, so the choreography never repeats.
-const DANCE = { dancers:[], lastT:0, level:0, lastBeat:-10, beatCount:0 };
-// Joint parameter indices for a dancer's pose vector.
-const DJ = { lean:0, head:1, lSh:2, rSh:3, lEl:4, rEl:5, lHip:6, rHip:7, lKn:8, rKn:9, crouch:10, x:11, twist:12, lHand:13, rHand:14, N:15 };
-// Create a dancer with its own tempo multiplier, beat phase and pose state.
-function danceNewDancer(i){
-  const d = { cur:new Float32Array(DJ.N), vel:new Float32Array(DJ.N), tgt:new Float32Array(DJ.N), nextAt:0, motif:'sway', motifLeft:0,
-    jump:0, jumpV:0, airborne:false, phaseOff:Math.random()*10, speedMul:0.8 + Math.random()*0.5, trail:[], seed:Math.random()*1000, lastLegSwap:0, spinDir:1, spin:0 };
-  d.cur[DJ.x] = d.tgt[DJ.x] = (i - 1)*0.55;
-  d.cur[DJ.lSh] = -0.6; d.cur[DJ.rSh] = 0.6; d.cur[DJ.lHip] = 0.2; d.cur[DJ.rHip] = -0.2; d.cur[DJ.lKn] = 0.3; d.cur[DJ.rKn] = -0.3;
-  return d;
-}
+// ---- DANCER: club dancers. Nothing here is a stored move: there is no pose or motif library.
+// A dancer is a rig with planted feet (legs solved by IK, so weight stays on the floor), a sprung upper body and a
+// beat clock locked to the incoming audio. Every few bars it invents a PHRASE from random numbers alone: 2-4 key poses
+// sampled from club-sized joint ranges (upright spine, elbows near the ribs, forearms folded up, now and then a hand
+// in the air), how the two arms relate (free, mirrored, parallel, one parked), how hard the poses land on the beat,
+// which subdivision they land on, how deep and on which half of the beat the bounce sits, how much the hips rock and
+// the shoulders shimmy, whether the feet do a step-touch or small free steps, how often, whether they glide, how
+// likely a hop is, plus a random oscillator per arm joint. The phrase loops for its random length and is then thrown
+// away. Bass drives the bounce, steps and hops, overall energy sets pose size and tempo subdivision, mids work the
+// arms and shimmy, highs lift the shoulders and nod the head. DENSITY = crew size (1-5).
+// Figures are solid single-colour artist's mannequins: head with a jaw and chin, long swinging hair, sloped-shoulder torso, pelvis block,
+// tapered limbs and ball joints, slim and completely solid - no outlines of any kind. No light trails; nothing is drawn behind them.
+const DANCE = { dancers:[], lastT:0, level:0, lastBeat:-10, beatCount:0, period:0.52, phase:0 };
+const DP = { lean:0, head:1, twist:2, lSh:3, lEl:4, rSh:5, rEl:6, drop:7, shift:8, shrug:9, N:10 };
 // R(a, b): uniform random in [a, b); pick(): random array element.
 const R = (a, b) => a + Math.random()*(b - a), pick = (arr) => arr[Math.floor(Math.random()*arr.length)];
-// Generate a new randomised target pose for dancer d from a motif chosen by the music's energy.
-function dancePose(d, energy, bands){
-  // pick a motif by energy, generate a randomized target pose for it
-  const lowE = ['sway', 'reach', 'flow', 'crouch', 'twist'], midE = ['reach', 'wide', 'twist', 'flow', 'kick', 'wave'], hiE = ['wide', 'kick', 'spin', 'leap', 'reach', 'wave', 'stomp'];
-  const pool = energy < 0.3 ? lowE : energy < 0.65 ? midE : hiE;
-  if(d.motifLeft <= 0 || Math.random() < 0.35){ d.motif = pick(pool); d.motifLeft = 1 + Math.floor(Math.random()*4); }
-  d.motifLeft--;
-  const T = d.tgt, s = Math.random() < 0.5 ? 1 : -1;      // mirror side
-  const L = s > 0 ? DJ.lSh : DJ.rSh, Rr = s > 0 ? DJ.rSh : DJ.lSh, LE = s > 0 ? DJ.lEl : DJ.rEl, RE = s > 0 ? DJ.rEl : DJ.lEl;
-  const LH = s > 0 ? DJ.lHip : DJ.rHip, RH = s > 0 ? DJ.rHip : DJ.lHip, LK = s > 0 ? DJ.lKn : DJ.rKn, RK = s > 0 ? DJ.rKn : DJ.lKn;
-  T[DJ.lHand] = R(-0.8, 0.8); T[DJ.rHand] = R(-0.8, 0.8);
-  switch(d.motif){
-    case 'sway':   T[DJ.lean] = R(-0.15, 0.15); T[DJ.head] = R(-0.2, 0.2); T[DJ.lSh] = R(-0.9, -0.3); T[DJ.rSh] = R(0.3, 0.9); T[DJ.lEl] = T[DJ.lSh] + R(-0.5, 0.3); T[DJ.rEl] = T[DJ.rSh] + R(-0.3, 0.5);
-                   T[DJ.lHip] = R(0.1, 0.35); T[DJ.rHip] = -R(0.1, 0.35); T[DJ.lKn] = T[DJ.lHip] + R(0, 0.3); T[DJ.rKn] = T[DJ.rHip] - R(0, 0.3); T[DJ.crouch] = R(0, 0.2); T[DJ.twist] = R(-0.3, 0.3); break;
-    case 'reach':  T[DJ.lean] = s*R(0.1, 0.35); T[DJ.head] = s*R(0.1, 0.4); T[L] = s*R(-2.9, -2.4); T[LE] = T[L] + s*R(-0.3, 0.3); T[Rr] = s*R(0.6, 1.6); T[RE] = T[Rr] + s*R(0.3, 1.2);
-                   T[LH] = s*R(0.3, 0.7); T[LK] = T[LH] + s*R(0, 0.4); T[RH] = -s*R(0.05, 0.3); T[RK] = T[RH]; T[DJ.crouch] = R(0, 0.25); T[DJ.twist] = s*R(0.2, 0.7); break;
-    case 'wide':   T[DJ.lean] = R(-0.1, 0.1); T[DJ.head] = R(-0.3, 0.3); T[DJ.lSh] = -R(1.3, 1.9); T[DJ.rSh] = R(1.3, 1.9); T[DJ.lEl] = T[DJ.lSh] - R(-0.6, 0.6); T[DJ.rEl] = T[DJ.rSh] + R(-0.6, 0.6);
-                   T[DJ.lHip] = R(0.5, 0.9); T[DJ.rHip] = -R(0.5, 0.9); T[DJ.lKn] = T[DJ.lHip] - R(0, 0.5); T[DJ.rKn] = T[DJ.rHip] + R(0, 0.5); T[DJ.crouch] = R(0.3, 0.6); T[DJ.twist] = R(-0.2, 0.2); break;
-    case 'crouch': T[DJ.lean] = R(0.2, 0.5)*s; T[DJ.head] = R(-0.4, 0.2); T[DJ.lSh] = R(-1.4, -0.4); T[DJ.rSh] = R(0.4, 1.4); T[DJ.lEl] = T[DJ.lSh] + R(-1.2, 0); T[DJ.rEl] = T[DJ.rSh] + R(0, 1.2);
-                   T[DJ.lHip] = R(0.6, 1.1); T[DJ.rHip] = -R(0.6, 1.1); T[DJ.lKn] = T[DJ.lHip] - R(0.8, 1.4); T[DJ.rKn] = T[DJ.rHip] + R(0.8, 1.4); T[DJ.crouch] = R(0.6, 1); T[DJ.twist] = R(-0.5, 0.5); break;
-    case 'twist':  T[DJ.twist] = s*R(0.7, 1); T[DJ.lean] = R(-0.2, 0.2); T[DJ.head] = -s*R(0.2, 0.6); T[DJ.lSh] = -R(0.8, 2.2); T[DJ.rSh] = R(0.8, 2.2); T[DJ.lEl] = T[DJ.lSh] + s*R(0.5, 1.5); T[DJ.rEl] = T[DJ.rSh] + s*R(0.5, 1.5);
-                   T[DJ.lHip] = R(0.2, 0.5); T[DJ.rHip] = -R(0.2, 0.5); T[DJ.lKn] = T[DJ.lHip] + R(-0.2, 0.3); T[DJ.rKn] = T[DJ.rHip] + R(-0.3, 0.2); T[DJ.crouch] = R(0.1, 0.4); break;
-    case 'flow':   for(let k = 0; k < 10; k++) T[k] += R(-0.5, 0.5); T[DJ.crouch] = clamp(T[DJ.crouch] + R(-0.2, 0.2), 0, 0.6); T[DJ.twist] = clamp(T[DJ.twist] + R(-0.4, 0.4), -1, 1); break;
-    case 'kick':   T[LH] = s*R(1.2, 1.9); T[LK] = T[LH] + s*R(-0.4, 0.4); T[RH] = -s*R(0, 0.15); T[RK] = T[RH] - s*R(0, 0.3); T[DJ.lean] = -s*R(0.2, 0.5); T[L] = s*R(0.5, 1.5); T[Rr] = -s*R(1, 2); T[LE] = T[L]; T[RE] = T[Rr];
-                   T[DJ.crouch] = R(0, 0.3); T[DJ.twist] = -s*R(0, 0.5); T[DJ.head] = -s*R(0, 0.3); break;
-    case 'wave':   T[DJ.lSh] = -R(1.2, 1.8); T[DJ.rSh] = R(1.2, 1.8); T[DJ.lEl] = T[DJ.lSh] + R(-1.2, 1.2); T[DJ.rEl] = T[DJ.rSh] + R(-1.2, 1.2); T[DJ.lHand] = R(-1.5, 1.5); T[DJ.rHand] = R(-1.5, 1.5);
-                   T[DJ.lean] = R(-0.2, 0.2); T[DJ.crouch] = R(0.1, 0.4); T[DJ.twist] = R(-0.4, 0.4); T[DJ.head] = R(-0.3, 0.3); break;
-    case 'spin':   d.spinDir = s; d.spin = TAU; T[DJ.lSh] = -R(1.4, 1.8); T[DJ.rSh] = R(1.4, 1.8); T[DJ.lEl] = T[DJ.lSh]; T[DJ.rEl] = T[DJ.rSh]; T[DJ.lHip] = 0.25; T[DJ.rHip] = -0.25; T[DJ.lKn] = 0.3; T[DJ.rKn] = -0.3; T[DJ.crouch] = 0.15; T[DJ.lean] = 0; break;
-    case 'leap':   if(!d.airborne){ d.jumpV = R(2.6, 3.6); d.airborne = true; } T[DJ.lSh] = -R(2.4, 3); T[DJ.rSh] = R(2.4, 3); T[DJ.lEl] = T[DJ.lSh]; T[DJ.rEl] = T[DJ.rSh]; T[DJ.lHip] = R(0.4, 1.2); T[DJ.rHip] = -R(0.4, 1.2); T[DJ.lKn] = T[DJ.lHip] - R(1, 1.6); T[DJ.rKn] = T[DJ.rHip] + R(1, 1.6); T[DJ.crouch] = 0; T[DJ.lean] = R(-0.15, 0.15); break;
-    case 'stomp':  T[DJ.crouch] = R(0.5, 0.8); T[DJ.lHip] = R(0.5, 0.8); T[DJ.rHip] = -R(0.5, 0.8); T[DJ.lKn] = T[DJ.lHip] - R(0.6, 1); T[DJ.rKn] = T[DJ.rHip] + R(0.6, 1); T[DJ.lSh] = -R(0.3, 0.8); T[DJ.rSh] = R(0.3, 0.8); T[DJ.lEl] = T[DJ.lSh] - R(1, 1.6); T[DJ.rEl] = T[DJ.rSh] + R(1, 1.6); T[DJ.lean] = R(0.1, 0.3); T[DJ.head] = R(-0.4, 0); T[DJ.twist] = R(-0.3, 0.3); break;
-  }
-  // travel: sometimes move to a new spot on the stage
-  if(Math.random() < 0.3 + energy*0.3) T[DJ.x] = clamp(T[DJ.x] + R(-0.5, 0.5)*(0.5 + energy), -0.85, 0.85);
+function danceNewDancer(i){
+  const d = { cur:new Float32Array(DP.N), vel:new Float32Array(DP.N), tgt:new Float32Array(DP.N), ph:null, phStart:0,
+    feet:[{ x:-0.11, from:-0.11, to:-0.11, u:1, dur:0.5, lift:0, dir:-1 }, { x:0.11, from:0.11, to:0.11, u:1, dur:0.5, lift:0, dir:1 }],
+    lastFoot:0, jump:0, jumpV:0, air:false, kd:[-1, 1], face:Math.random() < 0.5 ? -1 : 1, homeX:null, hue:i, tall:R(0.94, 1.06) };
+  d.cur[DP.drop] = 0.25; d.cur[DP.lSh] = -0.4; d.cur[DP.rSh] = 0.4;
+  return d;
 }
-// DANCER: faceless solid-colour figure; joints spring toward generated poses, bands add continuous motion.
+// one random key pose inside the phrase's envelope
+function danceRandPose(ph, energy){
+  const P = new Float32Array(DP.N), big = ph.size*(0.4 + energy*0.6);
+  P[DP.lean] = R(-0.16, 0.16)*big; P[DP.head] = R(-0.22, 0.22); P[DP.twist] = R(-0.8, 0.8)*ph.turn;
+  // club arms: elbows stay close to the ribs with the forearms folded up in front, a loose arm hangs now and then, and
+  // when the music is up a hand goes in the air. All of it is drawn from ranges, nothing is a stored position.
+  const arm = (side) => {
+    const r = Math.random();
+    if(r < ph.handsUp*(0.25 + energy)){ const sh = side*R(2.2, 3.0); return [sh, sh + R(-0.55, 0.55)]; }          // hand in the air
+    const sh = side*(0.08 + Math.pow(Math.random(), 1.8)*0.9*big);
+    if(r > 0.86) return [sh*0.5, sh*0.5 + side*R(-0.25, 0.5)];                                                   // hanging loose
+    return [sh, side*R(2.0, 3.4)];                                                                              // forearm folded up / across
+  };
+  let L = arm(-1), Rr = arm(1);
+  if(ph.armMode === 1) Rr = [-L[0], -L[1]];
+  else if(ph.armMode === 2) Rr = [L[0] + ph.armOff, L[1] + ph.armOff];
+  else if(ph.armMode === 3){ if(ph.parkSide < 0) L = ph.park; else Rr = ph.park; }
+  P[DP.lSh] = L[0]; P[DP.lEl] = L[1]; P[DP.rSh] = Rr[0]; P[DP.rEl] = Rr[1];
+  P[DP.drop] = clamp(ph.level + R(-0.08, 0.14)*big, 0.05, 0.5); P[DP.shift] = R(-1, 1); P[DP.shrug] = R(-0.6, 0.8);
+  return P;
+}
+function danceNewPhrase(d, energy){
+  const subs = energy < 0.3 ? [2, 2, 1] : energy < 0.65 ? [1, 1, 2, 0.5] : [1, 0.5, 0.5, 1];
+  const ph = { n:2 + ((Math.random()*3) | 0), sub:pick(subs), snap:R(0, 0.65), size:R(0.5, 1.1), turn:R(0.1, 0.8), level:R(0.08, 0.3), handsUp:R(0, 0.5), shimmy:Math.random() < 0.6 ? R(0.2, 1) : 0, shimF:pick([1, 2, 2, 4]),
+    twoStep:Math.random() < 0.6, tsLen:pick([1, 2, 2, 4]),
+    armMode:(Math.random()*4) | 0, armOff:R(-0.4, 0.4), parkSide:Math.random() < 0.5 ? -1 : 1, park:null,
+    bounce:R(0.06, 0.14), bounceOff:Math.random() < 0.3 ? 0.5 : 0, rock:R(0.02, 0.1), rockDiv:pick([1, 2, 2, 4]),
+    stepP:R(0.35, 1), stepW:R(0.4, 1), glide:Math.random() < 0.2, cross:R(0, 0.12), travel:Math.random() < 0.3 ? R(-1, 1) : 0, jumpP:R(0, 0.5),
+    beats:4*pick([1, 2, 2, 4]), osc:[], poses:[] };
+  const ps = ph.parkSide; ph.park = [ps*R(0.05, 0.5), 0]; ph.park[1] = Math.random() < 0.5 ? ph.park[0] + ps*R(-0.2, 0.4) : ps*R(1.6, 3.1);
+  for(const j of [DP.lSh, DP.lEl, DP.rSh, DP.rEl, DP.head, DP.lean])
+    if(Math.random() < 0.55) ph.osc.push([j, R(0.08, j === DP.lean ? 0.08 : j === DP.head ? 0.2 : (j === DP.lEl || j === DP.rEl) ? 0.55 : 0.3), pick([0.5, 1, 1, 2]), R(0, TAU)]);
+  for(let k = 0; k < ph.n; k++) ph.poses.push(danceRandPose(ph, energy));
+  d.ph = ph; d.phStart = DANCE.beatCount;
+}
+function danceStep(d, energy, range){
+  const ph = d.ph;
+  let i, to;
+  if(ph.twoStep){          // step-touch: lead foot goes out, the other closes to it; direction turns round every few steps
+    if(d.tsN === undefined){ d.tsN = 0; d.tsDir = Math.random() < 0.5 ? -1 : 1; }
+    const closing = d.tsN % 2 === 1; if(!closing && (d.tsN/2) % ph.tsLen === 0) d.tsDir = -d.tsDir;
+    const mid0 = (d.feet[0].x + d.feet[1].x)*0.5; if(!closing && Math.abs(mid0) > range*0.6) d.tsDir = -Math.sign(mid0);
+    const lead = d.tsDir > 0 ? 1 : 0; i = closing ? 1 - lead : lead;
+    const o = d.feet[1 - i];
+    to = closing ? o.x - d.tsDir*R(0.09, 0.15) : o.x + d.tsDir*R(0.2, 0.34)*ph.stepW;
+    if(d.feet[i].u < 1 || d.air) return; d.tsN++;
+  } else {
+    i = Math.random() < 0.8 ? 1 - d.lastFoot : d.lastFoot;
+    const o = d.feet[1 - i], side = i ? 1 : -1;
+    if(d.feet[i].u < 1 || d.air) return;
+    to = o.x + side*R(0.09, 0.3)*ph.stepW*(Math.random() < ph.cross ? -0.4 : 1) + ph.travel*0.12;
+    const mid = (to + o.x)*0.5; if(Math.abs(mid) > range*0.7) to -= Math.sign(mid)*R(0.1, 0.25);
+  }
+  const f = d.feet[i];
+  f.from = f.x; f.to = clamp(to, -range - 0.2, range + 0.2); f.u = 0; f.dur = R(0.3, 0.55)*(ph.sub < 1 ? 0.7 : 1);
+  f.lift = ph.glide ? 0.006 : R(0.015, 0.06)*(0.6 + energy*0.8); f.dir = i ? 1 : -1; d.lastFoot = i;
+}
+
+// DANCER: solid mannequins; see the block comment above for how the movement is generated.
 function drawStickDancer(t){
-  const g = bctx;
-  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
-  g.globalCompositeOperation = 'source-over';
-  const count = 1 + Math.round(eff.density * 2);
+  const g = bctx, pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio*1.25;
+  g.save(); g.globalCompositeOperation = 'source-over';
+  const count = 1 + Math.round(clamp(eff.density, 0, 1)*4);
   while(DANCE.dancers.length < count) DANCE.dancers.push(danceNewDancer(DANCE.dancers.length));
   let dt = t - DANCE.lastT; DANCE.lastT = t; if(dt < 0 || dt > 0.25) dt = 0;
   const bands = [clamp(A[0]*gain*1.3, 0, 1), clamp(A[1]*gain*1.3, 0, 1), clamp(A[2]*gain*1.3, 0, 1), clamp(A[3]*gain*1.3, 0, 1)];
   const energy = clamp((bands[0]*1.2 + bands[1] + bands[2]*0.8 + bands[3]*0.5)/3.5, 0, 1);
-  // bass onset -> beat
-  let beat = false;
-  if(A[0] > DANCE.level*1.3 + 0.1 && t - DANCE.lastBeat > 0.15){ beat = true; DANCE.lastBeat = t; DANCE.beatCount++; }
-  DANCE.level = lerp(DANCE.level, A[0], 0.15);
-
-  const floorY = bh*0.9;
-
-  for(let di = 0; di < count; di++){
-    const d = DANCE.dancers[di];
-    // choose a new pose on beats (every other beat for the second/third dancer so they don't sync) or on a timer
-    const interval = lerp(1.8, 0.4, energy) * d.speedMul;
-    if((beat && (di === 0 || (DANCE.beatCount + di) % 2 === 0)) || t > d.nextAt){ dancePose(d, energy, bands); d.nextAt = t + interval*R(0.7, 1.3); }
-    // springs toward target, stiffness rising with energy
-    const k = lerp(40, 140, energy), damp = lerp(9, 16, energy);
-    for(let j = 0; j < DJ.N; j++){
-      const acc = (d.tgt[j] - d.cur[j])*k - d.vel[j]*damp;
-      d.vel[j] += acc*dt; d.cur[j] += d.vel[j]*dt;
-    }
-    // jump physics
-    if(d.airborne){ d.jumpV -= 12*dt; d.jump += d.jumpV*dt; if(d.jump <= 0){ d.jump = 0; d.airborne = false; d.jumpV = 0; } }
-    else if(beat && bands[0] > 0.8 && Math.random() < 0.35){ d.jumpV = 1.6 + bands[0]*1.5; d.airborne = true; }
-    if(d.spin > 0){ d.spin -= dt*lerp(4, 9, energy); if(d.spin < 0) d.spin = 0; }
-
-    // continuous overlays: bass bounce in the knees, mids in the arms, highs flick the hands/head
-    const C = d.cur, ph = t*d.speedMul + d.phaseOff;
-    const bounce = bands[0]*0.25*Math.abs(Math.sin(ph*6)) + 0.03*Math.sin(ph*2);
-    const armMod = bands[1]*0.5, handMod = bands[3]*1.2, headMod = bands[2]*0.4;
-    const nz = (i, f) => n1(ph*f + i*7.3)*0.12*(0.5 + energy);
-    const twist = clamp(C[DJ.twist] + (d.spin > 0 ? Math.sin(d.spin)*d.spinDir*1.2 : 0), -1.4, 1.4);
-    const facing = Math.cos(twist);                       // shoulder/hip width foreshortening
-    const fig = minD*0.5, crouch = clamp(C[DJ.crouch] + bounce, 0, 1);
-    const baseX = bw*0.5 + C[DJ.x]*bw*0.42 + nz(20, 0.3)*bw*0.05;
-    const hipY = floorY - fig*(0.5 - crouch*0.18) - d.jump*fig*0.45, hipX = baseX;
-    const lean = C[DJ.lean] + nz(1, 0.5);
-    const torso = fig*0.32, chestX = hipX + Math.sin(lean)*torso, chestY = hipY - Math.cos(lean)*torso;
-    const headTilt = C[DJ.head] + nz(2, 0.7) + headMod*Math.sin(ph*9);
-    const neck = fig*0.085, headX = chestX + Math.sin(lean + headTilt)*neck, headY = chestY - Math.cos(lean + headTilt)*neck, headR = fig*0.064;
-    const sw = fig*0.1*facing, hw = fig*0.07*facing;
-    const lShX = chestX - sw, rShX = chestX + sw, lHpX = hipX - hw, rHpX = hipX + hw;
-    const upper = fig*0.155, lower = fig*0.145, thigh = fig*0.25, shin = fig*0.24;
-    const c = pal.rgb[(di + Math.floor(t*0.15)) % pal.rgb.length], c2 = pal.rgb[(di + 2 + Math.floor(t*0.15)) % pal.rgb.length];
-
-    // limbs (angles measured from straight-down, positive = outward to the right)
-    const lSh = C[DJ.lSh] + nz(3, 0.8) - armMod*Math.sin(ph*7), rSh = C[DJ.rSh] + nz(4, 0.8) + armMod*Math.sin(ph*7 + 1);
-    const lEl = C[DJ.lEl] + nz(5, 1.1) - armMod*Math.sin(ph*11), rEl = C[DJ.rEl] + nz(6, 1.1) + armMod*Math.sin(ph*11 + 2);
-    const lHip = C[DJ.lHip] + nz(7, 0.6) + bounce*0.6, rHip = C[DJ.rHip] + nz(8, 0.6) - bounce*0.6;
-    const lKn = C[DJ.lKn] + nz(9, 0.6) - bounce*1.2, rKn = C[DJ.rKn] + nz(10, 0.6) + bounce*1.2;
-    const lHand = C[DJ.lHand] + handMod*Math.sin(ph*17), rHand = C[DJ.rHand] + handMod*Math.sin(ph*17 + 1.5);
-    const seg = (x, y, ang, len) => [x + Math.sin(ang)*len, y + Math.cos(ang)*len];
-    const lElb = seg(lShX, chestY, lSh, upper), lHnd = seg(lElb[0], lElb[1], lEl, lower), lFing = seg(lHnd[0], lHnd[1], lEl + lHand, fig*0.05);
-    const rElb = seg(rShX, chestY, rSh, upper), rHnd = seg(rElb[0], rElb[1], rEl, lower), rFing = seg(rHnd[0], rHnd[1], rEl + rHand, fig*0.05);
-    const lKne = seg(lHpX, hipY, lHip, thigh), lFt = seg(lKne[0], lKne[1], lKn, shin);
-    const rKne = seg(rHpX, hipY, rHip, thigh), rFt = seg(rKne[0], rKne[1], rKn, shin);
-
-    // light trails from hands, feet and head
-    d.trail.push([lHnd[0], lHnd[1], rHnd[0], rHnd[1], lFt[0], lFt[1], rFt[0], rFt[1], headX, headY]);
-    if(d.trail.length > 18) d.trail.shift();
-    g.globalCompositeOperation = 'lighter';
-    g.lineCap = 'round';
-    for(let k = 1; k < d.trail.length; k++){
-      const a = (k / d.trail.length)*(0.25 + energy*0.45), p0 = d.trail[k-1], p1 = d.trail[k];
-      g.lineWidth = Math.max(1, fig*0.012*k/d.trail.length);
-      for(let e = 0; e < 5; e++){
-        g.strokeStyle = m3Rgba(e < 2 ? c2 : c, 1.2, a*(e === 4 ? 0.5 : 1));
-        g.beginPath(); g.moveTo(p0[e*2], p0[e*2+1]); g.lineTo(p1[e*2], p1[e*2+1]); g.stroke();
-      }
-    }
-    g.globalCompositeOperation = 'source-over';
-
-    // ---- statue rendering: solid, smooth, faceless; stone tint from the palette with a soft top light ----
-    const stone = [lerp(200, c[0], 0.35), lerp(198, c[1], 0.35), lerp(192, c[2], 0.35)], flat = m3Rgba(stone, 1);   // one flat colour for the whole body
-    const backSide = twist > 0 ? 'l' : 'r';
-    const cap = (pts, w0, w1, dim) => {              // tapered limb: a few round-capped strokes of decreasing width
-      g.lineCap = 'round'; g.lineJoin = 'round';
-      for(let i = 0; i < pts.length - 1; i++){
-        const wa = lerp(w0, w1, i/(pts.length - 1)), wb = lerp(w0, w1, (i + 1)/(pts.length - 1));
-        const ax = pts[i][0], ay = pts[i][1], bx = pts[i+1][0], by = pts[i+1][1];
-        // three sub-segments: joint -> muscle belly (slightly wider) -> next joint, so the limb reads as curved flesh
-        const sub = [[0, 0.4, wa, Math.max(wa, wb)*1.12], [0.4, 0.75, Math.max(wa, wb)*1.12, wb*1.02], [0.75, 1, wb*1.02, wb]];
-        for(const [u0, u1, ww0, ww1] of sub){
-          const w = (ww0 + ww1)*0.5;
-          g.strokeStyle = flat; g.lineWidth = w;
-          g.beginPath(); g.moveTo(lerp(ax, bx, u0), lerp(ay, by, u0)); g.lineTo(lerp(ax, bx, u1), lerp(ay, by, u1)); g.stroke();
-        }
-      }
-      g.fillStyle = flat; g.beginPath(); g.arc(pts[pts.length-1][0], pts[pts.length-1][1], w1*0.55, 0, TAU); g.fill();
-    };
-    const armW = fig*0.044, foreW = fig*0.032, thighW = fig*0.062, shinW = fig*0.04;
-    const drawArm = (side, sx, elb, hnd, fing) => cap([[sx, chestY], elb, hnd, fing], armW, foreW, side === backSide ? 0.7 : 1.0);
-    const drawLeg = (side, hx, kne, ft) => cap([[hx, hipY], kne, ft], thighW, shinW, side === backSide ? 0.7 : 1.0);
-    // far-side limbs first
-    if(backSide === 'l'){ drawArm('l', lShX, lElb, lHnd, lFing); drawLeg('l', lHpX, lKne, lFt); } else { drawArm('r', rShX, rElb, rHnd, rFing); drawLeg('r', rHpX, rKne, rFt); }
-    // torso: shoulders -> waist -> hips as one smooth mass
-    const fw = Math.max(0.5, Math.abs(facing));
-    const ribY = lerp(chestY, hipY, 0.3), ribX = lerp(chestX, hipX, 0.3), rw = fig*0.075*fw;      // ribcage
-    const waistY = lerp(chestY, hipY, 0.68), waistX = lerp(chestX, hipX, 0.68), ww = fig*0.048*fw;  // narrow waist
-    g.fillStyle = flat; g.strokeStyle = flat; g.lineJoin = 'round'; g.lineWidth = fig*0.035;
-    g.beginPath();
-    g.moveTo(lShX, chestY + fig*0.01);
-    g.bezierCurveTo(ribX - rw, ribY, waistX - ww, waistY, lHpX - hw*0.15, hipY + fig*0.02);
-    g.quadraticCurveTo(hipX, hipY + fig*0.06, rHpX + hw*0.15, hipY + fig*0.02);
-    g.bezierCurveTo(waistX + ww, waistY, ribX + rw, ribY, rShX, chestY + fig*0.01);
-    g.quadraticCurveTo(chestX, chestY - fig*0.035, lShX, chestY + fig*0.01);
-    g.closePath(); g.fill(); g.stroke();
-    // rounded shoulders
-    g.fillStyle = flat; g.beginPath(); g.arc(lShX, chestY + fig*0.005, armW*0.75, 0, TAU); g.fill(); g.beginPath(); g.arc(rShX, chestY + fig*0.005, armW*0.75, 0, TAU); g.fill();
-    // neck + head
-    cap([[chestX, chestY - fig*0.01], [lerp(chestX, headX, 0.55), lerp(chestY, headY, 0.55)]], fig*0.04, fig*0.034, 1.0);
-    g.fillStyle = flat; g.beginPath(); g.ellipse(headX, headY, headR*0.8, headR*1.05, lean + headTilt, 0, TAU); g.fill();
-    // near-side limbs on top
-    if(backSide === 'l'){ drawArm('r', rShX, rElb, rHnd, rFing); drawLeg('r', rHpX, rKne, rFt); } else { drawArm('l', lShX, lElb, lHnd, lFing); drawLeg('l', lHpX, lKne, lFt); }
+  // beat clock: bass onsets tune the period and pull the phase; it free-runs between them
+  let tick = false, half = false;
+  if(A[0] > DANCE.level*1.3 + 0.1 && t - DANCE.lastBeat > 0.2){
+    const iv = t - DANCE.lastBeat; DANCE.lastBeat = t;
+    if(iv < 2.5){ let p = iv; while(p < 0.34) p *= 2; while(p > 0.8) p *= 0.5; DANCE.period = lerp(DANCE.period, p, 0.3); }
+    if(DANCE.phase > 0.6){ DANCE.phase = 0; DANCE.beatCount++; tick = true; } else if(DANCE.phase > 0.4) DANCE.phase = 0.5;
+    else DANCE.phase *= 0.5;
   }
-  g.lineCap = 'butt'; g.lineJoin = 'miter';
+  DANCE.level = lerp(DANCE.level, A[0], 0.15);
+  const p0 = DANCE.phase; DANCE.phase += dt/DANCE.period;
+  if(p0 < 0.5 && DANCE.phase >= 0.5) half = true;
+  if(DANCE.phase >= 1){ DANCE.phase -= 1; DANCE.beatCount++; tick = true; }
+  const beatPh = DANCE.phase, clock = DANCE.beatCount + beatPh;
+
+  const SD = drawStickDancer;
+  const o = g;                                               // solid fills only: straight into the buffer, no offscreen layer
+  const figBase = minD*(0.8 - 0.045*count), slotW = bw*0.84/count;
+  const order = []; for(let i = 0; i < count; i++) order.push(i);
+  const back = (i) => count > 3 && (i % 2 === 1);
+  order.sort((a, b) => (back(b) ? 1 : 0) - (back(a) ? 1 : 0));
+  for(const di of order){
+    const d = DANCE.dancers[di], isBack = back(di), fig = figBase*d.tall*(isBack ? 0.84 : 1), floorY = bh*(isBack ? 0.84 : 0.93);
+    const home = bw*0.08 + slotW*(di + 0.5); if(d.homeX === null) d.homeX = home; d.homeX += (home - d.homeX)*Math.min(1, dt*2);
+    const range = Math.max(0.22, slotW*0.4/fig);
+    if(!d.ph || DANCE.beatCount - d.phStart >= d.ph.beats) danceNewPhrase(d, energy);
+    const ph = d.ph, pc = Math.max(0, clock - d.phStart);
+    // pose track: hold the pose, then whip to the next one so it lands exactly on the subdivision
+    const q = pc/ph.sub, idx = Math.floor(q), w = lerp(0.95, 0.28, ph.snap);
+    let u = clamp((fract(q) - (1 - w))/w, 0, 1); u = u*u*(3 - 2*u);
+    const Pa = ph.poses[idx % ph.n], Pb = ph.poses[(idx + 1) % ph.n], T = d.tgt;
+    for(let j = 0; j < DP.N; j++) T[j] = lerp(Pa[j], Pb[j], u);
+    for(const [j, amp, f, o] of ph.osc) T[j] += amp*Math.sin(TAU*pc*f + o)*(0.35 + bands[1]*1.1);
+    const bcurve = Math.pow(0.5 + 0.5*Math.cos(TAU*(beatPh + ph.bounceOff)), 1.6);          // 1 on the (off)beat, 0 between
+    T[DP.drop] += ph.bounce*(0.45 + bands[0]*1.5)*bcurve*3;
+    const rock = Math.sin(TAU*pc/ph.rockDiv)*ph.rock*(0.5 + energy);
+    T[DP.lean] += rock; T[DP.shift] -= rock*4;
+    T[DP.shrug] += bands[3]*1.0*bcurve; T[DP.head] += d.face*0.16*bcurve*(0.4 + bands[2]);
+    const k = lerp(150, 330, energy), damp = 1.5*Math.sqrt(k);
+    for(let j = 0; j < DP.N; j++){ const a = (T[j] - d.cur[j])*k - d.vel[j]*damp; d.vel[j] += a*dt; d.cur[j] += d.vel[j]*dt; }
+    const C = d.cur;
+    // footwork and jumps happen on beats (and half-beats in double time)
+    if(tick || (half && (ph.sub < 1 || Math.random() < 0.25))){
+      if(Math.random() < ph.stepP*(0.35 + energy*0.9)) danceStep(d, energy, range);
+      if(tick && !d.air && energy > 0.5 && bands[0] > 0.55 && Math.random() < ph.jumpP){ d.air = true; d.jumpV = R(0.8, 1.5);      // take off: the feet travel to a new random stance while airborne
+        const c0 = (d.feet[0].x + d.feet[1].x)*0.5, wd = R(0.08, 0.2)*ph.stepW, beats = 2*d.jumpV/11/DANCE.period*0.9;
+        d.feet.forEach((f, i) => { f.from = f.x; f.to = c0 + (i ? wd : -wd); f.u = 0; f.dur = beats; f.lift = 0.04; }); }
+    }
+    if(d.air){ d.jumpV -= 11*dt; d.jump += d.jumpV*dt; if(d.jump <= 0){ d.jump = 0; d.air = false;
+      d.vel[DP.drop] += 3; } }
+    for(const f of d.feet) if(f.u < 1){ f.u = Math.min(1, f.u + dt/(f.dur*DANCE.period)); const s = f.u*f.u*(3 - 2*f.u); f.x = lerp(f.from, f.to, s); }
+    const tw = clamp(C[DP.twist], -1.3, 1.3); if(Math.abs(tw) > 0.2) d.face = tw > 0 ? 1 : -1;
+    const facing = Math.max(0.5, Math.abs(Math.cos(tw*0.9)));
+    // skeleton
+    const thigh = fig*0.235, shin = fig*0.225, legL = (thigh + shin)*0.992, ankH = fig*0.03, jumpPx = d.jump*fig*0.4;
+    const fx = [d.homeX + d.feet[0].x*fig, d.homeX + d.feet[1].x*fig], ctr = (fx[0] + fx[1])*0.5, halfSt = Math.abs(fx[1] - fx[0])*0.5;
+    const hipX = ctr + clamp(C[DP.shift], -1.2, 1.2)*halfSt*0.6, hw = fig*0.055*0.7*facing;
+    const fy = [0, 1].map(i => { const f = d.feet[i]; return floorY - ankH - jumpPx*(1 + 0.5*Math.sin(Math.min(1, d.jump*2)*Math.PI)) - (f.u < 1 ? Math.sin(f.u*Math.PI)*f.lift*fig : 0); });
+    let hipH = legL*(1 - clamp(C[DP.drop], 0.04, 0.6)*0.3);
+    for(let i = 0; i < 2; i++){ if(d.feet[i].u < 1 && !d.air) continue; const dx = fx[i] - (hipX + (i ? hw : -hw)); hipH = Math.min(hipH, Math.sqrt(Math.max(legL*legL*0.2, legL*legL - dx*dx))); }
+    const hipY = floorY - ankH - jumpPx - hipH;
+    const lean = C[DP.lean], torso = fig*0.29, chestX = hipX + Math.sin(lean)*torso, chestY = hipY - Math.cos(lean)*torso;
+    const shrug = clamp(C[DP.shrug], -1, 2), sw = fig*0.118*0.7*facing, shY = chestY - shrug*fig*0.012;
+    const ux = Math.sin(lean), uy = -Math.cos(lean), vx = Math.cos(lean), vy = Math.sin(lean);          // torso axes: u = up the spine, v = across the shoulders
+    const headA = lean + clamp(C[DP.head], -0.45, 0.45), headR = fig*0.068, nkX = chestX + ux*fig*0.03, nkY = chestY + uy*fig*0.03, headX = nkX + Math.sin(headA)*fig*0.073, headY = nkY - Math.cos(headA)*fig*0.073;   // visible neck = half its earlier length
+    const shim = ph.shimmy*Math.sin(TAU*pc*ph.shimF)*fig*0.014*(0.4 + bands[2]*1.2);
+    const seg = (x, y, ang, len) => [x + Math.sin(ang)*len, y + Math.cos(ang)*len];
+    const upper = fig*0.15, fore = fig*0.14;
+    const shUp = (shY - chestY), slope = fig*0.02;          // shoulders sit a little below the base of the neck so the line slopes
+    const sh = [[chestX - vx*sw - ux*slope, chestY - vy*sw - uy*slope + shUp - shim], [chestX + vx*sw - ux*slope, chestY + vy*sw - uy*slope + shUp + shim]];
+    const elb = [seg(sh[0][0], sh[0][1], C[DP.lSh], upper), seg(sh[1][0], sh[1][1], C[DP.rSh], upper)];
+    const flick = bands[3]*0.5*Math.sin(t*19 + di);
+    const wri = [seg(elb[0][0], elb[0][1], C[DP.lEl] + flick, fore), seg(elb[1][0], elb[1][1], C[DP.rEl] - flick, fore)];
+    const knee = [];
+    for(let i = 0; i < 2; i++){
+      const s = i ? 1 : -1; let kT = clamp(s*0.3*(1 - Math.abs(tw)) + tw*0.9, -1, 1); if(Math.abs(kT) < 0.22) kT = 0.22*(kT < 0 ? -1 : kT > 0 ? 1 : s);   // knees bend forward (foreshortened), not turned out
+      d.kd[i] += (kT - d.kd[i])*Math.min(1, dt*8);
+      const hx = hipX + s*hw, dx = fx[i] - hx, dy = fy[i] - hipY, dist = Math.min(hyp(dx, dy) || 1, legL), D = hyp(dx, dy) || 1;
+      const along = (thigh*thigh - shin*shin + dist*dist)/(2*dist), hgt = Math.sqrt(Math.max(0, thigh*thigh - along*along));
+      knee.push([hx + dx/D*along + dy/D*hgt*d.kd[i], hipY + dy/D*along - dx/D*hgt*d.kd[i]]);
+      if(D > legL){ fx[i] = hx + dx/D*legL; fy[i] = hipY + dy/D*legL; }
+    }
+    // ---- mannequin: slim, completely solid single-colour figure (egg head, neck, straight-shouldered tapered torso,
+    // pelvis, tapered limbs, ball joints). No outlines, keylines or gaps: overlapping parts simply merge.
+    const c = pal.rgb[(d.hue + Math.floor(t*0.08)) % pal.rgb.length], col = m3Rgba(c, isBack ? 0.55 : 1, 1);
+    const K = 0.7;                                          // girth: 30% slimmer than the first mannequin build
+    o.fillStyle = col;
+    const part = (pathFn) => { pathFn(); o.fill(); };
+    const cap = (a, b, ra, rb) => part(() => { const th = Math.atan2(b[1] - a[1], b[0] - a[0]);
+      o.beginPath(); o.arc(a[0], a[1], ra*K, th + Math.PI*0.5, th + Math.PI*1.5); o.arc(b[0], b[1], rb*K, th - Math.PI*0.5, th + Math.PI*0.5); o.closePath(); });
+    const ball = (p, r) => part(() => { o.beginPath(); o.arc(p[0], p[1], r*K, 0, TAU); });
+    const egg = (p, rx, ry, rot) => part(() => { o.beginPath(); o.ellipse(p[0], p[1], rx, ry, rot, 0, TAU); });
+    const F = 0.8 + 0.2*facing;
+    const drawArm = (i) => {
+      const S = sh[i], E = elb[i], Wp = wri[i], ux = (Wp[0] - E[0])/fore, uy = (Wp[1] - E[1])/fore;
+      ball(S, fig*0.036); cap(S, E, fig*0.04, fig*0.031); cap(E, Wp, fig*0.033, fig*0.023); ball(E, fig*0.027);
+      egg([Wp[0] + ux*fig*0.03, Wp[1] + uy*fig*0.03], fig*0.03, fig*0.015, Math.atan2(uy, ux));
+    };
+    const drawLeg = (i) => {
+      const s = i ? 1 : -1, H = [hipX + s*hw, hipY], K = knee[i], An = [fx[i], fy[i]];
+      const f = d.feet[i], up = f.u < 1 ? Math.sin(f.u*Math.PI) : 0, dir = f.dir || d.face, fa = dir*(up*0.5 + (d.air ? 0.55 : 0)), fl = fig*0.085;
+      cap(An, [An[0] + dir*Math.cos(fa)*fl, An[1] + fig*0.008 + dir*Math.sin(fa)*fl], fig*0.026, fig*0.018);
+      cap(K, An, fig*0.046, fig*0.027); cap(H, K, fig*0.064, fig*0.044); ball(K, fig*0.035); ball(An, fig*0.022);
+    };
+    const near = d.face > 0 ? 0 : 1, far = 1 - near;
+    const waist = [lerp(hipX, chestX, 0.42), lerp(hipY, chestY, 0.42)];
+    drawArm(far); drawLeg(far); drawLeg(near);
+    cap([hipX, hipY + fig*0.005], waist, fig*0.084*F, fig*0.076*F);                                    // pelvis
+    // torso: level shoulder line, short trapezius slope into the neck, straight taper to the waist - no dome on top
+    part(() => { const W = fig*0.08*F*K, nk = fig*0.034*K, tp = fig*0.04, rS = fig*0.04*K*0.92, P = (a, b) => [chestX + vx*a + ux*b, chestY + vy*a + uy*b];
+      const sl = sh[0], sr = sh[1], nl = P(-nk, tp), nr = P(nk, tp), rl = P(-sw*0.92, -torso*0.32), rr = P(sw*0.92, -torso*0.32);
+      const wl = [waist[0] - vx*W, waist[1] - vy*W], wr = [waist[0] + vx*W, waist[1] + vy*W];
+      // collarbone line: from the top of each upper arm a concave curve sweeps up into the side of the neck
+      const tl = [sl[0] + ux*rS, sl[1] + uy*rS], tr = [sr[0] + ux*rS, sr[1] + uy*rS], cl = P(-sw*0.3, tp*0.4), cr = P(sw*0.3, tp*0.4);
+      o.beginPath(); o.moveTo(sl[0], sl[1]); o.lineTo(tl[0], tl[1]); o.quadraticCurveTo(cl[0], cl[1], nl[0], nl[1]); o.lineTo(nr[0], nr[1]); o.quadraticCurveTo(cr[0], cr[1], tr[0], tr[1]); o.lineTo(sr[0], sr[1]);
+      o.quadraticCurveTo(rr[0], rr[1], wr[0], wr[1]); o.quadraticCurveTo(waist[0] - ux*W*0.5, waist[1] - uy*W*0.5, wl[0], wl[1]); o.quadraticCurveTo(rl[0], rl[1], sl[0], sl[1]); o.closePath(); });
+    cap([nkX, nkY], [lerp(nkX, headX, 0.5), lerp(nkY, headY, 0.5)], fig*0.0295, fig*0.0265);           // neck
+    // head: round cranium narrowing through the cheeks into a jaw and chin; the chin swings toward the way the body is turned
+    const hrx = Math.cos(headA), hry = Math.sin(headA), HP = (a, b) => [headX + hrx*a - hry*b, headY + hry*a + hrx*b];   // a = to the right, b = down the face
+    const turn = clamp(tw, -1, 1), rC = headR*0.76, cy0 = -headR*0.22, chinX = turn*headR*0.3, jawW = rC*0.74;
+    part(() => { const cL = HP(-rC*0.97, cy0 + rC*0.25), cR = HP(rC*0.97, cy0 + rC*0.25), jl = HP(-jawW + chinX*0.5, headR*0.62), jr = HP(jawW + chinX*0.5, headR*0.62);
+      const ch = HP(chinX, headR*1.06), cc = HP(0, cy0), a0 = Math.atan2(cL[1] - cc[1], cL[0] - cc[0]), a1 = Math.atan2(cR[1] - cc[1], cR[0] - cc[0]);
+      o.beginPath(); o.moveTo(cL[0], cL[1]); o.arc(cc[0], cc[1], rC, a0, a1 + (a1 < a0 ? TAU : 0));
+      o.quadraticCurveTo(jr[0], jr[1], ch[0] + hrx*headR*0.2, ch[1] + hry*headR*0.2); o.quadraticCurveTo(ch[0], ch[1] + headR*0.07, ch[0] - hrx*headR*0.2, ch[1] - hry*headR*0.2); o.quadraticCurveTo(jl[0], jl[1], cL[0], cL[1]); o.closePath(); });
+    // long hair: a cap of volume over the skull plus hanging locks. Each lock is a little chain with its own inertia
+    // (verlet), pinned to the skull, so the hair swings, lags and whips with the bounce, the head nod and every step.
+    if(d.hs === undefined) d.hs = -d.face; d.hs += (-d.face - d.hs)*Math.min(1, dt*4);              // hair is swept to the side away from the face, so the jawline stays clear
+    const hsd = d.hs;
+    part(() => { const cc = HP(hsd*headR*0.08, cy0 - headR*0.05); o.beginPath(); o.arc(cc[0], cc[1], rC*1.14, 0, TAU); });        // full cap of hair over the whole skull
+    const NL = 9, NS = 4, segL = fig*0.054/NS;
+    if(!d.hair || d.hair.length !== NL){ d.hair = []; for(let k = 0; k < NL; k++) d.hair.push(null); }
+    const hdt = Math.min(dt, 0.033), keep = Math.pow(0.012, hdt);
+    for(let k = 0; k < NL; k++){
+      // locks are pinned all the way round the skull, from one temple over the back to the other, so the hair frames the whole head
+      // (evenly spaced from ear to ear across the back of the head, so they hang as one continuous curtain - no gap in the middle)
+      const sgn = k/(NL - 1)*2 - 1, u = 1 - Math.abs(sgn), anchor = HP(sgn*rC*0.72 + hsd*headR*0.08, cy0 + rC*(0.12 + 0.22*u));
+      let H = d.hair[k];
+      if(!H || !isFinite(H[NS][0]) || hyp(H[0][0] - anchor[0], H[0][1] - anchor[1]) > fig*0.35){
+        H = d.hair[k] = []; for(let q = 0; q <= NS; q++) H.push([anchor[0], anchor[1] + q*segL, anchor[0], anchor[1] + q*segL]); }
+      H[0][0] = anchor[0]; H[0][1] = anchor[1];
+      if(hdt > 0){
+        for(let q = 1; q <= NS; q++){ const P = H[q], vx0 = (P[0] - P[2])*keep, vy0 = (P[1] - P[3])*keep; P[2] = P[0]; P[3] = P[1];
+          P[0] += vx0 + (sgn*fig*0.5 + hsd*fig*0.4)*hdt*hdt; P[1] += vy0 + fig*14*hdt*hdt; }
+        for(let it = 0; it < 3; it++) for(let q = 1; q <= NS; q++){ const A0 = H[q - 1], P = H[q], dx = P[0] - A0[0], dy = P[1] - A0[1], L = hyp(dx, dy) || 1, f = (L - segL)/L;
+          if(q === 1){ P[0] -= dx*f; P[1] -= dy*f; } else { P[0] -= dx*f*0.5; P[1] -= dy*f*0.5; A0[0] += dx*f*0.5; A0[1] += dy*f*0.5; } }
+      }
+      const w0 = fig*0.022, w1 = fig*0.013;
+      for(let q = 0; q < NS; q++) cap(H[q], H[q + 1], lerp(w0, w1, q/NS)/K, lerp(w0, w1, (q + 1)/NS)/K);
+    }
+    drawArm(near);
+  }
+  g.restore();
 }
 
 // ---- CITY: endlessly scrolling randomized isometric 8-bit pixel-art city ----
@@ -4874,7 +5016,7 @@ function drawOilscape(t){
     const skyStrokes = (cc, n) => { for(let i = 0; i < n; i++){                 // broad, mostly horizontal sky strokes
       const y = Math.random()*horizon*1.1, u = clamp(y/horizon, 0, 1);
       const col = u < 0.55 ? mix(S.sky[0], S.sky[1], u/0.55) : mix(S.sky[1], S.sky[2], (u - 0.55)/0.45);
-      const near = S.sunVisible ? clamp(1 - Math.hypot(Math.random()*W - sunX, y - sunY)/(W*0.35), 0, 1) : 0;
+      const near = S.sunVisible ? clamp(1 - hyp(Math.random()*W - sunX, y - sunY)/(W*0.35), 0, 1) : 0;
       dab(cc, Math.random()*W, y, 10 + Math.random()*26, (Math.random() - 0.5)*0.35, 3 + Math.random()*5, mix(col, S.sunC, near*0.35), 0.35 + Math.random()*0.35, 18);
     } };
     const nSky = Math.round(W*H*0.007);
@@ -5118,7 +5260,7 @@ function drawSkylinePaint(t){
     if(S.night){ for(let i = 0; i < 90; i++){ const x = Math.random()*W, y = Math.random()*horizon*0.8; c.fillStyle = `rgba(255,255,255,${0.3 + Math.random()*0.6})`; c.fillRect(x, y, 1, 1); } }
     const strokes = (cc, n) => { for(let i = 0; i < n; i++){                       // long soft horizontal washes
       const y = Math.random()*horizon, u = clamp(y/horizon, 0, 1), col = u < 0.6 ? mix(S.sky[0], S.sky[1], u/0.6) : mix(S.sky[1], S.sky[2], (u - 0.6)/0.4);
-      const near = S.sunVisible ? clamp(1 - Math.hypot(Math.random()*W - sunX, y - sunY)/(W*0.35), 0, 1) : 0;
+      const near = S.sunVisible ? clamp(1 - hyp(Math.random()*W - sunX, y - sunY)/(W*0.35), 0, 1) : 0;
       dab(cc, Math.random()*W, y, 30 + Math.random()*90, (Math.random() - 0.5)*0.12, 4 + Math.random()*9, mix(col, S.sunC, near*0.3), 0.12 + Math.random()*0.18, 14);
     } };
     const nS = Math.round(W*H*0.0035);
@@ -5336,7 +5478,7 @@ function drawAmoebas(t){
     c.x += Math.cos(c.dir)*spd*dt; c.y += Math.sin(c.dir)*spd*dt;
     if(c.x < -R*1.4) c.x = bw + R*1.4; if(c.x > bw + R*1.4) c.x = -R*1.4; if(c.y < -R*1.4) c.y = bh + R*1.4; if(c.y > bh + R*1.4) c.y = -R*1.4;
     // gentle repulsion between cells
-    for(let cj = 0; cj < AM.cells.length; cj++){ if(cj === ci) continue; const o = AM.cells[cj], dx = c.x - o.x, dy = c.y - o.y, d = Math.hypot(dx, dy), md = (R + o.R)*0.9; if(d < md && d > 0.1){ const push = (md - d)/md*R*0.6*dt; c.x += dx/d*push; c.y += dy/d*push; } }
+    for(let cj = 0; cj < AM.cells.length; cj++){ if(cj === ci) continue; const o = AM.cells[cj], dx = c.x - o.x, dy = c.y - o.y, d = hyp(dx, dy), md = (R + o.R)*0.9; if(d < md && d > 0.1){ const push = (md - d)/md*R*0.6*dt; c.x += dx/d*push; c.y += dy/d*push; } }
     // sample the membrane
     const B = c.boundary;
     for(let i = 0; i < N; i++) B[i] = radiusAt(c, i/N*TAU, t)*R;
@@ -5364,7 +5506,7 @@ function drawAmoebas(t){
       g.ph += dt*(0.8 + stir);
       let gx = Math.cos(g.a)*g.d, gy = Math.sin(g.a)*g.d;                  // unit-body coordinates
       gx += (Math.cos(flowA)*0.12 + Math.cos(g.ph)*0.06)*dt*(1 + lead*2); gy += (Math.sin(flowA)*0.12 + Math.sin(g.ph*1.3)*0.06)*dt*(1 + lead*2);
-      let a = Math.atan2(gy, gx), d = Math.hypot(gx, gy); const lim = radiusAt(c, a, t)*0.9;
+      let a = Math.atan2(gy, gx), d = hyp(gx, gy); const lim = radiusAt(c, a, t)*0.9;
       if(d > lim){ d = 0.15 + Math.random()*0.25; a = flowA + Math.PI + (Math.random() - 0.5)*2; }   // recirculate from the rear
       g.a = a; g.d = d;
       const px = c.x + Math.cos(a)*d*R, py = c.y + Math.sin(a)*d*R;
@@ -5880,6 +6022,229 @@ function drawScratch(t){
   bctx.globalCompositeOperation = 'source-over';
 }
 
+// =============================================================================================
+// LO-FI SET: PLAYFIELD / SPRITES / MUNCH / PADDLES / QUILT. Early-console graphics: a coarse grid of wide,
+// hard-edged pixels, mirrored half-screen patterns, one colour per scanline band, motion in whole-pixel steps.
+// Nothing here paints a backdrop except PLAYFIELD's dim raster bands, which are skipped when BACKGROUND is OFF,
+// so every one of these is transparent around its blocks.
+// =============================================================================================
+// lofiTick: smoothed bands + a bass-onset step counter (S.step, S.hit) with a slow idle clock when nothing hits.
+function lofiTick(S, t){
+  const dt = smBands(S, t);
+  if(S.step === undefined){ S.step = 0; S.lastBeat = -10; S.level = 0; S.flash = 0; }
+  S.hit = false;
+  if(A[0] > S.level*1.35 + 0.12 && t - S.lastBeat > 0.14){ S.hit = true; S.lastBeat = t; }
+  else if(dt > 0 && t - S.lastBeat > 1.2 && Math.floor(t*1.25) !== Math.floor((t - dt)*1.25)) S.hit = true;
+  if(S.hit){ S.step++; S.flash = 1; }
+  S.level = lerp(S.level, A[0], 0.2);
+  S.flash = Math.max(0, S.flash - dt*5);
+  return dt;
+}
+// console-style colour: a palette hue at one of five fixed luma steps (no gradients anywhere in this set)
+const LOFI_LUM = [0.3, 0.5, 0.75, 1.0, 1.3];
+const LOFI_CACHE = { pal:null, sig:'', str:[] };
+function lofiCol(pal, hue, lum){
+  const n = pal.rgb.length, h = ((hue % n) + n) % n, l = lum < 0 ? 0 : lum > 4 ? 4 : lum|0, C = LOFI_CACHE;
+  if(C.frame !== stripFrame){            // once per frame: make sure the cached strings still belong to this palette's colours
+    C.frame = stripFrame; const sig = pal.colors ? pal.colors.join() : String(pal.rgb);
+    if(C.pal !== pal || C.sig !== sig){ C.pal = pal; C.sig = sig; C.str.length = 0; }
+  }
+  const k = h*5 + l;
+  return C.str[k] || (C.str[k] = m3Rgba(pal.rgb[h], LOFI_LUM[l], 1));
+}
+
+// PLAYFIELD: a half-screen bit pattern, mirrored or repeated onto the other half, held for a few rows at a time and
+// scrolling vertically in whole rows, with a new colour per band of rows. The live spectrum runs down the screen
+// (bass at the top) and decides how far out from the centre line each row is allowed to reach; the outermost block
+// of every row is drawn bright, so the silhouette is a blocky mirrored spectrum. Low-mids drive the scroll, bass
+// hits shift the colours. DENSITY makes the blocks smaller (10 to 32 per half-screen).
+function drawPlayfield(t){
+  const pal = PALETTES[state.palette], S = drawPlayfield, den = clamp(eff.density, 0, 1);
+  const dt = lofiTick(S, t), sm = S.sm;
+  if(S.scroll === undefined) S.scroll = 0;
+  S.scroll += dt*(1.5 + sm[1]*16);
+  const half = 10 + Math.round(den*22), cw = Math.max(2, Math.ceil(bw*0.5/half)), chh = Math.max(2, Math.round(cw*0.7));
+  const rows = Math.ceil(bh/chh), cx = Math.round(bw*0.5), sc = Math.floor(S.scroll), hold = 3 + Math.round((1 - den)*2), seed = (state.seed % 997)*0.37;
+  bctx.save(); bctx.globalCompositeOperation = 'source-over';
+  for(let r = 0; r < rows; r++){
+    const R = r + sc, blk = Math.floor(R/hold), hue = blk + S.step, y = r*chh;
+    const lvl = specAt(r/(rows - 1)), reach = Math.round((0.12 + lvl*0.95)*half), repeat = hash1(blk*5.71 + seed) < 0.35;
+    if(!bgStrip){ bctx.fillStyle = m3Rgba(pal.rgb[((hue % pal.rgb.length) + pal.rgb.length) % pal.rgb.length], 0.13, 1); bctx.fillRect(0, y, bw, chh); }
+    for(let side = 0; side < 2; side++){
+      for(let j = 0; j < half && j <= reach; j++){
+        const bitIx = (side === 1 && repeat) ? half - 1 - j : j;                 // repeat mode: right half is a copy, not a mirror
+        const edge = j === reach, on = edge || hash1(blk*13.1 + bitIx*7.7 + seed) < 0.46 || j === 0 && sm[0] > 0.5;
+        if(!on) continue;
+        const x = side ? cx + j*cw : cx - (j + 1)*cw;
+        bctx.fillStyle = edge ? lofiCol(pal, hue + 1, 4) : lofiCol(pal, hue, 1 + Math.min(2, (j*3/half)|0) + (S.flash > 0.5 ? 1 : 0));
+        bctx.fillRect(x, y, cw, chh);
+      }
+    }
+  }
+  bctx.restore();
+}
+
+// SPRITES: ranks of generated 8x8 mirror-symmetric creatures, a different colour on every sprite line. Each rank
+// marches sideways in whole-pixel steps with a two-frame walk and belongs to one band: the band hops the rank up in
+// pixel steps and, when it is loud, switches the rank to double-width pixels. Bass hits advance the march and every
+// eighth hit breeds a new set of creatures; highs fire thin shots up the screen. DENSITY adds ranks and copies.
+function drawSprites(t){
+  const pal = PALETTES[state.palette], S = drawSprites, den = clamp(eff.density, 0, 1);
+  const dt = lofiTick(S, t), sm = S.sm;
+  if(S.march === undefined) S.march = 0;
+  S.march += dt*(1.2 + sm[1]*7) + (S.hit ? 1 : 0);
+  const ranks = 2 + Math.round(den*5), copies = 3 + Math.round(den*6), mstep = Math.floor(S.march), gen = Math.floor(S.step/8), seed = (state.seed % 997)*0.53;
+  const px = Math.max(1, Math.floor(Math.min(bw/(copies*18), bh/(ranks*11)))), py = px, pitchX = Math.floor(bw/copies), pitchY = Math.floor(bh/(ranks + 0.5));
+  bctx.save(); bctx.globalCompositeOperation = 'source-over';
+  for(let r = 0; r < ranks; r++){
+    const b = r % 4, wide = sm[b] > 0.55 ? 2 : 1, hop = Math.round(sm[b]*4)*py, dir = r % 2 ? -1 : 1, frame = (mstep + r) & 1;
+    const sSeed = gen*91.7 + r*17.3 + seed, shift = ((dir*mstep*px*2) % pitchX + pitchX) % pitchX;
+    const y0 = Math.round(pitchY*(r + 0.5)) - hop;
+    // the rank's creature is worked out once (8 four-bit half-rows + line colours), then stamped for every copy
+    const bits = S.bits || (S.bits = new Uint8Array(8)), cols8 = S.cols8 || (S.cols8 = []);
+    for(let yy = 0; yy < 8; yy++){
+      const legs = yy >= 6 ? frame*41.3 : 0; let m = 0;
+      for(let xx = 0; xx < 4; xx++) if(hash1(sSeed + yy*4.1 + xx*1.7 + legs) < (yy === 0 || yy === 7 ? 0.28 : 0.42) + xx*0.13) m |= 1 << xx;
+      bits[yy] = m; cols8[yy] = lofiCol(pal, r + (yy >> 1) + S.step, 2 + (yy < 4 ? 1 : 0) + (sm[b] > 0.75 ? 1 : 0));
+    }
+    const pw = px*wide;
+    for(let yy = 0; yy < 8; yy++){
+      const m = bits[yy]; if(!m) continue;
+      bctx.fillStyle = cols8[yy];
+      for(let c = -1; c < copies; c++){
+        const x0 = c*pitchX + shift + Math.floor((pitchX - 8*pw)/2);
+        if(x0 > bw || x0 + 8*pw < 0) continue;
+        for(let xx = 0; xx < 4; xx++) if(m & (1 << xx)){ bctx.fillRect(x0 + xx*pw, y0 + yy*py, pw, py); bctx.fillRect(x0 + (7 - xx)*pw, y0 + yy*py, pw, py); }
+      }
+    }
+  }
+  // shots: one pixel wide, a few tall, climbing in steps; more of them as the highs come up
+  const nShot = 2 + Math.round(den*10);
+  for(let k = 0; k < nShot; k++){
+    if(hash1(k*3.3 + 1) > 0.15 + sm[3]*1.1) continue;
+    const ph = fract(t*(0.35 + hash1(k*7.7)*0.6) + hash1(k*1.9)), x = Math.floor(hash1(k*5.1 + Math.floor(t*(0.35 + hash1(k*7.7)*0.6) + hash1(k*1.9)))*bw/px)*px;
+    bctx.fillStyle = lofiCol(pal, k, 4); bctx.fillRect(x, Math.floor((1 - ph)*bh/py)*py, px, py*4);
+  }
+  bctx.restore();
+}
+
+// MUNCH: munching squares. Every cell computes one number from its coordinates (x XOR y and two relatives), and the
+// number picks a slice of the spectrum: the cell lights when that slice is sounding, in three brightness steps, so
+// the carpet of nested squares is the spectrum folded through XOR. A sweeping window keeps a moving diagonal lit
+// even in silence, bass hits advance the phase and every eighth hit swaps the operator. The grid is folded four
+// ways about the centre. DENSITY sets the grid from 16 to 64 cells across.
+function drawMunch(t){
+  const pal = PALETTES[state.palette], S = drawMunch, den = clamp(eff.density, 0, 1);
+  const dt = lofiTick(S, t), sm = S.sm;
+  if(S.ph === undefined) S.ph = 0;
+  S.ph += dt*(2 + sm[1]*10);
+  const N = [16, 24, 32, 48, 64][Math.min(4, (den*5)|0)], hN = N >> 1, op = Math.floor(S.step/8) % 3, phase = Math.floor(S.ph) + S.step*3;
+  const cw = bw/N, chh = bh/N, sweep = Math.floor(t*N*0.35) % N, nc = pal.rgb.length;
+  if(!S.lv || S.lv.length !== N) S.lv = new Float32Array(N);
+  let mean = 0;
+  for(let v = 0; v < N; v++){ S.lv[v] = specAt(v/(N - 1)); mean += S.lv[v]/N; }
+  const thr = Math.max(0.24, mean*1.05);                 // about half the slices light at any level, so the carpet never fills solid
+  bctx.save(); bctx.globalCompositeOperation = 'source-over';
+  for(let y = 0; y < N; y++){
+    const fy = y < hN ? y : N - 1 - y, Y0 = Math.round(y*chh), Y1 = Math.round((y + 1)*chh);
+    for(let x = 0; x < N; x++){
+      const fx = x < hN ? x : N - 1 - x;
+      const raw = op === 0 ? (fx ^ fy) : op === 1 ? ((fx + fy) ^ Math.abs(fx - fy)) : ((fx*fy) ^ (fx + fy));
+      const v = ((raw + phase) % N + N) % N, lvl = S.lv[v], win = Math.abs(((raw % N) - sweep + N) % N) < 1 + sm[0]*3;
+      if(lvl < thr && !win) continue;
+      const X0 = Math.round(x*cw);
+      bctx.fillStyle = win && lvl < thr ? lofiCol(pal, S.step, 1) : lofiCol(pal, ((v*nc*2/N)|0) + S.step, lvl > thr*1.6 ? 4 : lvl > thr*1.25 ? 3 : 2);
+      bctx.fillRect(X0, Y0, Math.round((x + 1)*cw) - X0, Y1 - Y0);
+    }
+  }
+  bctx.restore();
+}
+
+// PADDLES: bat-and-ball. A wall of bricks hangs from the top, one colour per row; each column is as deep as its
+// slice of the spectrum is loud, so the wall is a hanging block spectrum. Square balls rattle between the wall and a
+// bat that chases the lowest ball; they rebound off whatever bricks are lit at that instant, leave stepped trails,
+// speed up with the bass and get kicked on hits. Low-mids widen the bat. DENSITY adds balls, brick columns and rows.
+function drawPaddles(t){
+  const pal = PALETTES[state.palette], S = drawPaddles, den = clamp(eff.density, 0, 1);
+  const dt = lofiTick(S, t), sm = S.sm;
+  const cols = 8 + Math.round(den*24), brows = 4 + Math.round(den*5), nBall = 1 + Math.round(den*7);
+  const px = Math.max(2, Math.round(Math.min(bw, bh)/80)), bwid = bw/cols, bhgt = Math.max(px*2, Math.round(bh*0.42/brows)), wallH = bhgt*brows;
+  if(!S.balls) S.balls = [];
+  while(S.balls.length < nBall){ const k = S.balls.length, a = 0.6 + hash1(k*3.7 + state.seed)*1.9; S.balls.push({ x:hash1(k*9.1 + 2), y:0.7, vx:Math.cos(a)*0.45, vy:-Math.abs(Math.sin(a))*0.45 - 0.2, tr:[] }); }
+  S.balls.length = nBall;
+  if(!S.depth || S.depth.length !== cols) S.depth = new Int16Array(cols);
+  for(let c = 0; c < cols; c++) S.depth[c] = Math.round(clamp(specAt(c/(cols - 1))*1.15, 0, 1)*brows);
+  bctx.save(); bctx.globalCompositeOperation = 'source-over';
+  const gap = Math.max(1, px >> 1);
+  for(let c = 0; c < cols; c++){
+    const X0 = Math.round(c*bwid), W = Math.round((c + 1)*bwid) - X0 - gap;
+    for(let r = 0; r < S.depth[c]; r++){ bctx.fillStyle = lofiCol(pal, r + S.step, r === S.depth[c] - 1 ? 4 : 2); bctx.fillRect(X0, r*bhgt, W, bhgt - gap); }
+  }
+  const batY = bh - px*5, speed = (0.55 + sm[0]*1.6)*dt;
+  let low = null;
+  for(let k = 0; k < S.balls.length; k++){
+    const B = S.balls[k];
+    if(S.hit){ B.vy *= 1.0; B.vx += (hash1(k*2.3 + S.step) - 0.5)*0.5; }
+    const sp = hyp(B.vx, B.vy) || 1; B.vx *= 0.65/sp; B.vy *= 0.65/sp;
+    if(Math.abs(B.vy) < 0.25) B.vy = (B.vy < 0 ? -1 : 1)*0.25;
+    B.x += B.vx*speed*(bh/bw); B.y += B.vy*speed;
+    if(B.x < 0){ B.x = 0; B.vx = Math.abs(B.vx); } else if(B.x > 1){ B.x = 1; B.vx = -Math.abs(B.vx); }
+    const col = clamp((B.x*cols)|0, 0, cols - 1), floorY = Math.max(S.depth[col]*bhgt, 0)/bh;
+    if(B.y < floorY + 0.01 && B.vy < 0){ B.y = floorY + 0.01; B.vy = Math.abs(B.vy); }
+    const batN = batY/bh; if(B.y > batN && B.vy > 0){ B.y = batN; B.vy = -Math.abs(B.vy); }
+    if(!low || B.y > low.y) low = B;
+    const X = Math.round(B.x*(bw - px*3)/px)*px, Y = Math.round(B.y*bh/px)*px;
+    if(!B.tr.length || B.tr[0][0] !== X || B.tr[0][1] !== Y){ B.tr.unshift([X, Y]); if(B.tr.length > 6) B.tr.length = 6; }
+    for(let q = B.tr.length - 1; q >= 0; q--){
+      if(q && q % 2) continue;
+      bctx.fillStyle = lofiCol(pal, k, q ? (q < 3 ? 2 : 0) : 4); bctx.fillRect(B.tr[q][0], B.tr[q][1], px*3, px*3);
+    }
+  }
+  if(S.batX === undefined) S.batX = 0.5;
+  if(low) S.batX += (low.x - S.batX)*Math.min(1, dt*9);
+  const batW = Math.round(bw*(0.08 + sm[1]*0.16)/px)*px, bx = Math.round((S.batX*bw - batW/2)/px)*px;
+  bctx.fillStyle = lofiCol(pal, S.step + 1, S.flash > 0.4 ? 4 : 3); bctx.fillRect(clamp(bx, 0, bw - batW), batY + px*2, batW, px*2);
+  bctx.restore();
+}
+
+// QUILT: a one-dimensional cellular automaton, one generation per ring. New generations are born at the centre and
+// push the older ones outward in whole-cell steps, and each ring is wrapped around the centre with eight-fold
+// symmetry, so the automaton's triangles become a growing blocky quilt. The spectrum seeds live cells into every
+// new generation, low-mids set how fast generations are born, each ring's brightness follows its band, and every
+// eighth bass hit changes the rule (90, 30, 150, 110, 54) while every sixteenth changes the ring geometry
+// (squares, diamonds, hourglass). DENSITY makes the cells smaller (8 to 36 rings to the screen edge).
+function drawQuilt(t){
+  const pal = PALETTES[state.palette], S = drawQuilt, den = clamp(eff.density, 0, 1);
+  const dt = lofiTick(S, t), sm = S.sm, W = 96, MAXG = 96;
+  if(!S.gens){ S.gens = []; S.acc = 0; S.born = 0; }
+  const RULES = [90, 30, 150, 110, 54], rule = RULES[Math.floor(S.step/8) % RULES.length], metric = Math.floor(S.step/16) % 3;
+  S.acc += dt*(3 + sm[1]*22) + (S.hit ? 1 : 0);
+  let guard = 0;
+  while(S.acc >= 1 && guard++ < 4){
+    S.acc -= 1; S.born++;
+    const prev = S.gens[0], row = new Uint8Array(W);
+    let live = 0;
+    if(prev) for(let p = 0; p < W; p++){ const n = (prev[(p + W - 1) % W] << 2) | (prev[p] << 1) | prev[(p + 1) % W]; row[p] = (rule >> n) & 1; }
+    for(let p = 0; p < W; p++){ if(specAt((p % 32)/31) > 0.62 && hash1(p*3.1 + S.born*1.7) < 0.35) row[p] ^= 1; live += row[p]; }
+    if(live === 0 || live > W*0.9){ row.fill(0); row[0] = 1; row[(S.born*7) % W] = 1; }
+    S.gens.unshift(row); if(S.gens.length > MAXG) S.gens.length = MAXG;
+  }
+  const halfX = 8 + Math.round(den*28), cw = Math.max(2, Math.ceil(bw*0.5/halfX)), chh = Math.max(2, Math.round(cw*0.75)), halfY = Math.ceil(bh*0.5/chh);
+  const cx = Math.round(bw*0.5), cy = Math.round(bh*0.5);
+  bctx.save(); bctx.globalCompositeOperation = 'source-over';
+  for(let j = 0; j < halfY; j++){
+    for(let i = 0; i < halfX; i++){
+      const d = metric === 0 ? Math.max(i, j) : metric === 1 ? i + j : Math.abs(i - j) + (Math.min(i, j) >> 1), p = metric === 1 ? i : Math.min(i, j);
+      const g = S.gens[d]; if(!g || !g[p % W]) continue;
+      const b = d % 4, age = S.born - d;
+      bctx.fillStyle = lofiCol(pal, Math.floor(age/3), 1 + Math.round(clamp(sm[b], 0, 1)*2.4) + (d === 0 && S.flash > 0.4 ? 1 : 0));
+      const xr = cx + i*cw, xl = cx - (i + 1)*cw, yb = cy + j*chh, yt = cy - (j + 1)*chh;
+      bctx.fillRect(xr, yb, cw, chh); bctx.fillRect(xl, yb, cw, chh); bctx.fillRect(xr, yt, cw, chh); bctx.fillRect(xl, yt, cw, chh);
+    }
+  }
+  bctx.restore();
+}
+
 // ---------------------------------------------------------------------------------------------
 // Registry: SHAPES (UI order/labels) and DRAW (id -> render function). Ids are what presets store.
 // ---------------------------------------------------------------------------------------------
@@ -5896,7 +6261,7 @@ const SHAPES = [
   { id:'constellation', label:'CONSTELLATION' }, { id:'glitch', label:'GLITCH' }, { id:'hlines', label:'HLINES' },
   { id:'moire', label:'MOIRE' }, { id:'colorbars', label:'COLORBARS' }, { id:'spiro', label:'SPIROGRAPH' },
   { id:'pulses', label:'PULSES' }, { id:'forest', label:'FOREST' }, { id:'eclipse', label:'ECLIPSE' },
-  { id:'rain', label:'RAIN' }, { id:'halo', label:'HALO' }, { id:'triangulation', label:'TRIANGLES' },
+  { id:'rain', label:'RAIN' }, { id:'triangulation', label:'TRIANGLES' },
   { id:'rising', label:'RISING' }, { id:'vmsolid', label:'DIAMONDS' }, { id:'vmhollow', label:'HOLLOW' },
   { id:'solar', label:'SOLAR' }, { id:'liminal', label:'LIMINAL' }, { id:'sequencer', label:'SEQUENCER' },
   { id:'modsynth', label:'SYNTH' }, { id:'web', label:'WEB' }, { id:'daisies', label:'DAISIES' },
@@ -5904,7 +6269,9 @@ const SHAPES = [
   { id:'cityflyover', label:'CITY' }, { id:'jellyfish', label:'JELLYFISH' },
   { id:'oilscape', label:'OIL PAINT' }, { id:'pixelworld', label:'PIXEL WORLD' },
   { id:'neoncity', label:'NEON CITY' }, { id:'scratch', label:'SCRATCH' },
-  { id:'skyline', label:'SKYLINE' }, { id:'amoebas', label:'AMOEBAS' }
+  { id:'skyline', label:'SKYLINE' }, { id:'amoebas', label:'AMOEBAS' },
+  { id:'playfield', label:'PLAYFIELD' }, { id:'sprites', label:'SPRITES' }, { id:'munch', label:'MUNCH' },
+  { id:'paddles', label:'PADDLES' }, { id:'quilt', label:'QUILT' }
 ];
 
 const DRAW = {
@@ -5916,13 +6283,14 @@ const DRAW = {
   supernova:drawSupernova, blackhole:drawBlackhole, constellation:drawConstellation,
   glitch:drawGlitch, hlines:drawHLines, moire:drawMoire, colorbars:drawColorbars,
   spiro:drawSpiro, pulses:drawPulses, forest:drawForest, eclipse:drawEclipse,
-  rain:drawRain, halo:drawHalo, triangulation:drawTriangulation, rising:drawRising,
+  rain:drawRain, triangulation:drawTriangulation, rising:drawRising,
   vmsolid:drawVMSolid, vmhollow:drawVMHollow, solar:drawSolarSystem,
   liminal:drawLiminalMaze, sequencer:drawSequencer, modsynth:drawModularSynth,
   web:drawWeb, daisies:drawDaisyGarden, vaporland:drawVaporLandscape,
   asteroids:drawAsteroids, stickdancer:drawStickDancer, cityflyover:drawPixelCity,
   jellyfish:drawJellyfish, oilscape:drawOilscape, pixelworld:drawPixelWorld,
-  neoncity:drawNeonCity, scratch:drawScratch, skyline:drawSkylinePaint, amoebas:drawAmoebas
+  neoncity:drawNeonCity, scratch:drawScratch, skyline:drawSkylinePaint, amoebas:drawAmoebas,
+  playfield:drawPlayfield, sprites:drawSprites, munch:drawMunch, paddles:drawPaddles, quilt:drawQuilt
 };
 
 // Film/video filters. FX holds each filter's parameters, read by postProcess() and filmOverlays().
@@ -6064,10 +6432,13 @@ function postProcessData(d){
 
   // fast path (filter NONE / nothing but posterise + grain): tight loop, no per-pixel feature branches
   if(!src && !tinted && sat >= 1 && !blk && staticP <= 0){
+    let rs = rngS | 0; const g2 = grain*2*2.3283064365386963e-10;
     for(let i = 0; i < npx; i += 4){
-      const gn = (frand()*2 - 1)*grain;
+      rs ^= rs << 13; rs ^= rs >>> 17; rs ^= rs << 5;
+      const gn = (rs >>> 0)*g2 - grain;
       d[i] = lut[d[i]] + gn; d[i+1] = lut[d[i+1]] + gn; d[i+2] = lut[d[i+2]] + gn;
     }
+    rngS = rs;
     return;
   }
 
@@ -6187,7 +6558,7 @@ let lastScanOpacity = -1;
 // Shapes built from many overlapping strokes/discs would show their internal structure when drawn at partial
 // opacity during a crossfade. For those we draw at full opacity, then blend the previous buffer back over the
 // result, which fades the shape as one solid layer.
-const SOLID_MIX = new Set(['rings', 'spiro', 'helix', 'supernova', 'blackhole', 'memory', 'tunnel', 'modsynth', 'stickdancer', 'orbs', 'polylock', 'vmsolid', 'triangulation', 'halo', 'rising', 'mosaic', 'waves', 'dotgrid']);
+const SOLID_MIX = new Set(['rings', 'spiro', 'helix', 'supernova', 'blackhole', 'memory', 'tunnel', 'modsynth', 'stickdancer', 'orbs', 'polylock', 'vmsolid', 'triangulation', 'rising', 'mosaic', 'waves', 'dotgrid', 'playfield', 'paddles']);
 const mixSnap = document.createElement('canvas'), mixSnapCtx = mixSnap.getContext('2d');
 const drawErrLogged = new Set();
 // A shape that throws mid-frame must never stall the output: log it once and carry on with the rest of the frame.
@@ -6306,12 +6677,14 @@ function frame(now){
   if(state.mixAuto){
     state.mix = 0.5 + 0.5*Math.sin(tw * 0.12);
     const mixPct = Math.round(state.mix * 100);
+    if(mixPct !== frame.lastMixPct){ frame.lastMixPct = mixPct;
     if(DOM.cMix) DOM.cMix.value = mixPct;
     if(DOM.vMix) DOM.vMix.textContent = mixPct + '%';
     if(popoutWin && !popoutWin.closed){
       if(POP.cMix) POP.cMix.value = mixPct;
       if(POP.vMix) POP.vMix.textContent = mixPct + '%';
     }
+  }
   }
 
   eff.mix = clamp(state.mix + Math.sin(lfoPhases.mix) * state.modMix + A[1] * state.audModMix, 0, 1);
@@ -6489,38 +6862,8 @@ function frame(now){
   }
 
   // GLITCH runs before blur/trails so the slice displacement gets softened and smeared into the trail memory
-  if(eff.glitch > 0.01){
-    const per = lerp(5, 1.2, eff.glitch), bdur = lerp(0.35, 0.14, eff.glitch);
-    const bp = fract(tw / per);
-    const ga = bp < bdur ? Math.sin(bp / bdur * Math.PI) * eff.glitch : 0;
-    if(ga > 0){
-      fxctx.drawImage(view, 0, 0);
-      const seed = Math.floor(tw * 24) * 7;
-      const nS = 4 + Math.floor(ga * 16);
-      for(let sI = 0; sI < nS; sI++){
-        const y = (hash1(sI*3 + seed)*H) | 0;
-        const hgt = Math.max(2, (2 + hash1(sI*5 + seed)*H*0.06*ga) | 0);
-        const dx = (hash1(sI*7 + seed)*2 - 1)*W*0.08*ga;
-        fxctx.drawImage(view, 0, y, W, hgt, dx, y, W, hgt);
-      }
-      if(ga > 0.4){
-        const nb = 1 + Math.floor(hash1(seed)*3), bs = W*(0.08 + hash1(seed*3)*0.2);
-        for(let bI = 0; bI < nb; bI++){
-          const bx = (hash1(bI*11 + seed)*(W - bs)) | 0, by = (hash1(bI*17 + seed)*Math.max(1, H - bs*0.5)) | 0;
-          fxctx.drawImage(view, (hash1(bI*23 + seed)*(W - bs)) | 0, (hash1(bI*29 + seed)*Math.max(1, H - bs*0.5)) | 0, bs, bs*0.5, bx, by, bs, bs*0.5);
-        }
-      }
-      ctx.drawImage(fxc, 0, 0);
-      setGlitchCA(1 + ga*7);
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.35 * ga;
-      ctx.filter = 'url(#caR)'; ctx.drawImage(view, 0, 0);
-      ctx.filter = 'url(#caB)'; ctx.drawImage(view, 0, 0);
-      ctx.restore();
-      setGlitchCA(2);
-    }
-  }
+  if(eff.glitch > 0.01) glitchPass(ctx, W, H, tw);
+  else GL.until = 0;
 
   if(eff.blur > 0.01 && FILTER_OK){
     ctx.save();
@@ -7183,7 +7526,7 @@ function presetApply(p){
   const sg = p.seg || {};
   if(sg.fontStyle) setFontStyle(sg.fontStyle);
   // presets saved before PLASMA / WOBBLE / LATTICE / ECHO were replaced load the shape that took each slot
-  const SHAPE_ALIAS = { plasma:'memory', wobble:'odyssey', lattice:'supernova', echo:'blackhole' };
+  const SHAPE_ALIAS = { plasma:'memory', wobble:'odyssey', lattice:'supernova', echo:'blackhole', halo:'rings' };   // removed shapes -> nearest surviving one, so old presets still load
   if(sg.shape) setShape(SHAPE_ALIAS[sg.shape] || sg.shape);
   if(sg.shapeB) setShapeB(SHAPE_ALIAS[sg.shapeB] || sg.shapeB);
   if(sg.filter) setFilter(sg.filter);
