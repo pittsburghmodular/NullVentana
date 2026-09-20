@@ -115,18 +115,29 @@ Two shape slots draw on top of the video layer.
 - Pick a shape in each slot. **OFF** draws nothing, so a slot can be disabled to let the video or background show through.
 - **BACKGROUND ON/OFF** per slot — OFF skips that shape's own backdrop fills so only the main geometry is drawn.
 - **CROSSFADE** — mixes A and B. When Shape B has BACKGROUND OFF the slider becomes **OVERLAY**: A stays at full opacity and B is layered on top.
-- **AUTO** — sweeps the crossfade back and forth slowly by itself.
+- **AUTO ON/OFF** — sweeps the crossfade back and forth slowly by itself.
 
-Available shapes: ORBS, RINGS, SCOPE, WAVES, TUNNEL, PLASMA, LISSAJOUS, ALTITUDE, BLOBS, POLYLOCK, SONAR, AURORA, WOBBLE, LATTICE, ECHO, CONSTELLATION, GLITCH, HLINES, MOIRE, COLORBARS, SPIROGRAPH, PULSES, FOREST, ECLIPSE, RAIN, HALO, TRIANGLES, RISING, DIAMONDS, HOLLOW, SOLAR, LIMINAL, SEQUENCER, SYNTH, WEB, DAISIES, VAPORWAVE, ASTEROIDS, DANCER, CITY, JELLYFISH.
+Available shapes: ORBS, RINGS, SCOPE, WAVES, TUNNEL, PLASMA, LISSAJOUS, ALTITUDE, BLOBS, POLYLOCK, SONAR, AURORA, WOBBLE, LATTICE, ECHO, CONSTELLATION, GLITCH, HLINES, MOIRE, COLORBARS, SPIROGRAPH, PULSES, FOREST, ECLIPSE, RAIN, HALO, TRIANGLES, RISING, DIAMONDS, HOLLOW, SOLAR, LIMINAL, SEQUENCER, SYNTH, WEB, DAISIES, VAPORWAVE, ASTEROIDS, DANCER, CITY, JELLYFISH, OIL PAINT, PIXEL WORLD, NEON CITY, SCRATCH, SKYLINE, AMOEBAS.
 
 Each shape reacts to the audio bands in its own way — SCOPE draws the raw waveform, DIAMONDS drives each ring from a different band, DANCER moves limbs on bass/mids/highs, and so on. Experiment.
+
+### Newer shapes
+
+- **OIL PAINT** — a seeded nature landscape built from thousands of thick brush dabs: a mood (day, sunset, dusk, mist, storm or gold), hazed mountain ridges, a lake or meadow, trees, rocks and wildflowers over canvas grain. The painting is re-dabbed every few seconds with a slow crossfade so the brushwork breathes. Bass swells the sun glow, mids push the clouds, treble adds lake shimmer. DENSITY runs through the whole canvas — sky strokes, ridge texture, water strokes, grass, trees and flowers fade in as it rises — so an LFO on DENSITY sweeps it from flat wash to full impasto. SEED picks a new scene; the palette re-tints it and colours the flowers and sun.
+- **PIXEL WORLD** — an endless auto-scrolling side-view platformer world in bright 8-bit colour. Seven seeded biomes (meadow, desert, snow, candy, jungle, lava, night), parallax clouds and hills, tiled ground with plateaus and pits, floating blocks, bushes, flowers, toadstools, trees and spinning gems. Bass speeds the scroll and bounces the gems, treble adds sparkles. DENSITY sets stars, clouds, decorations, platforms, gems and sparkles.
+- **NEON CITY** — a dense wireframe vector city in true 3D. The camera glides quickly and smoothly (no bob) down a boulevard between deep blocks of towers, ziggurats, spired towers, wedges, drum towers and bridged slabs, all drawn purely in lines with a hand-drawn feel (edges of varying pen weight, some missing or doubled), plus floor hatching, mullions, bracing, mast lattices, glowing neon outlines, sagging cables with lamps, and braced gantries with chasing lights. Dart-shaped ships and drones move at their own pace regardless of the camera. Bass surges the edge glow and speed, mids add traffic, treble flickers the neon. DENSITY controls block depth and count, how many edges and details are drawn, gantries, cables and traffic.
+- **SKYLINE** — a seeded city skyline painted with OIL PAINT's cached-dab engine in a watercolour hand: translucent layered washes with bleeding rims on granulated paper. A mood (dawn, day, dusk, night or storm) sets the sky, sun or moon; a Manhattan-dense massing of fourteen depth rows receding into the haze — heights shaped by two or three tall-tower districts with lower fabric between, narrow slivers squeezed between wide blocks, spires, setbacks, stepped art-deco crowns, twin slabs, tapered tops, rooftop water tanks and blinking antennas — over distant hills, an optional waterfront with boats and tower reflections, and sometimes a suspension bridge. Two variants are re-dabbed and crossfaded so the brushwork breathes. Bass slowly swells the sun/moon glow, mids send bird flocks across, treble brings more window lights slowly on (and off) at night — nothing flashes. DENSITY runs through the whole picture in tiers — sky washes, clouds, facade texture, windows, water ripples, birds. SEED picks a new city; the palette tints the sky, towers and window light.
+- **AMOEBAS** — a microscope field of amoebae crawling about. Each cell is a morphing membrane with pseudopods that bulge out, pull the body along and retract, a translucent cytoplasm with a pale ectoplasm rim, a nucleus with nucleolus, a contractile vacuole that slowly swells and empties, food vacuoles, and streaming granules that flow toward the leading pseudopod. Debris and flagellated bacteria drift through the field, and the cells gently nudge each other apart. Bass pushes pseudopods out faster, mids speed the wandering, treble stirs the granules. DENSITY sets how many amoebae (4–24), granules and bacteria there are.
+- **SCRATCH** — a pencil frantically scrubbing across the full width of the display, like someone sloppily scratching out the picture: straight passes at a new angle each time it flips direction, overshooting the edges, stepping row by row through a random band, with randomly varying pen pressure. About one box in five is scrubbed vertically instead. Strokes fade out over about two seconds so it never fills the screen (roughly 5–8% coverage per pencil). Draws only lines, so it works well as Shape B with BACKGROUND OFF as an overlay. Bass speeds the hand, treble shakes it, DENSITY adds up to three pencils.
+
+Notes on existing shapes: VAPORWAVE's sun now uses horizontal band styles only (the pinwheel is gone) and no longer draws palm trees; ASTEROIDS rocks are see-through wireframes with uniform thin edges; COLORBARS and ECLIPSE now respond to DENSITY (bar count and corona rays).
 
 ---
 
 ## 7. Core sliders
 
 - **RATE OF CHANGE** — speed of shape animation. Modulatable.
-- **DENSITY** — how much stuff each shape draws (particle counts, line counts, ring counts). Modulatable.
+- **DENSITY** — how much stuff each shape draws (particle counts, line counts, ring counts). Every shape responds to it, and it follows the MOD DEPTH / LFO RATE / AUDIO MOD settings live. Modulatable.
 - **FIDELITY** — the master "image quality" control. Low values pixelate the picture, posterise the colours, add colour fringing and heavy scan lines, and also drop the internal render resolution; high values are sharp and clean. The readout shows the working buffer width. Text overlay follows it. Modulatable — an AUDIO MOD on FIDELITY is a classic move.
 
 ---
@@ -176,7 +187,7 @@ These are the same controls as the camera grade in the VIDEO section, but that o
 - **Swatches** — click any palette. Shape colours, text colours and the default background all come from it.
 - **AUDIO PALETTE** — on every detected beat, jump to a random palette. Turns the mic on if needed.
 - **INVERT** — inverts all rendered colours.
-- **BACKGROUND** — PALETTE (the palette's own background colour), or an exact **BLACK**, **WHITE** or **GREEN** screen underneath the shapes. GREEN is exact so it stays keyable in another app.
+- **BACKGROUND** — PALETTE (the palette's own background colour), or an exact **BLACK**, **WHITE** or **GREEN SCREEN** underneath the shapes. GREEN SCREEN is pure #00ff00 so it stays keyable in another app.
 
 ---
 
@@ -228,7 +239,7 @@ Knowing the order helps: FEEDBACK is last, so it recirculates everything includi
 - **Reactive but not chaotic:** put a modest AUDIO MOD (30–50%) on FIDELITY, TRAILS or RGB SPLIT rather than on RATE OF CHANGE.
 - **Beat-driven cuts:** LOAD VIDEO → GRANULAR RESET ON → set LOOP START/END to the interesting part of the clip → raise GRAIN CROSSFADE if the cuts feel too harsh.
 - **Live camera as instrument:** CAMERA ON, SOURCE MIX fully right, GRANULAR RESET ON, then set Shape A to OFF and Shape B to a sparse shape with BACKGROUND OFF as an overlay.
-- **Keyable output:** BACKGROUND → GREEN, both shapes with BACKGROUND OFF, filter NONE, FIDELITY high.
+- **Keyable output:** BACKGROUND → GREEN SCREEN, both shapes with BACKGROUND OFF, filter NONE, FIDELITY high.
 - **Performing:** DETACH the panel to a second display, F for fullscreen on the main one, and save a few slots to jump between looks with SAVE/LOAD.
 - **Better recording audio:** feed a virtual audio device (BlackHole / VB-Cable) instead of a microphone for a clean direct signal.
 
