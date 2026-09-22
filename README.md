@@ -85,7 +85,7 @@ Colours come from the current palette.
 
 ## 5. VIDEO
 
-A video file and/or a live camera can be drawn beneath the shapes. Both pass through invert, comic ink, fidelity, filters, RGB split, glitch, blur, trails and feedback like everything else.
+A video file and/or a live camera can be drawn beneath the shapes. Both pass through invert, comic ink, fidelity, RGB split, glitch, points, paint brush, blur, trails, feedback and the display filter like everything else.
 
 **Video file**
 - **LOAD VIDEO** — choose a local file (anything the browser can play: MP4, WebM, MOV…). It starts playing immediately, muted.
@@ -164,29 +164,17 @@ Notes on existing shapes: HALO has been removed; CONSTELLATION's lines are twice
 
 ---
 
-## 8. DISPLAY FILTER
+## 8. EFFECTS & MODULATION
 
-Whole-picture film and video looks:
-- **NONE**
-- **OLD PHOTO** — warm sepia tint, desaturation, slight softening, flicker, gate weave, dust specks, stains and a warm vignette.
-- **16MM FILM** — heavy grain, gate weave, dust, warm tint. No flicker.
-- **35MM FILM** — fine grain, gentle weave, less dust, near-neutral tint. No flicker.
-- **VHS TAPE** — static, row wobble, colour-channel offset, desaturation, flicker, heavier scan lines.
-- **CABLE TV** — block noise, softening, static, colour-channel offset, heavier scan lines.
-
-**FILTER LEVEL** sets the intensity of the selected filter and is modulatable.
-
----
-
-## 9. EFFECTS & MODULATION
-
-All seven are modulatable (the FEEDBACK KEY controls are not).
+All eight are modulatable (the FEEDBACK KEY controls are not).
 - **COMIC INK** — black ink outlines with flattened colour.
 - **RGB SPLIT** — horizontal separation of the red, green and blue channels.
 - **GLITCH** — beat-triggered picture faults. Each detected bass onset rolls the dice: whether to glitch at all, for how long (a few frames up to about half a second), how hard, and which faults are in the burst — slice tearing that wraps around the frame, scattered and stretched blocks, vertical roll, a wide red/blue colour-plane split, frame stutter, mirrored bands, mosaic bands and inverted bars. The layout is re-rolled every one to four frames inside a burst, louder hits glitch harder, and a beat landing mid-burst sometimes just extends it. The slider scales the odds, the length and the violence; at low settings many beats pass clean. With no audio running, bursts arrive at random intervals instead (more often as the slider goes up).
+- **POINTS** — rebuilds the picture as a moving grid of small square points, one per cell, each coloured by the picture beneath it. Dark cells drop out, so a shape reads as clusters of lit dots on black — an LED matrix or a dot screen. The grid never sits still: the whole lattice drifts slowly across the frame, alternate rows slide against each other on their own phase, and the bass swells the dot size (the AUDIO MOD here listens to the bass band). Dim cells are brightened so they read as lit points instead of vanishing.
+  - The slider sets the pitch: low is a fine, dense screen, high is wide spacing with fat dots. The first ~15% of travel fades the dots in over the untouched picture, so a small LFO or AUDIO MOD on a low setting breathes the screen in and out. Sits between GLITCH and PAINT BRUSH in the chain, so the dot field can be painted, blurred, smeared into TRAILS and fed back. Saved in presets.
 - **PAINT BRUSH** — repaints the picture as a hand-painted work: a field of oil brush strokes that follow the image. A coarse layer of fat strokes blocks in the picture; a fine layer of small strokes appears only along edges; a canvas weave is laid over the top. Strokes run along the edges of the picture and, in flat areas, along a slow swirl. Every stroke has its own character — its own brush load (width), opacity, curvature and chroma, and one of five behaviours: **flat** (some with bristle hairlines through the body), **tapered** (fat to thin as the brush lifts), **dab** (a short fat touch), **dry brush** (three thin streaks with canvas showing between) and **broken** (two slightly disagreeing strokes laid over each other). Some flat and tapered strokes carry a lit ridge of raised paint along one side.
   - The painting is meant to be calm. Each stroke remembers its colour, direction and length and only eases toward what the picture now wants — colour settles over about two seconds, direction over three — and the fine edge strokes fade in and out rather than popping. The paint canvas is never wiped: new strokes are laid over the previous painting, so the image reworks itself like wet paint being pushed around instead of being redrawn.
-  - The slider fades the painting in over roughly its first two-thirds; the rest loosens the brush a little (fewer, fatter strokes). The stroke positions are fixed, so LFO or audio modulation of the amount thins the strokes smoothly rather than shuffling them. Sits between GLITCH and BLUR in the chain, so the strokes get blurred, smeared into TRAILS and fed back like everything else. Saved in presets.
+  - The slider fades the painting in over roughly its first two-thirds; the rest loosens the brush a little (fewer, fatter strokes). The stroke positions are fixed, so LFO or audio modulation of the amount thins the strokes smoothly rather than shuffling them. Sits between POINTS and BLUR in the chain, so the strokes get blurred, smeared into TRAILS and fed back like everything else. Saved in presets.
 - **TRAILS** — persistence; the previous frames linger.
 - **BLUR** — softens the whole picture.
 - **FEEDBACK** (0–200%) — analog video feedback. The output is fed back into itself, zoomed and rotated a little each pass. Above 100% the loop regenerates and blooms; keep it below 100% for controlled tunnels.
@@ -194,6 +182,22 @@ All seven are modulatable (the FEEDBACK KEY controls are not).
   - **KEY LEVEL** — how much is keyed out: low cuts only the pure key colour, high cuts a wide range around it.
   - **KEY GAIN** — the edge of the key: low is soft and semi-transparent, high is a hard cut.
   - With a key on, the FEEDBACK slider sets how long the loop persists (at 100% and above the keyed areas never fade). CHROMA GREEN pairs with BACKGROUND → GREEN SCREEN; LUMA BLACK works with the ordinary dark palette backgrounds. Soft glows over a green screen spill a little green into the loop — raise KEY LEVEL to clean it up. The key needs canvas-filter support in the browser; without it the loop stays additive. The key choice and both sliders are saved in presets.
+
+---
+
+## 9. DISPLAY FILTER
+
+Whole-picture film and video looks, applied to the finished frame after every effect in EFFECTS & MODULATION and just before OUTPUT GRADE — so dust, static, tape wobble and tint land on top of text, trails and the feedback loop the way a real film or tape transfer would. The panel sits in the same place in the chain: below EFFECTS & MODULATION, above OUTPUT GRADE.
+- **NONE**
+- **OLD PHOTO** — warm sepia tint, desaturation, slight softening, flicker, gate weave, dust specks, stains and a warm vignette.
+- **16MM FILM** — heavy grain, gate weave, dust, warm tint. No flicker.
+- **35MM FILM** — fine grain, gentle weave, less dust, near-neutral tint. No flicker.
+- **VHS TAPE** — static, row wobble, colour-channel offset, desaturation, flicker, heavier scan lines.
+- **CABLE TV** — block noise, softening, static, colour-channel offset, heavier scan lines.
+
+**FILTER LEVEL** sets the intensity of the selected filter and is modulatable. It now scales every part of the look — tint, desaturation, softening, wobble, colour offset, block noise, static, grain, dust and vignette — so a low level is a light touch of the filter rather than a full filter with less grain.
+
+The filter runs on the GPU at full output resolution, so it costs about the same at any FIDELITY setting; the noise, dust and static keep the pixel size of the working buffer, so they still read as film grain rather than screen noise.
 
 ---
 
@@ -259,9 +263,9 @@ Browsers can't register themselves as a webcam device, so this feature gets you 
 
 ## 14. Signal chain (for the curious)
 
-Background → video file / camera (graded, mixed) → Shape A / Shape B (crossfade or overlay) → INVERT → COMIC INK → filter post-processing (posterise, grain, static, VHS wobble) → film overlays (scratches, dust) → FIDELITY downscale → text overlay (fidelity-treated) → RGB SPLIT → GLITCH → PAINT BRUSH → BLUR → TRAILS → FEEDBACK (with optional KEY) → OUTPUT GRADE (including TINT) → scan lines.
+Background → video file / camera (graded, mixed) → Shape A / Shape B (crossfade or overlay) → INVERT → COMIC INK → FIDELITY post-processing (posterise, grain, colour fringing) → FIDELITY downscale → text overlay (fidelity-treated) → RGB SPLIT → GLITCH → POINTS → PAINT BRUSH → BLUR → TRAILS → FEEDBACK (with optional KEY) → DISPLAY FILTER (weave / tape wobble, colour offset, softening, tint and flicker, block noise, static, grain, dust and stains, vignette) → OUTPUT GRADE (including TINT) → scan lines.
 
-Knowing the order helps: FEEDBACK is last, so it recirculates everything including the text; COMIC INK is early, so it inks the video and shapes but not the effects.
+Knowing the order helps: FEEDBACK recirculates everything up to and including the text and effects; the DISPLAY FILTER comes after it, so the film or tape look sits on top of the loop rather than being fed back into it; COMIC INK is early, so it inks the video and shapes but not the effects.
 
 ---
 
@@ -275,6 +279,7 @@ Knowing the order helps: FEEDBACK is last, so it recirculates everything includi
 - **Windows onto another shape:** put BLACKHOLE, TUNNEL or ALTITUDE in Shape B with BACKGROUND OFF and slide OVERLAY up — Shape A (or the video) shows through the disc, the open panels or the sea.
 - **Beat-cut chaos:** GLITCH around 40–60% with MIC ON fires on the kick only; add a little AUDIO MOD on GLITCH so louder passages glitch harder and more often.
 - **Living painting:** PAINT BRUSH at 70–100% over a slow shape (AURORA, GROVE, JELLYFISH) or a still camera, RATE OF CHANGE low, a touch of TRAILS. Add 20–30% AUDIO MOD on PAINT BRUSH so the brush loosens on the loud parts and tightens back up in the quiet ones.
+- **LED wall:** POINTS around 40–70% over a bright, slow shape (AURORA, ORBS, BLOBS) with a touch of TRAILS and BLUR; add 30–50% AUDIO MOD on POINTS so the dots swell and spread on the kick. Put FEEDBACK under 100% behind it and the dots tunnel away.
 - **Lo-fi overlay:** put SPRITES, PADDLES or QUILT in Shape B with BACKGROUND OFF over a video or a smooth shape in A — only the blocks land on top.
 - **Performing:** DETACH the panel to a second display, F for fullscreen on the main one, and save a few slots to jump between looks with SAVE/LOAD.
 - **Better recording audio:** feed a virtual audio device (BlackHole / VB-Cable) instead of a microphone for a clean direct signal.
@@ -289,7 +294,7 @@ Knowing the order helps: FEEDBACK is last, so it recirculates everything includi
 - **Video won't play** — the browser may not support that codec/container. Re-encode to H.264 MP4 or VP9 WebM.
 - **Recording is WebM, not MP4** — the browser (typically Firefox) has no MP4 muxer. Use Chrome, Edge or Safari, or convert afterwards.
 - **POPUP BLOCKED** — allow pop-ups for the file so the DETACH panel and virtual camera windows can open.
-- **Everything feels slow** — lower FIDELITY (it also lowers the render resolution), reduce DENSITY, turn off FEEDBACK, BLUR and PAINT BRUSH, or switch off one shape slot. PAINT BRUSH draws several thousand strokes a frame; raising its slider actually makes it cheaper (fewer, fatter strokes). VAPORWAVE at high DENSITY with loud input is one of the heavier shapes at the top FIDELITY step.
+- **Everything feels slow** — lower FIDELITY (it also lowers the render resolution), reduce DENSITY, turn off FEEDBACK, BLUR and PAINT BRUSH, or switch off one shape slot. POINTS and the DISPLAY FILTER are cheap: neither does per-pixel work at the output resolution. PAINT BRUSH draws several thousand strokes a frame; raising its slider actually makes it cheaper (fewer, fatter strokes). VAPORWAVE at high DENSITY with loud input is one of the heavier shapes at the top FIDELITY step.
 - **Old preset loads a different shape** — PLASMA, WOBBLE, LATTICE and ECHO were replaced; presets that used them load MEMORY, ODYSSEY, SUPERNOVA and BLACKHOLE respectively. HALO was removed; presets that used it load RINGS.
 - **Presets vanished** — slots live in the browser's local storage for that file location; clearing site data or moving the HTML file resets them. Use EXPORT FILE for anything you want to keep.
 
