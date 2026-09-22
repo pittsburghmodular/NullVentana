@@ -144,6 +144,8 @@
   </filter>
   <filter id="caR" x="-10%" y="-10%" width="120%" height="120%"><feColorMatrix type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/><feOffset id="caRO" dx="2" dy="0"/></filter>
   <filter id="caB" x="-10%" y="-10%" width="120%" height="120%"><feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 1 0  0 0 0 1 0"/><feOffset id="caBO" dx="-2" dy="0"/></filter>
+  <!-- DISPLAY FILTER: tint / flicker / desaturation of the finished frame in one colour matrix, set per frame by dfSetTint() -->
+  <filter id="dfTint" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feColorMatrix id="dfTintM" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/></filter>
   <!-- RGB SPLIT: pure channel isolation (offsets are applied by drawImage position) -->
   <filter id="rsR" x="0" y="0" width="100%" height="100%"><feColorMatrix type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/></filter>
   <filter id="rsG" x="0" y="0" width="100%" height="100%"><feColorMatrix type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0"/></filter>
@@ -328,20 +330,6 @@
     </div>
   </div>
   <div class="feature-box">
-    <div class="box-title">DISPLAY FILTER</div>
-    <div class="seg" id="filters"></div>
-    <span class="lbl" style="margin-top:6px;">FILTER LEVEL <b id="vFxLvl">70%</b></span>
-    <input type="range" id="cFxLvl" min="0" max="100" value="70" title="filter intensity"/>
-    <div class="mod-group">
-      <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModFxLvl">0%</b></span>
-      <input type="range" class="mod-slider" id="cModFxLvl" min="-100" max="100" value="0"/>
-      <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateFxLvl">0.25 Hz</b></span>
-      <input type="range" class="lfo-rate-slider" id="cLfoRateFxLvl" min="1" max="100" value="35"/>
-      <span class="sub-lbl">AUDIO MOD (AIR) <b class="b-aud" id="vAudModFxLvl">0%</b></span>
-      <input type="range" class="aud-mod-slider" id="cAudModFxLvl" min="-100" max="100" value="0"/>
-    </div>
-  </div>
-  <div class="feature-box">
     <div class="box-title">EFFECTS & MODULATION</div>
     <div class="fxrow">
       <span class="lbl">COMIC INK <b id="vCo"></b></span>
@@ -377,6 +365,18 @@
         <input type="range" class="lfo-rate-slider" id="cLfoRateGlitch" min="1" max="100" value="35"/>
         <span class="sub-lbl">AUDIO MOD (HI-MID) <b class="b-aud" id="vAudModGlitch">0%</b></span>
         <input type="range" class="aud-mod-slider" id="cAudModGlitch" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">POINTS <b id="vPt"></b></span>
+      <input type="range" id="cPoints" min="0" max="100" value="0" title="rebuilds the picture as a drifting grid of small points; higher = wider spacing, bigger dots"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModPoints">0%</b></span>
+        <input type="range" class="mod-slider" id="cModPoints" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRatePoints">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRatePoints" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModPoints">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModPoints" min="-100" max="100" value="0"/>
       </div>
     </div>
     <div class="fxrow">
@@ -434,6 +434,20 @@
         <span class="sub-lbl">KEY GAIN <b id="vFbKeyGain">50%</b></span>
         <input type="range" id="cFbKeyGain" min="0" max="100" value="50" title="edge of the key: low = soft, semi-transparent edges, high = hard cut"/>
       </div>
+    </div>
+  </div>
+  <div class="feature-box">
+    <div class="box-title">DISPLAY FILTER</div>
+    <div class="seg" id="filters"></div>
+    <span class="lbl" style="margin-top:6px;">FILTER LEVEL <b id="vFxLvl">70%</b></span>
+    <input type="range" id="cFxLvl" min="0" max="100" value="70" title="filter intensity"/>
+    <div class="mod-group">
+      <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModFxLvl">0%</b></span>
+      <input type="range" class="mod-slider" id="cModFxLvl" min="-100" max="100" value="0"/>
+      <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateFxLvl">0.25 Hz</b></span>
+      <input type="range" class="lfo-rate-slider" id="cLfoRateFxLvl" min="1" max="100" value="35"/>
+      <span class="sub-lbl">AUDIO MOD (AIR) <b class="b-aud" id="vAudModFxLvl">0%</b></span>
+      <input type="range" class="aud-mod-slider" id="cAudModFxLvl" min="-100" max="100" value="0"/>
     </div>
   </div>
   <div class="feature-box compact">
@@ -530,7 +544,8 @@
      3. Rendering surfaces: low-res buffer (bctx) -> post-processed -> scaled to the full-res view (ctx)
      4. Shared helpers: ihash (integer hash), m3* (3D projection / meshes / sphere sprites), text overlay
      5. Shapes: one drawX(t) per visual, registered in SHAPES / DRAW
-     6. Post: postProcess (per-pixel tint/posterise/grain/static), filmOverlays, crossfade mixer (drawMixed)
+     6. Post: postProcess (per-pixel FIDELITY posterise/grain), crossfade mixer (drawMixed), effects chain,
+        then displayFilterPass (film / video look on the finished frame) and OUTPUT GRADE
      7. frame(): the main loop
      8. Audio input control, UI wiring, pop-out window, idle auto-hide
    Performance notes: every shape targets < 5 ms/frame on the 512-px buffer; heavy procedural shapes
@@ -625,6 +640,7 @@ const state = {
   trails:0, blur:0, glitch:0, seed:(Math.random()*0xffff)|0, beatReseed: false,
   comic:0, split:0, modComic:0.0, modSplit:0.0, lfoRateComic:0.25, lfoRateSplit:0.25, audModComic:0.0, audModSplit:0.0,
   paint:0, modPaint:0.0, lfoRatePaint:0.25, audModPaint:0.0,
+  points:0, modPoints:0.0, lfoRatePoints:0.25, audModPoints:0.0,
   feedback:0, fbZoom:0.12, fbRot:5.7, fbHue:0, fbKey:'off', fbKeyLevel:0.5, fbKeyGain:0.5, modFeedback:0.0, lfoRateFeedback:0.25, audModFeedback:0.0,
   invert:false, bgMode:'palette', noBgA:false, noBgB:false, videoLoop:false, videoGranular:false, grainMax:2.0, grainFade:0.15, srcMix:0, vidIn:0, vidOut:1, palAudio:false,
   camExp:0, camTemp:0, camSat:1, camSh:0, camMid:0, camHi:0,
@@ -641,11 +657,11 @@ const state = {
 };
 
 const lfoPhases = { 
-  rate: 0, mix: 0, den: 0, fid: 0, fxLvl: 0, trails: 0, blur: 0, glitch: 0, paint: 0, comic: 0, split: 0, feedback: 0,
+  rate: 0, mix: 0, den: 0, fid: 0, fxLvl: 0, trails: 0, blur: 0, glitch: 0, points: 0, paint: 0, comic: 0, split: 0, feedback: 0,
   textScale: 0, textScatter: 0, textRotate: 0, textPulse: 0, textScan: 0
 };
 const eff = { 
-  rate: 0.45, mix: 0.0, density: 0.5, fidelity: 0.80, fxLevel: 0.7, trails: 0, blur: 0, glitch: 0, paint: 0, comic: 0, split: 0, feedback: 0,
+  rate: 0.45, mix: 0.0, density: 0.5, fidelity: 0.80, fxLevel: 0.7, trails: 0, blur: 0, glitch: 0, points: 0, paint: 0, comic: 0, split: 0, feedback: 0,
   textScale: 46, textScatter: 0.15, textRotate: 0.0, textPulse: 0.30, textScan: 0.45
 };
 
@@ -1404,6 +1420,101 @@ function glitchPass(ctx, W, H, tw){
   ctx.restore();
 }
 
+
+// ---- POINTS: the frame is rebuilt as a grid of small square points, one per cell, coloured by the picture
+// beneath it. Dark cells drop out, so a shape reads as clusters of dots on black like an LED matrix or a dot
+// screen. The grid is alive: it drifts slowly across the frame, alternate rows slide against each other, and
+// the bass swells the dot size. The slider sets the pitch: low = a fine, dense screen; high = wide spacing and
+// big fat dots. The first ~15% of travel fades the dots in over the untouched picture.
+// Cost: no per-dot JavaScript. The picture is shrunk so one pixel = one cell (a few thousand pixels, processed
+// once for the drop-out / colour lift), scaled back up row by row with the row slide, then cut into dots with
+// a repeating pattern stencil - a couple of hundred GPU draws however many dots are on screen. ----
+const PT = { c:null, x:null, s:null, sx:null, m:null, mx:null, st:null, stx:null, pat:null, patKey:'' };
+function pointsPass(ctx, W, H, tw, a){
+  if(!PT.c){
+    PT.c = document.createElement('canvas'); PT.x = PT.c.getContext('2d', { willReadFrequently: true });
+    PT.s = document.createElement('canvas'); PT.sx = PT.s.getContext('2d');
+    PT.m = document.createElement('canvas'); PT.mx = PT.m.getContext('2d');
+    PT.st = document.createElement('canvas'); PT.stx = PT.st.getContext('2d');
+  }
+  const mix = Math.min(1, a/0.15);                                        // fade-in over the first part of the slider
+  const pitch = Math.max(3, Math.round(lerp(0.006, 0.032, a) * Math.max(W, H)));   // integer cell size so the stencil tiles exactly
+  const gw = Math.ceil(W/pitch) + 2, gh = Math.ceil(H/pitch) + 2;         // one cell of margin each side for the drift
+  if(PT.c.width !== gw || PT.c.height !== gh){ PT.c.width = gw; PT.c.height = gh; }
+  if(PT.s.width !== W || PT.s.height !== H){ PT.s.width = W; PT.s.height = H; PT.m.width = W; PT.m.height = H; }
+  const ox = (tw*0.07*pitch) % pitch, oy = (tw*0.045*pitch) % pitch;      // slow diagonal drift of the whole lattice
+
+  // 1. sample: shrink the frame so one analysis pixel = one cell, offset by the drift
+  const cx = PT.x;
+  cx.setTransform(1/pitch, 0, 0, 1/pitch, 0, 0);
+  cx.globalCompositeOperation = 'copy'; cx.globalAlpha = 1; cx.imageSmoothingEnabled = true;
+  cx.drawImage(view, pitch - ox, pitch - oy, W, H);
+  cx.setTransform(1, 0, 0, 1, 0, 0);
+  const img = cx.getImageData(0, 0, gw, gh), px = img.data;
+  // 2. per cell: dark cells drop out (alpha 0), dim cells are lifted so they still read as lit points
+  for(let q = 0, n = gw*gh*4; q < n; q += 4){
+    const r = px[q], g = px[q+1], b = px[q+2], lum = (r*0.299 + g*0.587 + b*0.114)*(1/255);
+    if(lum < 0.06){ px[q+3] = 0; continue; }
+    if(lum < 0.5){ const k = 0.5/lum; px[q] = r*k; px[q+1] = g*k; px[q+2] = b*k; }   // store clamps to 255
+    px[q+3] = 255;
+  }
+  cx.putImageData(img, 0, 0);
+
+  // 3. scale the cells back up row by row, alternate rows sliding against each other on a slow phase
+  const sx = PT.sx;
+  sx.setTransform(1, 0, 0, 1, 0, 0);
+  sx.globalCompositeOperation = 'copy'; sx.globalAlpha = 1; sx.filter = 'none'; sx.imageSmoothingEnabled = false;
+  sx.clearRect(0, 0, W, H);
+  sx.globalCompositeOperation = 'source-over';
+  const x0 = ox - pitch, y0 = oy - pitch, gwp = gw*pitch;
+  const shiftAmp = pitch*0.35;
+  for(let j = 0; j < gh; j++){
+    const y = y0 + j*pitch;
+    if(y + pitch < 0 || y > H) continue;
+    const rowShift = Math.round(Math.sin(tw*0.9 + j*0.7) * shiftAmp) * (j & 1 ? 1 : -1);
+    sx.drawImage(PT.c, 0, j, gw, 1, x0 + rowShift, y, gwp, pitch);
+  }
+
+  // 4. cut the cells into dots with a repeating stencil (one square per cell), rows shifted to match
+  const bass = A[0] || 0;
+  const sz = Math.max(1, Math.round(pitch * (0.42 + 0.22*bass)));       // dot size: leaves a gap between neighbours; bass swells it
+  const key = pitch + ':' + sz;
+  if(PT.patKey !== key){
+    PT.st.width = PT.st.height = pitch;
+    const stx = PT.stx; stx.clearRect(0, 0, pitch, pitch); stx.fillStyle = '#fff';
+    const o = (pitch - sz) >> 1; stx.fillRect(o, o, sz, sz);
+    PT.pat = sx.createPattern(PT.st, 'repeat'); PT.patKey = key;
+  }
+  // the stencil is assembled row by row on its own canvas first: destination-in acts on the whole canvas, so
+  // masking row by row in place would wipe every row but the last
+  const mx = PT.mx;
+  mx.setTransform(1, 0, 0, 1, 0, 0);
+  mx.globalCompositeOperation = 'source-over'; mx.globalAlpha = 1;
+  mx.clearRect(0, 0, W, H);
+  mx.fillStyle = PT.pat;
+  for(let j = 0; j < gh; j++){
+    const y = y0 + j*pitch;
+    if(y + pitch < 0 || y > H) continue;
+    const rowShift = Math.round(Math.sin(tw*0.9 + j*0.7) * shiftAmp) * (j & 1 ? 1 : -1);
+    mx.setTransform(1, 0, 0, 1, x0 + rowShift, y);                          // pattern origin follows the transform, so the dots land on the shifted cells
+    mx.fillRect(0, 0, gwp, pitch);
+  }
+  mx.setTransform(1, 0, 0, 1, 0, 0);
+  sx.globalCompositeOperation = 'destination-in';
+  sx.drawImage(PT.m, 0, 0);
+  sx.globalCompositeOperation = 'source-over';
+
+  // 5. composite: dots over black, faded in over the untouched picture
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.filter = 'none';
+  ctx.globalAlpha = mix;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(PT.s, 0, 0);
+  ctx.restore();
+}
 
 // ---- PAINT BRUSH: repaints the frame as a field of oil brush strokes. The view is shrunk to a small analysis
 // buffer; each stroke sits on a jittered grid (positions fixed per cell so the painting doesn't shimmer), takes its
@@ -6557,7 +6668,7 @@ const DRAW = {
   playfield:drawPlayfield, sprites:drawSprites, munch:drawMunch, paddles:drawPaddles, quilt:drawQuilt
 };
 
-// Film/video filters. FX holds each filter's parameters, read by postProcess() and filmOverlays().
+// Film/video filters. FX holds each filter's parameters, read by displayFilterPass() and filmOverlays().
 const FILTERS = [
   { id:'none', label:'NONE' }, { id:'photo', label:'OLD PHOTO' }, { id:'mm16', label:'16MM FILM' },
   { id:'mm35', label:'35MM FILM' }, { id:'vhs', label:'VHS TAPE' }, { id:'cable', label:'CABLE TV' }
@@ -6640,13 +6751,12 @@ function comicInkData(d, a){
   }
 }
 
-function postNeeded(){
-  const F = FX[state.filter];
-  return !(eff.fidelity >= 0.999 && (!F || state.filter === 'none') && eff.fxLevel <= 0.001);
-}
+function postNeeded(){ return eff.fidelity < 0.999; }
+// Per-pixel FIDELITY pass on the low-res buffer: colour posterisation, base grain and (at low fidelity) a chroma
+// offset. The DISPLAY FILTER no longer lives in this loop - it runs on the finished frame after the effects chain
+// (see displayFilterPass).
 function postProcessData(d){
   const f = eff.fidelity;
-  const F = FX[state.filter];
   const npx = bw*bh*4;
 
   // posterise LUT (blend between two level counts so the slider is continuous)
@@ -6658,44 +6768,11 @@ function postProcessData(d){
     PP.lutF = f;
   }
   const lut = PP.lut;
+  const grain = lerp(26, 4, f);
+  const ca = f < 0.7 ? (f < 0.35 ? 2 : 1) : 0;
 
-  const lvl = eff.fxLevel;
-  const grain = lerp(26, 4, f) + (F.grain || 0)*lvl;
-  let ca = f < 0.7 ? (f < 0.35 ? 2 : 1) : 0;
-  if(F.caAdd && lvl > 0.15) ca += F.caAdd;
-
-  const tw = performance.now()*0.001;
-  const fl = F.flick ? 1 + F.flick*lvl*n1(tw*29) : 1;
-  const tr = (F.tint ? F.tint[0] : 1)*fl, tg = (F.tint ? F.tint[1] : 1)*fl, tb = (F.tint ? F.tint[2] : 1)*fl;
-  const tinted = tr !== 1 || tg !== 1 || tb !== 1;
-  const sat = F.sat || 1;
-
-  let rowSh = null;
-  if(F.rowWob){
-    if(!PP.rowSh || PP.rowSh.length !== bh) PP.rowSh = new Float32Array(bh);
-    rowSh = PP.rowSh;
-    for(let y = 0; y < bh; y++) rowSh[y] = Math.sin(y*0.09 + tw*8)*F.rowWob;
-  }
-
-  let blk = null, bxs = 0;
-  if(F.blocks){
-    bxs = Math.ceil(bw/F.blocks);
-    const bys = Math.ceil(bh/F.blocks), seed = Math.floor(tw/0.7)*13;
-    if(PP.blkSeed !== seed || !PP.blk || PP.blk.length !== bxs*bys){
-      PP.blk = new Float32Array(bxs*bys); PP.blkSeed = seed;
-      for(let j = 0; j < bys; j++) for(let i = 0; i < bxs; i++) PP.blk[i + j*bxs] = (hash1(i*57 + j*91 + seed)*2 - 1)*14;
-    }
-    blk = PP.blk;
-  }
-
-  const soft = F.soft || 0, invSoft = 1 - soft;
-  const staticP = F.staticP || 0;
-  const needSrc = Boolean(rowSh || soft || ca > 0);
-  if(needSrc) sharedSrcBuffer.set(d.subarray(0, npx));
-  const src = needSrc ? sharedSrcBuffer : null;
-
-  // fast path (filter NONE / nothing but posterise + grain): tight loop, no per-pixel feature branches
-  if(!src && !tinted && sat >= 1 && !blk && staticP <= 0){
+  // fast path (no chroma offset): tight loop, posterise + grain only
+  if(ca === 0){
     let rs = rngS | 0; const g2 = grain*2*2.3283064365386963e-10;
     for(let i = 0; i < npx; i += 4){
       rs ^= rs << 13; rs ^= rs >>> 17; rs ^= rs << 5;
@@ -6706,42 +6783,28 @@ function postProcessData(d){
     return;
   }
 
+  sharedSrcBuffer.set(d.subarray(0, npx));
+  const src = sharedSrcBuffer;
   for(let y = 0; y < bh; y++){
-    const row = y*bw, rsI = rowSh ? (rowSh[y]|0) : 0, blkRow = blk ? (y >> 3)*bxs : 0, xMax = bw - 1;
+    const row = y*bw, xMax = bw - 1;
     let i = row*4;
     for(let x = 0; x < bw; x++, i += 4){
-      let r, g, b2;
-      if(src){
-        // integer row shift + chroma offsets, clamped at the frame edges
-        let xs = x + rsI; xs = xs < 0 ? 0 : (xs > xMax ? xMax : xs);
-        const xi = (row + xs) << 2;
-        if(ca > 0){
-          let xR = xs + ca; if(xR > xMax) xR = xMax;
-          let xL = xs - ca; if(xL < 0) xL = 0;
-          r = src[(row + xR) << 2]; g = src[xi + 1]; b2 = src[((row + xL) << 2) + 2];
-        } else { r = src[xi]; g = src[xi + 1]; b2 = src[xi + 2]; }
-        if(soft){
-          const xi2 = x < xMax ? i + 4 : i;
-          r = r*invSoft + src[xi2]*soft; g = g*invSoft + src[xi2 + 1]*soft; b2 = b2*invSoft + src[xi2 + 2]*soft;
-        }
-      } else { r = d[i]; g = d[i+1]; b2 = d[i+2]; }
-
-      if(tinted){ r *= tr; g *= tg; b2 *= tb; }
-      if(sat < 1){ const l = r*0.3 + g*0.59 + b2*0.11; r = l + (r - l)*sat; g = l + (g - l)*sat; b2 = l + (b2 - l)*sat; }
-      if(blk){ const dv = blk[(x >> 3) + blkRow]; r += dv; g += dv; b2 += dv; }
-      if(staticP > 0 && frand() < staticP){ const sv = (frand()*255)|0; r = r*0.2 + sv*0.8; g = g*0.2 + sv*0.8; b2 = b2*0.2 + sv*0.8; }
-
+      // chroma offsets, clamped at the frame edges
+      let xR = x + ca; if(xR > xMax) xR = xMax;
+      let xL = x - ca; if(xL < 0) xL = 0;
+      const r = src[(row + xR) << 2], g = src[i + 1], b2 = src[((row + xL) << 2) + 2];
       const gn = (frand()*2 - 1)*grain;
-      d[i] = lut[r < 0 ? 0 : r > 255 ? 255 : r|0] + gn; d[i+1] = lut[g < 0 ? 0 : g > 255 ? 255 : g|0] + gn; d[i+2] = lut[b2 < 0 ? 0 : b2 > 255 ? 255 : b2|0] + gn;   // store clamps
+      d[i] = lut[r] + gn; d[i+1] = lut[g] + gn; d[i+2] = lut[b2] + gn;   // store clamps
     }
   }
 }
 
-// Vector overlays on the buffer for the film filters: scratches, dust, hairs, stains.
-function filmOverlays(tw){
+// Vector overlays for the film filters: scratches, dust, hairs, stains. Drawn in buffer-pixel coordinates
+// (bw x bh) on whatever context is passed; displayFilterPass scales the view context so one unit = one buffer pixel.
+function filmOverlays(c, tw){
   const F = FX[state.filter], L = eff.fxLevel;
   if(!F || state.filter === 'none' || L <= 0.02) return;
-  bctx.globalCompositeOperation = 'source-over';
+  c.globalCompositeOperation = 'source-over';
 
   if(F.scratches){
     const stepN = Math.floor(tw / 0.35);
@@ -6750,28 +6813,28 @@ function filmOverlays(tw){
     for(let i = 0; i < n; i++){
       const x = (hash1(stepN*13 + i*29)*bw) | 0;
       const a = (0.15 + 0.4*hash1(stepN*31 + i*7))*L;
-      bctx.fillStyle = hash1(stepN + i) > 0.8 ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a})`;
+      c.fillStyle = hash1(stepN + i) > 0.8 ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a})`;
       const w = hash1(stepN*3 + i) < 0.3 ? 2 : 1;
       const y0 = (hash1(stepN*5 + i*3)*bh*0.4) | 0;
-      bctx.fillRect(x, y0, w, bh - y0);
+      c.fillRect(x, y0, w, bh - y0);
     }
   }
 
   if(F.dust){
     const n = Math.round((F.dust[0] + Math.random()*(F.dust[1] - F.dust[0]))*L);
     for(let i = 0; i < n; i++){
-      bctx.fillStyle = `rgba(255,255,255,${(0.2 + 0.6*Math.random())*L})`;
+      c.fillStyle = `rgba(255,255,255,${(0.2 + 0.6*Math.random())*L})`;
       const s = Math.random() < 0.8 ? 1 : 2;
-      bctx.fillRect((Math.random()*bw) | 0, (Math.random()*bh) | 0, s, s);
+      c.fillRect((Math.random()*bw) | 0, (Math.random()*bh) | 0, s, s);
     }
   }
 
   if(F.dustDark){
     const n = Math.round((F.dustDark[0] + Math.random()*(F.dustDark[1] - F.dustDark[0]))*L);
     for(let i = 0; i < n; i++){
-      bctx.fillStyle = `rgba(24,17,10,${(0.25 + 0.5*Math.random())*L})`;
+      c.fillStyle = `rgba(24,17,10,${(0.25 + 0.5*Math.random())*L})`;
       const s = Math.random() < 0.8 ? 1 : 2;
-      bctx.fillRect((Math.random()*bw) | 0, (Math.random()*bh) | 0, s, s);
+      c.fillRect((Math.random()*bw) | 0, (Math.random()*bh) | 0, s, s);
     }
   }
 
@@ -6779,8 +6842,8 @@ function filmOverlays(tw){
     for(let i = 0; i < F.hair; i++){
       const x = (hash1(i*37 + 5)*bw) | 0;
       const a = (0.08 + 0.2*hash1(i*11 + 9))*L*(0.7 + 0.3*Math.sin(tw*0.6 + i*2));
-      bctx.fillStyle = hash1(i*23) > 0.5 ? `rgba(255,255,255,${a})` : `rgba(30,22,14,${a})`;
-      bctx.fillRect(x, 0, 1, bh);
+      c.fillStyle = hash1(i*23) > 0.5 ? `rgba(255,255,255,${a})` : `rgba(30,22,14,${a})`;
+      c.fillRect(x, 0, 1, bh);
     }
   }
 
@@ -6789,15 +6852,169 @@ function filmOverlays(tw){
     for(let i = 0; i < 4; i++){
       const x = hash1(i*53 + 2)*bw, y = hash1(i*71 + 8)*bh;
       const r = minD * (0.16 + 0.22*hash1(i*91 + 4));
-      const g = bctx.createRadialGradient(x, y, r*0.1, x, y, r);
+      const g = c.createRadialGradient(x, y, r*0.1, x, y, r);
       g.addColorStop(0, `rgba(96,70,38,${0.13*L})`);
       g.addColorStop(1, 'rgba(96,70,38,0)');
-      bctx.fillStyle = g;
-      bctx.beginPath();
-      bctx.arc(x, y, r, 0, TAU);
-      bctx.fill();
+      c.fillStyle = g;
+      c.beginPath();
+      c.arc(x, y, r, 0, TAU);
+      c.fill();
     }
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// DISPLAY FILTER: runs on the finished full-resolution frame, after the whole effects chain and before OUTPUT
+// GRADE, so the film / video look sits over text, trails and feedback like a real transfer would. Everything is
+// GPU-side (no per-pixel JavaScript on the view): tint / flicker / desaturation through one colour matrix
+// (#dfTint), VHS row wobble as banded re-draws, chroma offset via the channel filters, cable-TV softening as a
+// sub-pixel blur, block noise / static / grain from pre-generated noise tiles scaled to the buffer's pixel grid,
+// and the film overlays (dust, stains) drawn in that same grid. Every element scales with FILTER LEVEL.
+// ---------------------------------------------------------------------------------------------
+const DF_TILE = 1280;
+const DF = { grain:null, stat:null, statP:-1, blk:null, blkSeed:-1, blkW:0, blkH:0, tintEl:null, tintStr:'' };
+function dfGrainTile(){
+  if(DF.grain) return DF.grain;
+  const c = document.createElement('canvas'); c.width = c.height = DF_TILE;
+  const g = c.getContext('2d'), img = g.createImageData(DF_TILE, DF_TILE), d = img.data;
+  for(let i = 0; i < d.length; i += 4){ const v = (frand()*256)|0; d[i] = d[i+1] = d[i+2] = v; d[i+3] = 255; }
+  g.putImageData(img, 0, 0);
+  return DF.grain = c;
+}
+// sparse gray-noise speckles at probability p (transparent elsewhere), rebuilt only when the filter's p changes
+function dfStaticTile(p){
+  if(DF.stat && DF.statP === p) return DF.stat;
+  const c = DF.stat || document.createElement('canvas'); c.width = c.height = DF_TILE;
+  const g = c.getContext('2d'), img = g.createImageData(DF_TILE, DF_TILE), d = img.data;
+  for(let i = 0; i < d.length; i += 4){ if(frand() < p){ const v = (frand()*256)|0; d[i] = d[i+1] = d[i+2] = v; d[i+3] = 255; } }
+  g.putImageData(img, 0, 0);
+  DF.stat = c; DF.statP = p; return c;
+}
+// cable-TV block noise: one gray cell per block (128 +/- 14), re-rolled every 0.7 s
+function dfBlockTile(bxs, bys, seed){
+  if(DF.blk && DF.blkSeed === seed && DF.blkW === bxs && DF.blkH === bys) return DF.blk;
+  const c = DF.blk || document.createElement('canvas');
+  if(c.width !== bxs || c.height !== bys){ c.width = bxs; c.height = bys; }
+  const g = c.getContext('2d'), img = g.createImageData(bxs, bys), d = img.data;
+  for(let j = 0; j < bys; j++) for(let i = 0; i < bxs; i++){ const q = (i + j*bxs)*4; d[q] = d[q+1] = d[q+2] = 128 + (hash1(i*57 + j*91 + seed)*2 - 1)*14; d[q+3] = 255; }
+  g.putImageData(img, 0, 0);
+  DF.blk = c; DF.blkSeed = seed; DF.blkW = bxs; DF.blkH = bys; return c;
+}
+// colour matrix = per-channel tint (with flicker) x saturation
+function dfSetTint(tr, tg, tb, s){
+  if(!DF.tintEl) DF.tintEl = document.getElementById('dfTintM');
+  if(!DF.tintEl) return false;
+  const a = 0.213, b = 0.715, c = 0.072;
+  const m = [
+    (a + (1 - a)*s)*tr, (b - b*s)*tr, (c - c*s)*tr, 0, 0,
+    (a - a*s)*tg, (b + (1 - b)*s)*tg, (c - c*s)*tg, 0, 0,
+    (a - a*s)*tb, (b - b*s)*tb, (c + (1 - c)*s)*tb, 0, 0,
+    0, 0, 0, 1, 0
+  ].map(v => v.toFixed(4)).join(' ');
+  if(m !== DF.tintStr){ DF.tintEl.setAttribute('values', m); DF.tintStr = m; }
+  return true;
+}
+function displayFilterPass(tw, bgCol){
+  const F = FX[state.filter], L = eff.fxLevel;
+  if(!F || state.filter === 'none' || L <= 0.02) return;
+  const k = W / bw;   // one buffer pixel measured in view pixels: noise / dust / wobble keep the buffer's grain size
+  const snap = ()=>{ fxctx.globalCompositeOperation = 'copy'; fxctx.globalAlpha = 1; fxctx.filter = 'none'; fxctx.drawImage(view, 0, 0); fxctx.globalCompositeOperation = 'source-over'; };
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.filter = 'none';
+  ctx.imageSmoothingEnabled = false;
+
+  // 1. gate weave (film) / row wobble (VHS): geometry first, so everything after it lands on the moved picture
+  let wx = 0, wy = 0;
+  if(F.weaveX){
+    const wt = Math.floor(tw*9);
+    wx = (hash1(wt*3 + 1)*2 - 1)*F.weaveX*dpr*L;
+    wy = (hash1(wt*5 + 2)*2 - 1)*F.weaveY*dpr*L;
+  }
+  if(F.rowWob || wx || wy){
+    snap();
+    ctx.fillStyle = bgCol; ctx.fillRect(0, 0, W, H);
+    if(F.rowWob){
+      const band = Math.max(4, Math.round(k)), amp = F.rowWob*k*L;   // bands of at least 4 px: the wobble is a slow sine, so this keeps the draw count in the low hundreds
+      for(let y = 0; y < H; y += band){
+        const sh = Math.round(Math.sin((y/k)*0.09 + tw*8)*amp), hh = Math.min(band, H - y);
+        ctx.drawImage(fxc, 0, y, W, hh, wx + sh, wy + y, W, hh);
+        // stretch the edge column into the gap the shift leaves, as the buffer pass used to clamp at the frame edge
+        if(sh > 0) ctx.drawImage(fxc, 0, y, 1, hh, wx, wy + y, sh, hh);
+        else if(sh < 0) ctx.drawImage(fxc, W - 1, y, 1, hh, wx + W + sh, wy + y, -sh, hh);
+      }
+    } else ctx.drawImage(fxc, wx, wy);
+  }
+
+  // 2. chroma offset (VHS / cable): the frame rebuilt from its channels with red and blue pulled apart
+  if(F.caAdd && FILTER_OK && L > 0.15){
+    const dx = Math.max(1, Math.round(F.caAdd*k*L));
+    snap();
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.filter = 'url(#rsR)'; ctx.drawImage(fxc, dx, 0); ctx.drawImage(fxc, 0, 0, 1, H, 0, 0, dx + 1, H);
+    ctx.filter = 'url(#rsG)'; ctx.drawImage(fxc, 0, 0);
+    ctx.filter = 'url(#rsB)'; ctx.drawImage(fxc, -dx, 0); ctx.drawImage(fxc, W - 1, 0, 1, H, W - dx - 1, 0, dx + 1, H);
+    ctx.filter = 'none'; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // 3. softening (cable): a sub-pixel blur in buffer units
+  if(F.soft && FILTER_OK){
+    ctx.filter = `blur(${(F.soft*k*L*0.6).toFixed(2)}px)`;
+    ctx.drawImage(view, 0, 0);
+    ctx.filter = 'none';
+  }
+
+  // 4. tint, flicker and desaturation in one colour-matrix pass
+  const fl = F.flick ? 1 + F.flick*L*n1(tw*29) : 1;
+  const tint = F.tint || [1, 1, 1], sat = lerp(1, F.sat || 1, L);
+  const tr = lerp(1, tint[0], L)*fl, tg = lerp(1, tint[1], L)*fl, tb = lerp(1, tint[2], L)*fl;
+  if((tr !== 1 || tg !== 1 || tb !== 1 || sat !== 1) && FILTER_OK && dfSetTint(tr, tg, tb, sat)){
+    ctx.filter = 'url(#dfTint)';
+    ctx.drawImage(view, 0, 0);
+    ctx.filter = 'none';
+  }
+
+  // 5. block noise (cable): coarse brightness cells, hard-light so they lift and drop the picture
+  if(F.blocks){
+    const bxs = Math.ceil(bw/F.blocks), bys = Math.ceil(bh/F.blocks), seed = Math.floor(tw/0.7)*13;
+    const tile = dfBlockTile(bxs, bys, seed);
+    ctx.globalCompositeOperation = 'hard-light'; ctx.globalAlpha = L;
+    ctx.drawImage(tile, 0, 0, bxs, bys, 0, 0, bxs*F.blocks*k, bys*F.blocks*k);
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  }
+
+  // 6. static (VHS / cable) and film grain: random windows into pre-generated noise tiles, one buffer pixel per cell
+  const tileW = Math.min(bw, DF_TILE), tileH = Math.min(bh, DF_TILE);
+  if(F.staticP){
+    const tile = dfStaticTile(F.staticP);
+    ctx.globalAlpha = 0.8*L;
+    ctx.drawImage(tile, (frand()*(DF_TILE - tileW))|0, (frand()*(DF_TILE - tileH))|0, tileW, tileH, 0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
+  if(F.grain){
+    const tile = dfGrainTile();
+    ctx.globalCompositeOperation = 'hard-light'; ctx.globalAlpha = Math.min(1, F.grain*L/127);
+    ctx.drawImage(tile, (frand()*(DF_TILE - tileW))|0, (frand()*(DF_TILE - tileH))|0, tileW, tileH, 0, 0, W, H);
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  }
+
+  // 7. film overlays (dust, stains) in the buffer's pixel grid
+  ctx.save(); ctx.scale(k, k); filmOverlays(ctx, tw); ctx.restore();
+
+  // 8. OLD PHOTO: vignette and a warm wash
+  if(state.filter === 'photo'){
+    const vg = ctx.createRadialGradient(W*0.5, H*0.5, Math.min(W, H)*0.35, W*0.5, H*0.5, Math.max(W, H)*0.72);
+    vg.addColorStop(0, 'rgba(46,32,18,0)');
+    vg.addColorStop(1, `rgba(46,32,18,${0.4*L})`);
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'soft-light';
+    ctx.globalAlpha = 0.22*L;
+    ctx.fillStyle = '#fff8ee';
+    ctx.fillRect(0, 0, W, H);
+  }
+  ctx.restore();
 }
 
 const wob = { start:-9, dur:1, x:0, y:0, next:3 + Math.random()*5 };
@@ -6890,8 +7107,10 @@ function drawSlotB(id, alpha, tt){
 
 // ---------------------------------------------------------------------------------------------
 // Main loop: audio -> LFOs/eff -> base background (palette or BLACK/WHITE/GREEN override) -> shapes (with crossfade,
-// per-shape BACKGROUND OFF) -> invert -> COMIC INK -> postProcess -> film overlays -> downscale for FIDELITY ->
-// blit to view with weave/CA -> text overlay -> RGB SPLIT -> glitch -> PAINT BRUSH -> blur -> trails -> FEEDBACK -> view-level filter noise -> scanlines
+// per-shape BACKGROUND OFF) -> invert -> COMIC INK -> FIDELITY posterise/grain -> downscale for FIDELITY ->
+// blit to view -> text overlay -> RGB SPLIT -> glitch -> POINTS -> PAINT BRUSH -> blur -> trails -> FEEDBACK ->
+// DISPLAY FILTER (weave / row wobble / chroma / soften / tint / block noise / static / grain / dust / vignette) ->
+// OUTPUT GRADE -> scanlines
 // ---------------------------------------------------------------------------------------------
 function frame(now){
   requestAnimationFrame(frame);
@@ -6910,6 +7129,7 @@ function frame(now){
   lfoPhases.trails      += dt * TAU * state.lfoRateTrails;
   lfoPhases.blur        += dt * TAU * state.lfoRateBlur;
   lfoPhases.glitch      += dt * TAU * state.lfoRateGlitch;
+  lfoPhases.points      += dt * TAU * state.lfoRatePoints;
   lfoPhases.paint       += dt * TAU * state.lfoRatePaint;
   lfoPhases.comic       += dt * TAU * state.lfoRateComic;
   lfoPhases.split       += dt * TAU * state.lfoRateSplit;
@@ -6927,6 +7147,7 @@ function frame(now){
   eff.trails  = clamp(state.trails  + Math.sin(lfoPhases.trails) * state.modTrails + A[0] * state.audModTrails, 0, 1);
   eff.blur    = clamp(state.blur    + Math.sin(lfoPhases.blur)   * state.modBlur   + A[1] * state.audModBlur,   0, 1);
   eff.glitch  = clamp(state.glitch  + Math.sin(lfoPhases.glitch) * state.modGlitch + A[2] * state.audModGlitch, 0, 1);
+  eff.points  = clamp(state.points  + Math.sin(lfoPhases.points) * state.modPoints + A[0] * state.audModPoints, 0, 1);
   eff.paint   = clamp(state.paint   + Math.sin(lfoPhases.paint)  * state.modPaint  + A[1] * state.audModPaint,  0, 1);
   eff.comic   = clamp(state.comic   + Math.sin(lfoPhases.comic)  * state.modComic  + A[2] * state.audModComic,  0, 1);
   eff.split   = clamp(state.split   + Math.sin(lfoPhases.split)  * state.modSplit  + A[0] * state.audModSplit,  0, 1);
@@ -6982,8 +7203,7 @@ function frame(now){
   bctx.globalAlpha = 1.0;
   bctx.globalCompositeOperation = 'source-over';
 
-  pixelStage();                        // INVERT -> COMIC INK (effects chain stage 1) -> posterise/grain/filter, one readback
-  filmOverlays(tw);
+  pixelStage();                        // INVERT -> COMIC INK (effects chain stage 1) -> FIDELITY posterise/grain, one readback
 
   const targetScale = lerp(0.12, 1.0, Math.pow(eff.fidelity, 1.25));
   let finalSource = buf;
@@ -7007,13 +7227,7 @@ function frame(now){
   }
 
   ctx.imageSmoothingEnabled = false;
-  let [wx, wy] = wobbleOffset(tw);
-  const Fx = FX[state.filter];
-  if(Fx.weaveX){
-    const wt = Math.floor(tw * 9), wl = eff.fxLevel;
-    wx += (hash1(wt*3 + 1)*2 - 1) * Fx.weaveX * dpr * wl;
-    wy += (hash1(wt*5 + 2)*2 - 1) * Fx.weaveY * dpr * wl;
-  }
+  const [wx, wy] = wobbleOffset(tw);
   const s = 1.02 * (1 + 0.012*Math.sin(t*0.35));
   const k = Math.max(W / bw, H / bh) * s;
 
@@ -7028,12 +7242,12 @@ function frame(now){
   ctx.scale(k, k);
   ctx.drawImage(finalSource, -bw*0.5, -bh*0.5);
 
-  if(FILTER_OK && eff.fxLevel > 0.15){
-    let ca = eff.fidelity < 0.7 ? (eff.fidelity < 0.35 ? 2 : 1) : 0;
-    if(Fx.caAdd) ca += Fx.caAdd;
+  if(FILTER_OK){
+    // low-FIDELITY colour fringing (the DISPLAY FILTER's own chroma offset is applied later, in displayFilterPass)
+    const ca = eff.fidelity < 0.7 ? (eff.fidelity < 0.35 ? 2 : 1) : 0;
     if(ca > 0){
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.4 * eff.fxLevel;
+      ctx.globalAlpha = 0.4;
       ctx.filter = 'url(#caR)'; ctx.drawImage(finalSource, -bw*0.5, -bh*0.5);
       ctx.filter = 'url(#caB)'; ctx.drawImage(finalSource, -bw*0.5, -bh*0.5);
     }
@@ -7091,10 +7305,10 @@ function frame(now){
     ctx.filter = 'none';
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(textSource, 0, 0);
-    if(FILTER_OK && eff.fxLevel > 0.15){
+    if(FILTER_OK){
       const ca = eff.fidelity < 0.7 ? (eff.fidelity < 0.35 ? 2 : 1) : 0;
       if(ca > 0){
-        ctx.globalAlpha = 0.4 * eff.fxLevel;
+        ctx.globalAlpha = 0.4;
         ctx.filter = 'url(#caR)'; ctx.drawImage(textSource, 0, 0);
         ctx.filter = 'url(#caB)'; ctx.drawImage(textSource, 0, 0);
       }
@@ -7131,7 +7345,11 @@ function frame(now){
   if(eff.glitch > 0.01) glitchPass(ctx, W, H, tw);
   else GL.until = 0;
 
-  // PAINT BRUSH sits between glitch and blur/trails: the brush strokes get softened and smeared like the rest
+  // POINTS sits between glitch and paint: the sliced frame is rebuilt as a drifting grid of dots, which the brush,
+  // blur and trails then work on like any other picture
+  if(eff.points > 0.01) pointsPass(ctx, W, H, tw, eff.points);
+
+  // PAINT BRUSH sits between points and blur/trails: the brush strokes get softened and smeared like the rest
   if(eff.paint > 0.01) paintPass(ctx, W, H, tw, eff.paint);
   else PB.armed = false;
 
@@ -7226,25 +7444,12 @@ function frame(now){
     fbArmed = false;
   }
 
-  if(state.filter === 'photo'){
-    const Lf = eff.fxLevel;
-    const vg = ctx.createRadialGradient(W*0.5, H*0.5, Math.min(W, H)*0.35, W*0.5, H*0.5, Math.max(W, H)*0.72);
-    vg.addColorStop(0, 'rgba(46,32,18,0)');
-    vg.addColorStop(1, `rgba(46,32,18,${0.4*Lf})`);
-    ctx.fillStyle = vg;
-    ctx.fillRect(0, 0, W, H);
-    ctx.save();
-    ctx.globalCompositeOperation = 'soft-light';
-    ctx.globalAlpha = 0.22 * Lf;
-    ctx.fillStyle = '#fff8ee';
-    ctx.fillRect(0, 0, W, H);
-    ctx.restore();
-  }
+  displayFilterPass(tw, bgCol);   // DISPLAY FILTER: the film / video look, applied to the finished frame after the whole effects chain
 
-  applyOutputGrade();   // OUTPUT GRADE: last step, so it colours everything including text, trails and feedback
+  applyOutputGrade();   // OUTPUT GRADE: last step, so it colours everything including text, trails, feedback and the display filter
 
   let so = lerp(0.75, 0.18, eff.fidelity);
-  const Lf = eff.fxLevel;
+  const Lf = eff.fxLevel, Fx = FX[state.filter];
   if(state.filter === 'vhs') so = Math.min(0.95, so + 0.4*Lf);
   else if(state.filter === 'cable') so = Math.min(0.9, so + 0.25*Lf);
   else if(Fx.grain) so = Math.max(0.1, so - 0.15*Lf);
@@ -7405,6 +7610,7 @@ function syncFx(){
   update('vTr', trStr);
   update('vBl', blStr);
   update('vGl', glStr);
+  update('vPt', Math.round(state.points * 100) + '%');
   update('vPa', Math.round(state.paint * 100) + '%');
   update('vCo', Math.round(state.comic * 100) + '%');
   update('vSp', Math.round(state.split * 100) + '%');
@@ -8168,6 +8374,7 @@ function wireControls(targetDoc = document){
   const cTrails = targetDoc.getElementById('cTrails');
   const cBlur   = targetDoc.getElementById('cBlur');
   const cGlitch = targetDoc.getElementById('cGlitch');
+  const cPoints = targetDoc.getElementById('cPoints');
   const cPaint  = targetDoc.getElementById('cPaint');
   const cComic  = targetDoc.getElementById('cComic');
   const cSplit  = targetDoc.getElementById('cSplit');
@@ -8201,6 +8408,7 @@ function wireControls(targetDoc = document){
   if(cTrails) cTrails.addEventListener('input', ()=>{ state.trails = cTrails.value * 0.01; syncFx(); });
   if(cBlur)   cBlur.addEventListener('input',   ()=>{ state.blur = cBlur.value * 0.01; syncFx(); });
   if(cGlitch) cGlitch.addEventListener('input', ()=>{ state.glitch = cGlitch.value * 0.01; syncFx(); });
+  if(cPoints) cPoints.addEventListener('input', ()=>{ state.points = cPoints.value * 0.01; syncFx(); });
   if(cPaint)  cPaint.addEventListener('input',  ()=>{ state.paint = cPaint.value * 0.01; syncFx(); });
   if(cComic)  cComic.addEventListener('input',  ()=>{ state.comic = cComic.value * 0.01; syncFx(); });
   if(cSplit)  cSplit.addEventListener('input',  ()=>{ state.split = cSplit.value * 0.01; syncFx(); });
@@ -8243,6 +8451,7 @@ function wireControls(targetDoc = document){
   bindDepth('cModTrails', 'vModTrails', 'modTrails');
   bindDepth('cModBlur', 'vModBlur', 'modBlur');
   bindDepth('cModGlitch', 'vModGlitch', 'modGlitch');
+  bindDepth('cModPoints', 'vModPoints', 'modPoints');
   bindDepth('cModPaint', 'vModPaint', 'modPaint');
   bindDepth('cModComic', 'vModComic', 'modComic');
   bindDepth('cModSplit', 'vModSplit', 'modSplit');
@@ -8262,6 +8471,7 @@ function wireControls(targetDoc = document){
   bindLfo('cLfoRateTrails', 'vLfoRateTrails', 'lfoRateTrails');
   bindLfo('cLfoRateBlur', 'vLfoRateBlur', 'lfoRateBlur');
   bindLfo('cLfoRateGlitch', 'vLfoRateGlitch', 'lfoRateGlitch');
+  bindLfo('cLfoRatePoints', 'vLfoRatePoints', 'lfoRatePoints');
   bindLfo('cLfoRatePaint', 'vLfoRatePaint', 'lfoRatePaint');
   bindLfo('cLfoRateComic', 'vLfoRateComic', 'lfoRateComic');
   bindLfo('cLfoRateSplit', 'vLfoRateSplit', 'lfoRateSplit');
@@ -8281,6 +8491,7 @@ function wireControls(targetDoc = document){
   bindDepth('cAudModTrails', 'vAudModTrails', 'audModTrails');
   bindDepth('cAudModBlur', 'vAudModBlur', 'audModBlur');
   bindDepth('cAudModGlitch', 'vAudModGlitch', 'audModGlitch');
+  bindDepth('cAudModPoints', 'vAudModPoints', 'audModPoints');
   bindDepth('cAudModPaint', 'vAudModPaint', 'audModPaint');
   bindDepth('cAudModComic', 'vAudModComic', 'audModComic');
   bindDepth('cAudModSplit', 'vAudModSplit', 'audModSplit');
