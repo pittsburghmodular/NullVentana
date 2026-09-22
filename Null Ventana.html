@@ -317,7 +317,7 @@
   </div>
   <div class="feature-box">
     <div class="box-title">FIDELITY <b id="vFid"></b></div>
-    <input type="range" id="cFid" min="0" max="100" value="50"/>
+    <input type="range" id="cFid" min="0" max="100" value="80"/>
     <div class="mod-group">
       <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModFid">0%</b></span>
       <input type="range" class="mod-slider" id="cModFid" min="-100" max="100" value="0"/>
@@ -609,7 +609,7 @@ const n2 = (x,y,t)=> (Math.sin(x*1.31+y*0.87+t+P[3])*0.5 + Math.sin(-x*0.63+y*1.
 
 const state = {
   rate:0.45, shape:'orbs', shapeB:'rings', mix:0, mixAuto:false, density:0.5,
-  fidelity:0.50, palette:0, filter:'none', fxLevel:0.7, audio:0.5, scan:true,
+  fidelity:0.80, palette:0, filter:'none', fxLevel:0.7, audio:0.5, scan:true,
   trails:0, blur:0, glitch:0, seed:(Math.random()*0xffff)|0, beatReseed: false,
   comic:0, split:0, modComic:0.0, modSplit:0.0, lfoRateComic:0.25, lfoRateSplit:0.25, audModComic:0.0, audModSplit:0.0,
   feedback:0, fbZoom:0.12, fbRot:5.7, fbHue:0, fbKey:'off', fbKeyLevel:0.5, fbKeyGain:0.5, modFeedback:0.0, lfoRateFeedback:0.25, audModFeedback:0.0,
@@ -632,7 +632,7 @@ const lfoPhases = {
   textScale: 0, textScatter: 0, textRotate: 0, textPulse: 0, textScan: 0
 };
 const eff = { 
-  rate: 0.45, mix: 0.0, density: 0.5, fidelity: 0.50, fxLevel: 0.7, trails: 0, blur: 0, glitch: 0, comic: 0, split: 0, feedback: 0,
+  rate: 0.45, mix: 0.0, density: 0.5, fidelity: 0.80, fxLevel: 0.7, trails: 0, blur: 0, glitch: 0, comic: 0, split: 0, feedback: 0,
   textScale: 46, textScatter: 0.15, textRotate: 0.0, textPulse: 0.30, textScan: 0.45
 };
 
@@ -2706,15 +2706,17 @@ function drawPulses(t){
   bctx.lineCap = 'butt';
 }
 
-// FOREST: first-person flight over an endless pixel-art landscape (mountains, pines, clouds). Seeded.
+// FOREST: first-person flight over an endless pixel-art landscape (mountains, pines, clouds). Seeded. Rendered on a
+// 480-px-wide buffer (was 208) with the ground written per pixel into an ImageData, so the picture is far finer while
+// keeping its crisp pixel look; `px` scales every hand-tuned pixel size so the design stays the same.
 function drawForest(t){
   // FOREST: first-person flight over an endless pixel-art landscape - snowy mountains, pine forest, drifting clouds
   const pal = PALETTES[state.palette], gain = 0.25 + state.audio * 1.25;
   bctx.globalCompositeOperation = 'source-over';
   const FO = drawForest;
   if(!FO.oc){ FO.oc = document.createElement('canvas'); FO.octx = FO.oc.getContext('2d'); FO.z = 0; FO.x = 0; FO.lastT = t; FO.sm = new Float32Array(4); FO.bank = 0; }
-  const W = 208, H = Math.max(32, Math.round(W*bh/bw));
-  if(FO.oc.width !== W || FO.oc.height !== H){ FO.oc.width = W; FO.oc.height = H; }
+  const W = 480, H = Math.max(64, Math.round(W*bh/bw)), px = W/208;
+  if(FO.oc.width !== W || FO.oc.height !== H){ FO.oc.width = W; FO.oc.height = H; FO.gimg = FO.octx.createImageData(W, H); }
   if(FO.seed !== state.seed){
     const r = mulberry32(state.seed ^ 0xf0e57);
     FO.cfg = { mtnH:0.32 + r()*0.28, mtnF:0.5 + r()*1.0, snow:0.68 + r()*0.17, treeD:0.22 + r()*0.3, clouds:6 + Math.floor(r()*10), horizon:0.5 + r()*0.12, camH:0.9 + r()*0.8, dusk:r() < 0.3, lake:r() < 0.4, k:Math.floor(r()*9999) };
@@ -2728,7 +2730,7 @@ function drawForest(t){
   FO.x += dt*steer*2;
   FO.bank = lerp(FO.bank, steer, 0.05);
   const hz = (a, b) => cityHash(a + C.k, b, 77);
-  const horizon = Math.round(H*C.horizon + Math.sin(t*0.5)*1.5), f = W*0.55, camH = C.camH;
+  const horizon = Math.round(H*C.horizon + Math.sin(t*0.5)*1.5*px), f = W*0.55, camH = C.camH;
   const rgb = (r, g, b) => `rgb(${r|0},${g|0},${b|0})`;
   // palette-tinted natural colours
   const tint = pal.rgb[1 % pal.rgb.length], tk = 0.18;
@@ -2745,59 +2747,63 @@ function drawForest(t){
   c.fillStyle = sky; c.fillRect(0, 0, W, H);
   // sun / moon
   c.fillStyle = C.dusk ? 'rgb(255,190,110)' : 'rgb(255,250,220)';
-  const sunX = ((W*0.7 - FO.x*2) % (W + 40) + W + 40) % (W + 40) - 20, sunY = horizon*0.35;
-  c.fillRect(sunX - 3, sunY - 5, 6, 10); c.fillRect(sunX - 5, sunY - 3, 10, 6);
+  const sunX = ((W*0.7 - FO.x*2*px) % (W + 40*px) + W + 40*px) % (W + 40*px) - 20*px, sunY = horizon*0.35;
+  c.beginPath(); c.arc(sunX, sunY, 5.5*px, 0, TAU); c.fill();
   // pixel clouds (slow parallax)
   for(let i = 0; i < C.clouds; i++){
-    const cx = ((hz(i, 1)*W*2 - FO.x*4 - t*2*(0.5 + hz(i, 2))) % (W + 60) + W + 60) % (W + 60) - 30, cy = 3 + hz(i, 3)*horizon*0.55, cw = 10 + hz(i, 4)*22;
+    const cx = ((hz(i, 1)*W*2 - (FO.x*4 + t*2*(0.5 + hz(i, 2)))*px) % (W + 60*px) + W + 60*px) % (W + 60*px) - 30*px, cy = 3*px + hz(i, 3)*horizon*0.55, cw = (10 + hz(i, 4)*22)*px;
     c.fillStyle = 'rgba(255,255,255,0.92)';
-    c.fillRect(cx, cy + 3, cw, 3); c.fillRect(cx + 2, cy + 1, cw - 6, 2); c.fillRect(cx + cw*0.3, cy - 1, cw*0.35, 2);
-    c.fillStyle = 'rgba(200,215,235,0.9)'; c.fillRect(cx + 1, cy + 6, cw - 2, 1);
+    c.fillRect(cx, cy + 3*px, cw, 3*px); c.fillRect(cx + 2*px, cy + 1*px, cw - 6*px, 2*px); c.fillRect(cx + cw*0.3, cy - 1*px, cw*0.35, 2*px);
+    c.fillRect(cx + cw*0.15, cy, cw*0.2, 1*px); c.fillRect(cx + cw*0.62, cy, cw*0.25, 1*px);
+    c.fillStyle = 'rgba(200,215,235,0.9)'; c.fillRect(cx + 1*px, cy + 6*px, cw - 2*px, 1*px);
   }
   // ---- mountains: two parallax ranges with snow caps, column-filled ----
   const ranges = [[0.08, 0.55, 1.0], [0.16, 0.85, 0.0]];      // parallax, scale, far-haze
   for(const [par, sc, haze] of ranges){
     for(let x = 0; x < W; x++){
-      const wx = (x + FO.x*par*20)*0.025*C.mtnF;
+      const wx = (x/px + FO.x*par*20)*0.025*C.mtnF;
       // jagged alpine profile: broad sine ridges + triangle-wave peaks + fine noise
       const tri = (v) => Math.abs(fract(v) * 2 - 1);
       const h = (Math.abs(Math.sin(wx*1.3)*0.5 + Math.sin(wx*0.4)*0.3) + tri(wx*0.7)*0.45 + tri(wx*2.3 + 0.3)*0.15 + tri(wx*6.1)*0.05) * H*C.mtnH*sc*0.85;
       const top = Math.round(horizon - h);
       if(h < 1) continue;
       const wxi = Math.floor(wx*40);
-      const snowY = Math.round(horizon - h*C.snow - ((wxi*7) % 4 + 4) % 4 + tri(wx*3.1)*3);
+      const snowY = Math.round(horizon - h*C.snow - (((wxi*7) % 4 + 4) % 4)*px + tri(wx*3.1)*3*px);
       const hz_ = (col) => [lerp(col[0], skyBot[0], haze*0.45), lerp(col[1], skyBot[1], haze*0.45), lerp(col[2], skyBot[2], haze*0.45)];
       const s = hz_(snowC), ra = hz_(rockA), rb = hz_(rockB), sd = hz_([200, 210, 225]);
       c.fillStyle = rgb(...s); c.fillRect(x, top, 1, Math.max(0, snowY - top));
       c.fillStyle = rgb(...rb); c.fillRect(x, Math.max(top, snowY), 1, horizon - Math.max(top, snowY) + 1);
       // rock texture: hashed patches + shadow on the right-hand slopes
       c.fillStyle = rgb(...ra);
-      for(let y = Math.max(top, snowY); y <= horizon; y += 2){ if(cityHash(wxi >> 1, y >> 1, 9) < 0.45) c.fillRect(x, y, 1, 2); }
+      for(let y = Math.max(top, snowY); y <= horizon; y += 2*px){ if(cityHash(wxi >> 1, Math.floor(y/px) >> 1, 9) < 0.45) c.fillRect(x, y, 1, 2*px); }
       if(tri(wx*0.7 + 0.5) > 0.5 && cityHash(wxi, 3, 8) < 0.5){ c.fillStyle = 'rgba(0,0,0,0.18)'; c.fillRect(x, Math.max(top, snowY), 1, horizon - Math.max(top, snowY) + 1); }
       // snow streaks running down from the cap
       if(cityHash(wxi >> 2, 1, 10) < 0.3){ c.fillStyle = rgb(...sd); c.fillRect(x, snowY, 1, Math.max(0, (horizon - snowY)*cityHash(wxi >> 2, 2, 10)*0.5)); }
     }
   }
-  // ---- ground: perspective rows with hashed grass tiles rushing past ----
-  for(let y = horizon + 1; y < H; y++){
+  // ---- ground: perspective rows of hashed grass tiles rushing past, written per pixel into an ImageData ----
+  const gd = FO.gimg.data, g0 = horizon + 1;
+  const skyR = skyBot[0], skyG = skyBot[1], skyB = skyBot[2];
+  for(let y = g0; y < H; y++){
     const z = camH*f/(y - horizon);                                  // distance of this row
-    const wz = z + FO.z, fog = clamp(1 - z/(camH*f/2), 0, 1);
+    const wz = z + FO.z, fog = clamp(1 - z/(camH*f/2), 0, 1), k = (1 - fog)*0.5, ik = 1 - k;
     const lakeRow = C.lake && Math.abs(fract(wz/60) - 0.5) < 0.12;
-    const step = z > 12 ? 4 : 2;
-    for(let x = 0; x < W; x += step){
-      const wx = (x - W*0.5)*z/f + FO.x;
+    const wz15 = Math.floor(wz*1.5), wz035 = Math.floor(wz*0.35), wz2 = Math.floor(wz*2), zf = z/f;
+    let o = y*W*4;
+    for(let x = 0; x < W; x++, o += 4){
+      const wx = (x - W*0.5)*zf + FO.x;
       let col;
-      if(lakeRow){ const shim = (Math.floor(wx*2 + t*4) + Math.floor(wz*2)) & 1; col = shim ? [90, 150, 210] : [70, 120, 190]; }
+      if(lakeRow){ const shim = (Math.floor(wx*2 + t*4) + wz2) & 1; col = shim ? [90, 150, 210] : [70, 120, 190]; }
       else {
-        const gh = cityHash(Math.floor(wx*1.5), Math.floor(wz*1.5), 5), patch = cityHash(Math.floor(wx*0.35), Math.floor(wz*0.35), 12);
+        const gh = cityHash(Math.floor(wx*1.5), wz15, 5), patch = cityHash(Math.floor(wx*0.35), wz035, 12);
         if(patch < 0.16) col = gh < 0.5 ? dirtA : dirtB;                   // bare earth / trail patches
         else if(patch > 0.84) col = gh < 0.5 ? mossA : mossB;              // dark mossy hollows
         else col = gh < 0.34 ? grassA : gh < 0.68 ? grassB : grassC;
       }
-      c.fillStyle = rgb(lerp(col[0], skyBot[0], (1 - fog)*0.5), lerp(col[1], skyBot[1], (1 - fog)*0.5), lerp(col[2], skyBot[2], (1 - fog)*0.5));
-      c.fillRect(x, y, step, 1);
+      gd[o] = col[0]*ik + skyR*k; gd[o + 1] = col[1]*ik + skyG*k; gd[o + 2] = col[2]*ik + skyB*k; gd[o + 3] = 255;
     }
   }
+  if(H > g0) c.putImageData(FO.gimg, 0, 0, 0, g0, W, H - g0);
   // ---- trees: hashed world grid, drawn far to near ----
   const trees = [];
   const zNear = 0.6, zFar = 30;
@@ -2838,18 +2844,18 @@ function drawForest(t){
   for(const tr of trees){
     if(tr.kind){
       const sz = tr.th*tr.s, fog = clamp(1 - tr.z/fFar, 0, 1);
-      if(sz < 1) continue;
-      const x = Math.round(tr.sx), y = Math.round(tr.sy);
+      if(sz < px*0.8) continue;
+      const x = Math.round(tr.sx), y = Math.round(tr.sy), p1 = Math.max(1, Math.round(px*0.7));
       const mixc = (col) => rgb(lerp(col[0], skyBot[0], (1 - fog)*0.5), lerp(col[1], skyBot[1], (1 - fog)*0.5), lerp(col[2], skyBot[2], (1 - fog)*0.5));
       const sway = Math.sin(t*1.8 + tr.sw*12)*FO.sm[3]*sz*0.08;
       if(tr.kind === 1){                                         // grass tuft: a few blades
         c.fillStyle = mixc(tr.sw < 0.5 ? grassC : grassA);
-        for(let b = -1; b <= 1; b++) c.fillRect(x + b*Math.max(1, sz*0.25) + sway*b, y - sz*(0.6 + 0.3*(b === 0)), 1, sz*(0.6 + 0.3*(b === 0)));
+        for(let b = -1; b <= 1; b++) c.fillRect(x + b*Math.max(1, sz*0.25) + sway*b, y - sz*(0.6 + 0.3*(b === 0)), p1, sz*(0.6 + 0.3*(b === 0)));
       } else if(tr.kind === 2){                                  // rounded shrub: two overlapping lobes
         c.fillStyle = mixc(bushA); c.beginPath(); c.arc(x - sz*0.3, y - sz*0.35, sz*0.5, 0, TAU); c.arc(x + sz*0.3, y - sz*0.4, sz*0.55, 0, TAU); c.fill();
         c.fillStyle = mixc(bushB); c.beginPath(); c.arc(x + sz*0.1, y - sz*0.6, sz*0.35, 0, TAU); c.fill();
       } else if(tr.kind === 3){                                  // fern: fanned fronds
-        c.strokeStyle = mixc(fernC); c.lineWidth = Math.max(1, sz*0.12);
+        c.strokeStyle = mixc(fernC); c.lineWidth = Math.max(p1, sz*0.12);
         c.beginPath();
         for(let fr = -2; fr <= 2; fr++){ c.moveTo(x, y); c.lineTo(x + fr*sz*0.35 + sway, y - sz*(0.9 - Math.abs(fr)*0.18)); }
         c.stroke();
@@ -2857,27 +2863,27 @@ function drawForest(t){
         c.fillStyle = mixc(stoneB); c.beginPath(); c.ellipse(x, y - sz*0.25, sz*0.55, sz*0.35, 0, 0, TAU); c.fill();
         c.fillStyle = mixc(stoneA); c.beginPath(); c.ellipse(x - sz*0.1, y - sz*0.38, sz*0.35, sz*0.18, 0, 0, TAU); c.fill();
       } else if(tr.kind === 5){                                  // fallen log
-        c.fillStyle = mixc(logC); c.fillRect(x - sz*1.1, y - sz*0.3, sz*2.2, Math.max(1, sz*0.3));
-        c.fillStyle = mixc(trunkC); c.fillRect(x - sz*1.1, y - sz*0.3, sz*2.2, 1);
+        c.fillStyle = mixc(logC); c.fillRect(x - sz*1.1, y - sz*0.3, sz*2.2, Math.max(p1, sz*0.3));
+        c.fillStyle = mixc(trunkC); c.fillRect(x - sz*1.1, y - sz*0.3, sz*2.2, p1);
       } else {                                                   // wildflower: stem + coloured head
         const fc = pal.rgb[Math.floor(tr.sw*pal.rgb.length) % pal.rgb.length];
-        c.fillStyle = mixc(grassC); c.fillRect(x, y - sz*0.8, 1, sz*0.8);
-        c.fillStyle = mixc(fc); c.fillRect(x - Math.max(1, sz*0.2)*0.5, y - sz*0.95, Math.max(1, sz*0.2), Math.max(1, sz*0.2));
+        c.fillStyle = mixc(grassC); c.fillRect(x, y - sz*0.8, p1, sz*0.8);
+        c.fillStyle = mixc(fc); c.fillRect(x - Math.max(p1, sz*0.2)*0.5, y - sz*0.95, Math.max(p1, sz*0.2), Math.max(p1, sz*0.2));
       }
       continue;
     }
     const th = tr.th*tr.s, tw = th*0.42, fog = clamp(1 - tr.z/zFar, 0, 1);
     const x = Math.round(tr.sx + Math.sin(t*2 + tr.sw*10)*FO.sm[3]*th*0.03), y = Math.round(tr.sy);
-    if(th < 1.5){ c.fillStyle = rgb(...pineB); c.fillRect(x, y - 1, 1, 1); continue; }
+    if(th < 1.5*px){ c.fillStyle = rgb(...pineB); c.fillRect(x, y - px, Math.max(1, px*0.6), px); continue; }
     const mixc = (col) => rgb(lerp(col[0], skyBot[0], (1 - fog)*0.55), lerp(col[1], skyBot[1], (1 - fog)*0.55), lerp(col[2], skyBot[2], (1 - fog)*0.55));
-    c.fillStyle = mixc(trunkC); c.fillRect(x - Math.max(1, th*0.04), y - th*0.2, Math.max(1, th*0.08), th*0.2);
+    c.fillStyle = mixc(trunkC); c.fillRect(x - Math.max(1, th*0.04), y - th*0.2, Math.max(px*0.7, th*0.08), th*0.2);
     for(let L = 0; L < 3; L++){
       const ly = y - th*(0.2 + L*0.27), lw = tw*(1 - L*0.28), lh = th*0.36;
       c.fillStyle = mixc(L & 1 ? pineA : pineB);
       c.beginPath(); c.moveTo(x, ly - lh); c.lineTo(x + lw, ly); c.lineTo(x - lw, ly); c.closePath(); c.fill();
-      c.fillStyle = mixc(pineA); c.fillRect(x - lw*0.5, ly - lh*0.35, Math.max(1, lw*0.35), 1);
+      c.fillStyle = mixc(pineA); c.fillRect(x - lw*0.5, ly - lh*0.35, Math.max(1, lw*0.35), Math.max(1, px*0.8));
     }
-    if(tr.z < 1.6){ c.fillStyle = 'rgba(0,0,0,0.15)'; c.fillRect(x - tw, y, tw*2, 1); }
+    if(tr.z < 1.6){ c.fillStyle = 'rgba(0,0,0,0.15)'; c.fillRect(x - tw, y, tw*2, Math.max(1, px*0.8)); }
   }
   // bank the view slightly with the steering
   bctx.imageSmoothingEnabled = false;
@@ -2888,95 +2894,89 @@ function drawForest(t){
   bctx.imageSmoothingEnabled = true;
 }
 
-// ECLIPSE: eclipsed disc with corona.
-function drawEclipse(t){
-  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), cx = bw*0.5, cy = bh*0.5, gain = 0.25 + state.audio * 1.25;
-  const R = minD * 0.3 * (1 + A[0]*gain*0.75);
-  let g = bctx.createRadialGradient(cx, cy, R*0.8, cx, cy, R*1.9*(1 + A[1]*gain*0.8));
-  const c1 = pal.rgb[0];
-  g.addColorStop(0, `rgba(${c1[0]},${c1[1]},${c1[2]},${clamp(0.5 + A[2]*gain*0.6, 0, 1)})`);
-  g.addColorStop(1, 'rgba(0,0,0,0)');
-  bctx.fillStyle = g;
-  bctx.beginPath();
-  bctx.arc(cx, cy, R*1.9*(1 + A[1]*gain*0.8), 0, TAU);
-  bctx.fill();
-
-  const c2 = pal.rgb[1 % pal.rgb.length];
-  g = bctx.createRadialGradient(cx, cy, R*0.2, cx, cy, R);
-  g.addColorStop(0, `rgba(${c2[0]},${c2[1]},${c2[2]},0.95)`);
-  g.addColorStop(0.5, `rgba(${c2[0]},${c2[1]},${c2[2]},0.4)`);
-  bctx.fillStyle = g;
-  bctx.beginPath();
-  bctx.arc(cx, cy, R, 0, TAU);
-  bctx.fill();
-
-  // corona rays: DENSITY sets how many, treble makes them flare
-  const rays = Math.round(eff.density*36);
-  if(rays > 0){
-    const c3 = pal.rgb[2 % pal.rgb.length];
-    bctx.globalCompositeOperation = 'lighter';
-    for(let i = 0; i < rays; i++){
-      const a = i/rays*TAU + t*0.05, len = R*(1.1 + 0.9*Math.abs(Math.sin(i*1.7 + t*0.6)) + A[3]*gain*0.8);
-      const g3 = bctx.createLinearGradient(cx + Math.cos(a)*R*0.9, cy + Math.sin(a)*R*0.9, cx + Math.cos(a)*len, cy + Math.sin(a)*len);
-      g3.addColorStop(0, `rgba(${c3[0]},${c3[1]},${c3[2]},0.45)`); g3.addColorStop(1, `rgba(${c3[0]},${c3[1]},${c3[2]},0)`);
-      bctx.strokeStyle = g3; bctx.lineWidth = 1 + eff.density*2;
-      bctx.beginPath(); bctx.moveTo(cx + Math.cos(a)*R*0.9, cy + Math.sin(a)*R*0.9); bctx.lineTo(cx + Math.cos(a)*len, cy + Math.sin(a)*len); bctx.stroke();
-    }
-    bctx.globalCompositeOperation = 'source-over';
+// SNOW: a snowstorm in the same perspective volume as RAIN - white flakes of random size (a few big soft ones near
+// the camera, many small ones deep in the volume) tumbling down through gusting wind. Bass drives the gusts and the
+// speed of the fall, mids swirl the flakes, treble brightens them. DENSITY sets how many flakes there are. No floor,
+// no background: it draws over whatever background is set.
+function drawSnow(t){
+  const minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
+  bctx.globalCompositeOperation = 'source-over';
+  const SN = drawSnow;
+  const dt = smBands(SN, t), sm = SN.sm;
+  if(SN.gust === undefined){ SN.gust = 0; SN.wind = 0; }
+  // wind: a slow wandering breeze plus gusts that build with the bass and die away
+  SN.gust += ((sm[0]*1.6) - SN.gust)*Math.min(1, dt*(sm[0]*1.6 > SN.gust ? 3 : 0.8));
+  SN.wind += ((n1(t*0.18)*0.8 + SN.gust*1.4) - SN.wind)*Math.min(1, dt*1.5);
+  const wind = SN.wind, swirl = sm[1];
+  const N = 140 + Math.round(eff.density*420), D = 0.6, f = minD*1.1, pitch = -0.22, yaw = Math.sin(t*0.07)*0.06;
+  const volZ = 7, volX = 7, top = 2.6, bottom = -1.8;
+  const fall = t*(0.55 + SN.gust*0.9);
+  const items = [];
+  for(let i = 0; i < N; i++){
+    const hx = hash1(i*3.3), hz = hash1(i*5.1), hs = hash1(i*7.7), hr = hash1(i*4.9);
+    const size = 0.012 + hr*hr*hr*0.11;                            // most flakes small, a few big ones
+    const spd = (0.5 + hs*0.7)*(1 + size*3);                        // bigger flakes fall a little faster
+    const cyc = fract(fall*spd*0.35 + hash1(i*9.9));
+    const drift = Math.sin(t*(0.7 + hs)*1.3 + i)*(0.12 + swirl*0.35) + Math.sin(t*0.9 + hz*6)*0.08*swirl;   // tumble
+    const x = ((hx - 0.5)*volX + t*wind*0.5*(0.6 + hz*0.8) + drift + volX*1.5) % volX - volX*0.5;         // wind carries them sideways, wrapping
+    const z = 0.3 + hz*volZ, y = top - cyc*(top - bottom);
+    items.push({ x, y, z, size, i, hs });
   }
-  bctx.fillStyle = pal.bg;
-  bctx.beginPath();
-  bctx.arc(cx + Math.sin(t*0.1)*bw*0.55, cy + n1(t*0.07)*bh*0.2, R*0.92, 0, TAU);
-  bctx.fill();
+  items.sort((a, b) => b.z - a.z);
+  const bright = 0.7 + sm[3]*0.3;
+  for(const d of items){
+    const a = m3Proj(m3Rot(d.x, d.y, d.z, yaw, pitch, 0), D, f);
+    if(a[3] < 0.1) continue;
+    const r = Math.max(0.4, d.size*a[2]*0.55);
+    if(a[0] < -r || a[0] > bw + r || a[1] < -r || a[1] > bh + r) continue;
+    const fog = clamp(1 - d.z/(volZ + 1.5), 0.2, 1), alpha = (0.35 + 0.6*fog)*bright;
+    if(r > 3){                                                      // near flakes: soft-edged, slightly blurred
+      const g = bctx.createRadialGradient(a[0], a[1], 0, a[0], a[1], r);
+      g.addColorStop(0, `rgba(255,255,255,${alpha})`); g.addColorStop(0.55, `rgba(255,255,255,${alpha*0.8})`); g.addColorStop(1, 'rgba(255,255,255,0)');
+      bctx.fillStyle = g;
+    } else bctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    bctx.beginPath(); bctx.arc(a[0], a[1], r, 0, TAU); bctx.fill();
+  }
 }
 
-// RAIN: 3D rain falling onto a wet floor with perspective ripples.
+// RAIN: 3D rain - a volume of falling water droplets in perspective, over whatever background is set. No floor,
+// no ripples, no glow: just the drops. Bass speeds the fall and lengthens the drops, mids swell them, treble brightens
+// them. DENSITY sets the number of drops.
 function drawRain(t){
   const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
   bctx.globalCompositeOperation = 'source-over';
   const N = 90 + Math.round(eff.density * 220), D = 0.6, f = minD*1.1, pitch = -0.28, yaw = Math.sin(t*0.1)*0.08;
-  const fall = t*(2.2 + A[0]*gain*1.5), floorY = -1.2, volZ = 7, volX = 6;
+  const fall = t*(2.2 + A[0]*gain*1.5), floorY = -1.6, volZ = 7, volX = 6;
   const c = pal.rgb[1 % pal.rgb.length], c2 = pal.rgb[3 % pal.rgb.length];
-  // wet floor with ripples
   const items = [];
   for(let i = 0; i < N; i++){
     const hx = hash1(i*3.3) , hz = hash1(i*5.1), hs = hash1(i*7.7);
     const x = (hx - 0.5)*volX, z = 0.3 + hz*volZ, spd = 0.7 + hs*0.6;
     const cyc = fract(fall*spd*0.35 + hash1(i*9.9));
     const y = 2.4 - cyc*(2.4 - floorY);
-    items.push({ z, x, y, spd, i, cyc });
+    items.push({ z, x, y, spd, i });
   }
   items.sort((a, b) => b.z - a.z);
-  // floor
-  const fl0 = m3Proj(m3Rot(-volX, floorY, 0.2, yaw, pitch, 0), D, f), fl1 = m3Proj(m3Rot(volX, floorY, 0.2, yaw, pitch, 0), D, f), fl2 = m3Proj(m3Rot(volX, floorY, volZ + 3, yaw, pitch, 0), D, f), fl3 = m3Proj(m3Rot(-volX, floorY, volZ + 3, yaw, pitch, 0), D, f);
-  const g = bctx.createLinearGradient(0, fl3[1], 0, fl0[1]);
-  g.addColorStop(0, m3Rgba(c, 0.05, 1)); g.addColorStop(1, m3Rgba(c, 0.28 + A[1]*gain*0.2, 1));
-  bctx.fillStyle = g; bctx.beginPath(); bctx.moveTo(fl0[0], fl0[1]); bctx.lineTo(fl1[0], fl1[1]); bctx.lineTo(fl2[0], fl2[1]); bctx.lineTo(fl3[0], fl3[1]); bctx.closePath(); bctx.fill();
-  bctx.lineCap = 'round';
+  const swell = 1 + A[1]*gain*0.5, bright = 1 + A[3]*gain*0.5, stretch = 1 + A[0]*gain*0.8;
   for(const d of items){
     const fog = clamp(1 - d.z/(volZ + 1), 0.15, 1);
-    // ripple after landing
-    const rip = fract(fall*d.spd*0.35 + hash1(d.i*9.9) + 0.0);
-    if(rip < 0.18){
-      const rr = rip/0.18, R = 0.05 + rr*0.35*(1 + A[2]*gain);
-      bctx.strokeStyle = m3Rgba(c2, 1.2, (1 - rr)*0.7*fog); bctx.lineWidth = 1;
-      bctx.beginPath();
-      for(let k = 0; k <= 16; k++){ const a = k/16*TAU; const q = m3Proj(m3Rot(d.x + Math.cos(a)*R, floorY, d.z + Math.sin(a)*R*0.9, yaw, pitch, 0), D, f); if(k) bctx.lineTo(q[0], q[1]); else bctx.moveTo(q[0], q[1]); }
-      bctx.stroke();
-    }
-    if(d.y <= floorY + 0.02) continue;
-    const len = 0.18*d.spd*(1 + A[0]*gain*0.8);
-    const a = m3Proj(m3Rot(d.x, d.y, d.z, yaw, pitch, 0), D, f), b = m3Proj(m3Rot(d.x, Math.max(floorY, d.y + len), d.z, yaw, pitch, 0), D, f);
+    const a = m3Proj(m3Rot(d.x, d.y, d.z, yaw, pitch, 0), D, f);
     if(a[3] < 0.1) continue;
-    bctx.strokeStyle = m3Rgba(c, 1.3, (0.35 + 0.5*fog)*(1 + A[3]*gain*0.5)); bctx.lineWidth = Math.max(0.8, 0.012*a[2]);
-    bctx.beginPath(); bctx.moveTo(a[0], a[1]); bctx.lineTo(b[0], b[1]); bctx.stroke();
+    // teardrop: round belly with a tapered tail trailing up the line of fall
+    const r = Math.max(0.5, 0.009*a[2]*swell*(0.8 + hash1(d.i*2.1)*0.5)), tail = r*(2.2 + 1.6*stretch)*d.spd;
+    const alpha = (0.4 + 0.55*fog)*bright;
+    bctx.fillStyle = m3Rgba(c, 1.3, alpha);
+    bctx.beginPath();
+    bctx.moveTo(a[0], a[1] - tail);
+    bctx.quadraticCurveTo(a[0] + r*1.05, a[1] - r*0.6, a[0] + r, a[1] + r*0.15);
+    bctx.arc(a[0], a[1] + r*0.15, r, 0, Math.PI);
+    bctx.quadraticCurveTo(a[0] - r*1.05, a[1] - r*0.6, a[0], a[1] - tail);
+    bctx.closePath(); bctx.fill();
+    if(r > 0.8){                                            // a glint on the belly so the drops read as water
+      bctx.fillStyle = m3Rgba(c2, 1.6, alpha*0.8);
+      bctx.beginPath(); bctx.ellipse(a[0] - r*0.35, a[1] + r*0.05, r*0.28, r*0.42, -0.4, 0, TAU); bctx.fill();
+    }
   }
-  bctx.lineCap = 'butt';
-  // distant streetlamp glow
-  const lp = m3Proj(m3Rot(1.6 + Math.sin(t*0.1)*0.5, 1.2, volZ*0.8, yaw, pitch, 0), D, f);
-  const lg = bctx.createRadialGradient(lp[0], lp[1], 0, lp[0], lp[1], minD*0.28*(1 + A[1]*gain*0.3));
-  lg.addColorStop(0, 'rgba(255,240,200,0.55)'); lg.addColorStop(1, 'rgba(255,240,200,0)');
-  bctx.fillStyle = lg; bctx.fillRect(0, 0, bw, bh);
 }
 
 // TRIANGLES: low-poly gem (subdivided icosahedron) deforming with the audio.
@@ -3753,248 +3753,279 @@ function drawWeb(t){
   bctx.restore();
 }
 
-// DAISIES: daisy garden.
-function drawDaisyGarden(t){
-  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
+// GROVE: a quiet painted forest in the hand of a hand-drawn animation background - tall mossy trunks receding
+// into blue haze, a soft canopy overhead, light shafts and a winding path. The camera drifts slowly down the
+// path (trees are generated deterministically along the way, so the walk never repeats and never ends). Everything is
+// painted with soft dabs onto a low-res canvas and scaled up, so edges stay brushy. Seeded. Trunks are brown, leaves
+// and ground are shades of green; the palette only tints the sky, haze and light. DENSITY sets how many trees stand in each stretch of woods and how much undergrowth, canopy and
+// light-shaft detail there is. Small crows cross the far woods now and then, behind the trees. Bass swells the light
+// shafts and leans the camera in, low-mids are the wind through the leaves (and send crows more often), high-mids
+// ripple the moss, treble brings out drifting motes. Nothing flashes.
+function drawGrove(t){
+  const pal = PALETTES[state.palette];
   bctx.globalCompositeOperation = 'source-over';
-  const colors = pal.rgb, nCol = colors.length;
-  const bgRgb = pal.bgRgb || hex2rgb(pal.bg);
-  const isLight = (0.299*bgRgb[0] + 0.587*bgRgb[1] + 0.114*bgRgb[2]) > 140;
+  const G = drawGrove;
+  if(!G.cv){ G.cv = document.createElement('canvas'); G.c = G.cv.getContext('2d'); G.grain = document.createElement('canvas'); G.motes = []; G.crows = []; G.nextCrow = t + 3; G.lean = 0; G.shaft = 0; }
+  const W = 384, H = Math.max(48, Math.round(W*bh/bw));
+  const sizeChanged = G.cv.width !== W || G.cv.height !== H;
+  if(sizeChanged){ G.cv.width = W; G.cv.height = H; G.grain.width = W; G.grain.height = H; G.grainKey = -1; }
+  const rgb = (c, m = 1, a = 1) => `rgba(${clamp(c[0]*m,0,255)|0},${clamp(c[1]*m,0,255)|0},${clamp(c[2]*m,0,255)|0},${clamp(a,0,1)})`;
+  const mix = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
+  const sat = (c, k) => { const l = c[0]*0.299 + c[1]*0.587 + c[2]*0.114; return [l + (c[0] - l)*k, l + (c[1] - l)*k, l + (c[2] - l)*k]; };   // k > 1 pushes saturation
+  const dt = smBands(G, t), sm = G.sm;
+  const dens = eff.density;
 
-  const clamp255 = v => clamp(Math.round(v), 0, 255);
-  const mixC = (c1, c2, w) => [
-    clamp255(lerp(c1[0], c2[0], w)),
-    clamp255(lerp(c1[1], c2[1], w)),
-    clamp255(lerp(c1[2], c2[2], w))
-  ];
-  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
-
-  const flowerTones = colors.map((c, idx) => {
-    let r = c[0], g = c[1], b = c[2];
-    const maxCh = Math.max(r, g, b), minCh = Math.min(r, g, b);
-    const sat = maxCh === 0 ? 0 : (maxCh - minCh) / maxCh;
-    const l = 0.299*r + 0.587*g + 0.114*b;
-    if(l > 185 && sat < 0.35){
-      const hues = [[245,130,32],[235,52,110],[45,185,235],[255,185,35],[175,65,245]];
-      return hues[idx % hues.length];
-    }
-    if(isLight) return [clamp255(r*0.65), clamp255(g*0.65), clamp255(b*0.7)];
-    if(l > 210) return [clamp255(r*0.78), clamp255(g*0.78), clamp255(b*0.78)];
-    return [r, g, b];
-  });
-  const nFlower = flowerTones.length;
-
-  const groundTone = isLight ? mixC(bgRgb, [24,45,30], 0.75) : mixC(bgRgb, [10,24,15], 0.85);
-  const bgGrad = bctx.createLinearGradient(0, 0, 0, bh);
-  bgGrad.addColorStop(0, pal.bg);
-  bgGrad.addColorStop(0.65, rgba(mixC(bgRgb, groundTone, 0.5), 0.95));
-  bgGrad.addColorStop(1, rgba(groundTone, 1));
-  bctx.fillStyle = bgGrad;
-  bctx.fillRect(0, 0, bw, bh);
-
-  const grassCol = isLight ? mixC(groundTone, [40,85,50], 0.5) : mixC(colors[1 % nCol], groundTone, 0.65);
-  bctx.strokeStyle = rgba(grassCol, 0.35);
-  bctx.lineWidth = 1;
-  bctx.beginPath();
-  for(let bgI = 0; bgI < 20; bgI++){
-    const bgX = (bgI / 20) * bw + (hash1(bgI*17) - 0.5)*16;
-    const bgH = bh * (0.18 + hash1(bgI*31)*0.18);
-    bctx.moveTo(bgX, bh);
-    bctx.quadraticCurveTo(bgX + Math.sin(t*0.8 + bgI)*10, bh - bgH*0.6, bgX + Math.sin(t*0.8 + bgI)*14, bh - bgH);
+  // ---- colour script (seeded mood, tinted toward the palette) ----
+  const key = `${state.seed}|${state.palette}`;
+  if(G.key !== key){
+    const r = mulberry32((state.seed|0) ^ 0x6f0e57);
+    const mood = ['morning', 'noon', 'golden', 'mist', 'dusk'][Math.floor(r()*5)];
+    // natural colour script: trunks brown, leaves and ground in greens. The palette only tints sky, haze and light.
+    const tk = 0.18, nP = pal.rgb.length, P1 = pal.rgb[1 % nP], P2 = pal.rgb[2 % nP];
+    const base = {
+      morning: { sky:[205, 228, 232], haze:[150, 190, 205], leafD:[34, 82, 44], leafL:[118, 186, 72], moss:[70, 128, 46], mossL:[150, 196, 80], bark:[72, 48, 32], barkL:[138, 102, 70], path:[104, 122, 58], light:[255, 246, 210] },
+      noon:    { sky:[220, 236, 240], haze:[170, 205, 215], leafD:[30, 76, 40], leafL:[128, 196, 78], moss:[76, 134, 50], mossL:[160, 206, 88], bark:[76, 52, 34], barkL:[146, 108, 74], path:[110, 128, 60], light:[255, 252, 225] },
+      golden:  { sky:[240, 220, 180], haze:[218, 180, 130], leafD:[44, 84, 38], leafL:[150, 190, 66], moss:[88, 132, 44], mossL:[176, 200, 82], bark:[80, 52, 30], barkL:[156, 112, 68], path:[118, 130, 56], light:[255, 226, 160] },
+      mist:    { sky:[212, 220, 220], haze:[184, 196, 198], leafD:[44, 86, 56], leafL:[122, 176, 100], moss:[76, 128, 66], mossL:[150, 190, 106], bark:[74, 54, 40], barkL:[136, 108, 82], path:[108, 126, 74], light:[240, 240, 232] },
+      dusk:    { sky:[110, 96, 140], haze:[92, 84, 124], leafD:[20, 52, 34], leafL:[70, 122, 62], moss:[40, 86, 40], mossL:[90, 140, 70], bark:[50, 32, 24], barkL:[100, 70, 48], path:[66, 90, 44], light:[230, 180, 160] }
+    }[mood];
+    // greens for the leaves and the ground: a spread from yellow-green through grass green to blue-green
+    const leafGreens = [[92, 160, 48], [56, 132, 52], [128, 178, 60], [40, 110, 62], [150, 190, 70], [70, 148, 78]];
+    const groundGreens = [[74, 130, 44], [110, 160, 60], [56, 112, 48], [140, 184, 74], [90, 146, 66], [66, 124, 58]];
+    const barks = [[76, 50, 32], [92, 62, 40], [64, 44, 30], [104, 72, 46], [84, 58, 36]];
+    const dim = mood === 'dusk' ? 0.55 : mood === 'mist' ? 0.85 : 1;
+    const SAT = 3;                                            // saturation x3 (a 200% increase) across the whole picture
+    const dm = c => sat([c[0]*dim, c[1]*dim, c[2]*dim], SAT);
+    G.S = {
+      mood, k: Math.floor(r()*9999),
+      sky: sat(mix(base.sky, P2, tk*0.7), SAT), haze: sat(mix(base.haze, P1, tk), SAT), leafD: sat(base.leafD, SAT), leafL: sat(base.leafL, SAT),
+      moss: sat(base.moss, SAT), mossL: sat(base.mossL, SAT), bark: sat(base.bark, SAT), barkL: sat(base.barkL, SAT),
+      path: sat(base.path, SAT), light: sat(mix(base.light, P2, tk*0.5), SAT),
+      leafT: leafGreens.map(dm), groundT: groundGreens.map(dm), barkT: barks.map(dm), lightT: [base.light, mix(base.light, [255, 236, 190], 0.5), mix(base.light, [225, 240, 220], 0.5)].map(c => sat(c, SAT)),
+      crow: [16, 14, 18],
+      shaftX: 0.5 + r()*0.35, shaftAng: 0.35 + r()*0.4, wind: 0.6 + r()*0.8, shaftN: 4 + Math.floor(r()*4)
+    };
+    G.key = key; G.grainKey = -1;
   }
-  bctx.stroke();
+  const S = G.S;
 
-  const stemBase = isLight ? [24,68,42] : mixC([40,115,68], colors[0], 0.35);
-  const stemHi   = isLight ? [50,135,88] : mixC([80,205,130], colors[1 % nCol], 0.35);
-  const leafCol  = isLight ? [32,88,54] : mixC([48,140,82], colors[2 % nCol], 0.35);
-  const leafEdge = isLight ? [70,165,105] : mixC([105,230,155], colors[3 % nCol] || colors[0], 0.35);
-
-  // ---- lifecycle ----
-  // phase 0..1 over one cycle: 0-0.30 growing, 0.30-0.45 blooming, 0.45-0.62 in full bloom,
-  // 0.62-0.84 losing petals (they detach one by one and drift to the ground), 0.84-1.0 wilting, then it starts again.
-  const P_GROW = 0.30, P_BLOOM = 0.45, P_DROP = 0.62, P_WILT = 0.84;
-  const brown = isLight ? [120, 90, 50] : [96, 72, 40];
-  const wiltMix = (col, w) => mixC(col, brown, w*0.8);
-
-  function drawBloom(bx, by, bloomProgress, swayAng, sizeFactor, plantIdx, phase, wilt, groundY, fadeOut){
-    if(bloomProgress <= 0.05) return;
-    bctx.save();
-    bctx.globalAlpha = fadeOut;
-    bctx.translate(bx, by);
-    bctx.rotate(swayAng);
-
-    bctx.fillStyle = rgba(mixC(stemBase, [10,18,12], 0.5), 0.95);
-    bctx.beginPath();
-    bctx.arc(0, 2, minD * 0.032 * bloomProgress * sizeFactor, 0, Math.PI);
-    bctx.fill();
-
-    const pTone1 = flowerTones[plantIdx % nFlower];
-    const pTone2 = flowerTones[(plantIdx + 1) % nFlower];
-    const pOuter = wiltMix(mixC(pTone1, [15,15,22], isLight ? 0.35 : 0.5), wilt);
-    const pBody  = wiltMix(mixC(pTone1, pTone2, 0.3), wilt);
-    const pEdge  = isLight ? [20,20,25] : mixC(pOuter, [0,0,0], 0.65);
-
-    const numPetals = 12;
-    const petalLen = minD * 0.165 * bloomProgress * sizeFactor * (1 + A[2]*gain*0.25) * (1 - wilt*0.3);
-    const petalW = petalLen * 0.39 * (1 - wilt*0.25);
-
-    for(let p = 0; p < numPetals; p++){
-      // each petal has its own drop moment inside the petal-loss window
-      const dropAt = P_DROP + hash1(p*7.3 + plantIdx*13.1) * (P_WILT - P_DROP - 0.03);
-      const falling = phase >= dropAt;
-      let fx = 0, fy = 0, fRot = 0, fAlpha = 1;
-      if(falling){
-        const fall = (phase - dropAt) * 14;                      // seconds since it let go (cycle is 14 s)
-        const gy = groundY - by;                                 // ground distance in local (pre-rotation) space
-        fy = Math.min(gy + minD*0.01, fall*fall*minD*0.28 + fall*minD*0.08);
-        fx = Math.sin(fall*2.4 + p)*minD*0.06 + fall*minD*0.02*(hash1(p*3.7) - 0.5);
-        fRot = fall*(hash1(p*5.1) - 0.5)*3;
-        fAlpha = fy >= gy ? clamp(1 - (fall - Math.sqrt(gy/(minD*0.28)))*0.6, 0, 1) : 1;
-        if(fAlpha <= 0.02) continue;
-      }
-      bctx.save();
-      bctx.globalAlpha = fadeOut*fAlpha;
-      if(falling){ bctx.rotate(-swayAng); bctx.translate(fx, fy); bctx.rotate(swayAng + fRot); }
-      bctx.rotate((p / numPetals) * TAU);
-      // wilting petals droop: they curl inward and lose length
-      const droop = wilt * 0.35;
-      bctx.fillStyle = rgba(pOuter, 0.95);
-      bctx.beginPath();
-      bctx.ellipse(petalLen * 0.54 * (1 - droop), 0, petalLen * 0.53 * (1 - droop), petalW * 0.53, 0, 0, TAU);
-      bctx.fill();
-
-      bctx.fillStyle = rgba(pBody, 0.98);
-      bctx.beginPath();
-      bctx.ellipse(petalLen * 0.52 * (1 - droop), 0, petalLen * 0.47 * (1 - droop), petalW * 0.45, 0, 0, TAU);
-      bctx.fill();
-
-      bctx.strokeStyle = rgba(pEdge, 0.75);
-      bctx.lineWidth = Math.max(1, minD * 0.0035);
-      bctx.beginPath();
-      bctx.ellipse(petalLen * 0.52 * (1 - droop), 0, petalLen * 0.47 * (1 - droop), petalW * 0.45, 0, 0, TAU);
-      bctx.stroke();
-
-      bctx.strokeStyle = rgba(pOuter, 0.65);
-      bctx.lineWidth = 1;
-      bctx.beginPath();
-      bctx.moveTo(petalLen * 0.15, 0);
-      bctx.lineTo(petalLen * 0.85 * (1 - droop), 0);
-      bctx.stroke();
-      bctx.restore();
+  // ---- paper / paint grain (cached, regenerated on size or seed change) ----
+  if(G.grainKey !== S.k){
+    const g = G.grain.getContext('2d'), r = mulberry32(S.k ^ 0x5a17);
+    g.clearRect(0, 0, W, H);
+    for(let i = 0; i < 2600; i++){
+      const x = r()*W, y = r()*H, l = 2 + r()*7, a = r()*Math.PI, dark = r() < 0.5;
+      g.strokeStyle = dark ? `rgba(20,16,12,${0.05 + r()*0.08})` : `rgba(255,250,235,${0.04 + r()*0.07})`;
+      g.lineWidth = 0.6 + r()*1.2; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a)*l, y + Math.sin(a)*l); g.stroke();
     }
-
-    const cInner = wiltMix(flowerTones[(plantIdx + 2) % nFlower], wilt);
-    const cMid   = wiltMix(flowerTones[(plantIdx + 3) % nFlower] || flowerTones[0], wilt);
-    const cRim   = mixC(cMid, [0,0,0], isLight ? 0.78 : 0.68);
-    const centerR = minD * 0.052 * bloomProgress * sizeFactor * (1 + A[0]*gain*0.35) * (1 - wilt*0.2);
-
-    bctx.fillStyle = rgba(cRim, 0.95);
-    bctx.beginPath();
-    bctx.arc(0, 0, centerR * 1.15, 0, TAU);
-    bctx.fill();
-
-    const cGrad = bctx.createRadialGradient(0, 0, centerR*0.1, 0, 0, centerR);
-    cGrad.addColorStop(0, rgba(cInner, 1));
-    cGrad.addColorStop(0.70, rgba(cMid, 0.98));
-    cGrad.addColorStop(1, rgba(cRim, 1));
-    bctx.fillStyle = cGrad;
-    bctx.beginPath();
-    bctx.arc(0, 0, centerR, 0, TAU);
-    bctx.fill();
-
-    const seedR = centerR * 0.58;
-    bctx.fillStyle = rgba(isLight ? [20,20,25] : mixC([240,200,70], brown, wilt*0.7), 0.75);
-    for(let s = 0; s < 8; s++){
-      const sAng = (s / 8) * TAU + t*0.2;
-      bctx.beginPath();
-      bctx.arc(Math.cos(sAng)*seedR, Math.sin(sAng)*seedR, Math.max(1, centerR*0.09), 0, TAU);
-      bctx.fill();
-    }
-    bctx.restore();
+    G.grainKey = S.k;
   }
 
-  for(let i = 0; i < 3; i++){
-    const stemBaseX = bw * (0.24 + i*0.26), groundY = bh * 0.95;
-    const phase = fract((t / 14) + i*0.333);
-    // growth eases in over the growing window and then holds
-    const growth = clamp(Math.sqrt(clamp(phase / P_GROW, 0.05, 1)) * (0.7 + eff.density*0.3) * (1 + A[i%4]*gain*0.15), 0.05, 1.0);
-    const bloom = phase < P_GROW ? 0 : clamp((phase - P_GROW) / (P_BLOOM - P_GROW), 0, 1);
-    const wilt = phase < P_WILT ? 0 : clamp((phase - P_WILT) / (1 - P_WILT), 0, 1);
-    const fadeOut = phase > 0.96 ? clamp((1 - phase) / 0.04, 0, 1) : 1;   // the dead plant dissolves just before the next seedling
-    const maxStemH = bh * 0.56, stemHeight = maxStemH * growth * (1 - wilt*0.12);
-    const side = i % 2 === 0 ? 1 : -1;
-    const sway = Math.sin(t*1.4 + i*1.9) * (6 + A[1]*gain*10) * growth * (1 - wilt*0.6);
-    // wilting: the head droops over sideways and down
-    const droopX = side * minD * 0.22 * wilt*wilt, droopY = stemHeight * 0.45 * wilt*wilt;
-    const topX = stemBaseX + sway + droopX, topY = groundY - stemHeight + droopY;
-    const ctlX = stemBaseX - sway*0.45 + droopX*0.2, ctlY = groundY - stemHeight*(0.5 + 0.35*wilt);
-    const stemA = wiltMix(stemBase, wilt), stemB = wiltMix(stemHi, wilt);
+  // ---- the walk: camera drifts down the path (shape time, so RATE / PAUSE apply) ----
+  const camZ = t*0.55;
+  const pathX = z => Math.sin(z*0.09 + S.k)*2.2 + Math.sin(z*0.031 + S.k*0.7)*3.0;
+  const camX = pathX(camZ) + Math.sin(t*0.13)*0.5, camH = 1.55 + Math.sin(t*0.47)*0.025;
+  G.lean = lerp(G.lean, sm[0], 0.06);
+  G.shaft = lerp(G.shaft, sm[0], 0.05);
+  const wind = S.wind*(0.4 + sm[1]*1.4);                       // low-mids: wind in the leaves
+  const f = W*0.78*(1 + G.lean*0.06);                          // focal length; bass leans the camera in a touch
+  const horizon = H*0.44, cx = W*0.5;
+  const fog = dz => 1 - Math.exp(-dz*0.075);
+  const c = G.c;
+  c.clearRect(0, 0, W, H); c.lineCap = 'round'; c.lineJoin = 'round';
+  const dab = (x, y, rx, ry, col, a, rot = 0) => { c.fillStyle = rgb(col, 1, a); c.beginPath(); c.ellipse(x, y, Math.max(0.4, rx), Math.max(0.4, ry), rot, 0, TAU); c.fill(); };
 
-    bctx.save();
-    bctx.globalAlpha = fadeOut;
-    bctx.strokeStyle = isLight ? 'rgba(15,35,25,0.85)' : 'rgba(0,0,0,0.7)';
-    bctx.lineWidth = Math.max(3, minD * 0.02 * growth);
-    bctx.lineCap = 'round';
-    bctx.beginPath();
-    bctx.moveTo(stemBaseX, groundY);
-    bctx.quadraticCurveTo(ctlX, ctlY, topX, topY);
-    bctx.stroke();
-
-    bctx.strokeStyle = rgba(stemA, 0.95);
-    bctx.lineWidth = Math.max(2, minD * 0.015 * growth);
-    bctx.beginPath();
-    bctx.moveTo(stemBaseX, groundY);
-    bctx.quadraticCurveTo(ctlX, ctlY, topX, topY);
-    bctx.stroke();
-
-    bctx.strokeStyle = rgba(stemB, 0.9);
-    bctx.lineWidth = Math.max(1, minD * 0.007 * growth);
-    bctx.beginPath();
-    bctx.moveTo(stemBaseX, groundY);
-    bctx.quadraticCurveTo(ctlX, ctlY, topX, topY);
-    bctx.stroke();
-    bctx.restore();
-
-    const leafThresholds = [0.22, 0.42, 0.62];
-    for(let l = 0; l < 3; l++){
-      if(growth > leafThresholds[l]){
-        const leafProgress = clamp((growth - leafThresholds[l]) / 0.35, 0, 1.0);
-        const frac = leafThresholds[l] + 0.08;
-        const ly = groundY - maxStemH * frac * (1 - wilt*0.12), lx = stemBaseX + sway * (frac / growth) + droopX*frac*0.3;
-        const lside = (l % 2 === 0 ? 1 : -1);
-        const leafLen = minD * 0.14 * leafProgress * (1 - wilt*0.25), leafW = leafLen * 0.44 * (1 - wilt*0.3);
-
-        bctx.save();
-        bctx.globalAlpha = fadeOut;
-        bctx.translate(lx, ly);
-        bctx.rotate(lside * (0.65 + Math.sin(t + l)*0.06 + wilt*0.9));   // wilting leaves hang down
-
-        bctx.strokeStyle = isLight ? 'rgba(15,35,25,0.8)' : 'rgba(0,0,0,0.6)';
-        bctx.lineWidth = Math.max(1.5, minD * 0.006);
-        bctx.beginPath();
-        bctx.ellipse(leafLen*0.5, 0, leafLen*0.5, leafW*0.5, 0, 0, TAU);
-        bctx.stroke();
-
-        bctx.fillStyle = rgba(wiltMix(leafCol, wilt), 0.92);
-        bctx.beginPath();
-        bctx.ellipse(leafLen*0.5, 0, leafLen*0.5, leafW*0.5, 0, 0, TAU);
-        bctx.fill();
-
-        bctx.strokeStyle = rgba(wiltMix(leafEdge, wilt), 0.95);
-        bctx.lineWidth = 1;
-        bctx.beginPath();
-        bctx.moveTo(0, 0);
-        bctx.lineTo(leafLen*0.9, 0);
-        bctx.stroke();
-        bctx.restore();
-      }
-    }
-
-    if(bloom > 0){
-      const headTilt = sway*0.02 + Math.sin(t*0.8 + i)*0.08 + side*wilt*1.1;
-      drawBloom(topX, topY, clamp(bloom, 0.08, 1.0), headTilt, 1.0, i, phase, wilt, groundY, fadeOut);
+  // ---- sky + far haze + ground (skippable for BACKGROUND OFF) ----
+  if(!bgStrip){
+    const sg = c.createLinearGradient(0, 0, 0, horizon*1.25);
+    sg.addColorStop(0, rgb(mix(S.sky, S.light, 0.25))); sg.addColorStop(0.55, rgb(S.sky)); sg.addColorStop(1, rgb(S.haze));
+    c.fillStyle = sg; c.fillRect(0, 0, W, horizon*1.25 + 1);
+    const gg = c.createLinearGradient(0, horizon, 0, H);
+    gg.addColorStop(0, rgb(S.haze)); gg.addColorStop(0.18, rgb(mix(S.haze, S.moss, 0.55))); gg.addColorStop(0.5, rgb(S.moss)); gg.addColorStop(1, rgb(mix(S.moss, S.leafD, 0.55)));
+    c.fillStyle = gg; c.fillRect(0, horizon, W, H - horizon);
+    // hazy far woods: a wall of pale vertical strokes that drifts with a slow parallax
+    const nFar = Math.round(30 + dens*40);
+    for(let i = 0; i < nFar; i++){
+      const u = ((ihash(i, S.k, 11)*3 - camZ*0.012*(0.5 + ihash(i, S.k, 12))) % 1 + 1) % 1;
+      const x = u*W, w = 2 + ihash(i, S.k, 13)*5, hh = horizon*(0.45 + ihash(i, S.k, 14)*0.5);
+      c.strokeStyle = rgb(mix(mix(S.haze, S.leafD, 0.22 + ihash(i, S.k, 15)*0.2), S.leafT[i % S.leafT.length], 0.25), 1, 0.35); c.lineWidth = w;
+      c.beginPath(); c.moveTo(x, horizon*1.05); c.lineTo(x + (ihash(i, S.k, 16) - 0.5)*4, horizon*1.05 - hh); c.stroke();
     }
   }
+
+  // ---- ground detail: path, moss patches and glints, projected from the world so they roll toward the camera ----
+  const near = 0.9, far = 42;
+  const proj = (x, z) => { const dz = z - camZ, s = f/dz; return { sx: cx + (x - camX)*s, gy: horizon + camH*s, s, dz }; };
+  if(!bgStrip){
+    // the path: a soft brown ribbon painted as stacked dabs down the middle of the walk
+    for(let z = camZ + far; z > camZ + near; z -= 0.45){
+      const p = proj(pathX(z), z), k = fog(p.dz), wdt = (1.1 + Math.sin(z*0.7)*0.25)*p.s;
+      dab(p.sx, p.gy, wdt, Math.max(0.6, p.s*0.22), mix(S.path, S.haze, k*0.9), 0.55*(1 - k*0.6));
+    }
+  }
+  const nGround = Math.round(60 + dens*220);                    // moss clumps, pale stones, warm glints
+  for(let i = 0; i < nGround; i++){
+    const zi = Math.floor(camZ/1.5) + (i % 28), cellZ = zi*1.5, h1 = ihash(zi, i, 21), h2 = ihash(zi, i, 22);
+    const z = cellZ + h1*1.5; if(z - camZ < near || z - camZ > far) continue;
+    const x = (h2*2 - 1)*9 + pathX(z)*0.3, p = proj(x, z); if(p.sx < -20 || p.sx > W + 20) continue;
+    const k = fog(p.dz), kind = ihash(zi, i, 23), rip = Math.sin(t*1.6 + z*0.8 + x)*sm[2]*0.25;   // high-mids: a ripple across the moss
+    const gT = S.groundT[Math.floor(ihash(zi, i, 25)*S.groundT.length)];
+    const col = kind < 0.6 ? mix(mix(S.mossL, S.moss, 0.5 - rip), gT, 0.35) : kind < 0.8 ? mix(S.barkL, S.haze, 0.5) : mix(gT, S.light, 0.35);
+    dab(p.sx, p.gy - p.s*0.05, p.s*(0.25 + ihash(zi, i, 24)*0.45), p.s*0.12, mix(col, S.haze, k*0.9), (kind < 0.8 ? 0.55 : 0.4)*(1 - k*0.7));
+  }
+
+  // ---- trees, far to near. Each 1.5 m stretch of path holds up to 9 candidate trees; DENSITY decides how many stand
+  // (candidate j fades in as DENSITY passes j/9) so the woods thicken smoothly rather than popping. ----
+  const nCand = 9, want = 1.5 + dens*7.5, treeSway = wind*0.012;
+  const trees = [];
+  for(let zi = Math.floor((camZ + far)/1.5); zi >= Math.floor((camZ + near)/1.5) - 1; zi--){
+    for(let j = 0; j < nCand; j++){
+      const a = clamp(want - j, 0, 1); if(a <= 0.01) continue;
+      const z = zi*1.5 + ihash(zi, j, 31)*1.5, dz = z - camZ; if(dz < near || dz > far) continue;
+      let x = (ihash(zi, j, 32)*2 - 1)*8.5; const px = pathX(z), d = x - px;
+      if(Math.abs(d) < 1.6) x = px + (d < 0 ? -1.6 : 1.6) - d*0.4;     // keep the path clear
+      trees.push({ zi, j, x, z, dz, a });
+    }
+  }
+  // crows: now and then one to four crows cross the woods (a little more often when the low-mids are busy). Each has a
+  // world position and flies in a loose line between the trunks, so it passes behind near trees and in front of far ones.
+  if(t >= G.nextCrow){
+    const n = 2 + Math.floor(Math.random()*5), dir = Math.random() < 0.5 ? -1 : 1, z0 = camZ + 22 + Math.random()*16, y0 = 4 + Math.random()*4;   // deep in the woods, well up
+    for(let i = 0; i < n; i++) G.crows.push({ x: -dir*(24 + i*2.2 + Math.random()*2), z: z0 + (Math.random() - 0.5)*4, y: y0 + (Math.random() - 0.5)*1.6, vx: dir*(5 + Math.random()*2), vz: (Math.random() - 0.5)*0.6, vy: 0, ph: Math.random()*TAU, fl: 7 + Math.random()*3, age: 0, glide: false, glideAt: 1 + Math.random()*3 });
+    G.nextCrow = t + (3 + Math.random()*6)*(1 - sm[1]*0.5);
+  }
+  for(let i = G.crows.length - 1; i >= 0; i--){
+    const cr = G.crows[i]; cr.age += dt;
+    cr.x += cr.vx*dt; cr.z += cr.vz*dt; cr.y += Math.sin(cr.age*1.1 + cr.ph)*0.35*dt;
+    const dz = cr.z - camZ;
+    if(Math.abs(cr.x - camX) > 30 || dz < 18 || dz > far){ G.crows.splice(i, 1); continue; }   // background only: gone once they'd come within 18 m
+    trees.push({ crow: cr, dz });
+  }
+  trees.sort((p, q) => q.dz - p.dz);
+  for(const T of trees){
+    if(T.crow){
+      const cr = T.crow, p = proj(cr.x, cr.z), k = fog(T.dz), sy = horizon + (camH - cr.y)*p.s;
+      const sz = 0.3*p.s, dir = cr.vx > 0 ? 1 : -1;                                     // small: about 30 cm to the eye
+      if(sz < 0.6 || p.sx < -sz*2 || p.sx > W + sz*2 || sy < -sz || sy > H + sz) continue;
+      // wingbeat: quick downstroke, slower lift, with the odd glide on stiff wings
+      if(cr.age > cr.glideAt){ cr.glide = !cr.glide; cr.glideAt = cr.age + (cr.glide ? 0.8 + Math.random()*1.6 : 1.5 + Math.random()*3); }
+      const ph = cr.age*cr.fl + cr.ph, raw = Math.sin(ph) < 0 ? Math.sin(ph*1.4 + (ph % TAU)*0) : Math.sin(ph);
+      const flap = cr.glide ? 0.35 : raw;
+      const ink = `rgba(0,0,0,${(1 - k*0.35).toFixed(3)})`;
+      c.save(); c.translate(p.sx, sy + flap*sz*0.06); c.scale(dir*sz, sz);
+      // a wing in local bird space (side view): U runs along the wing, swept back from the shoulder; T is the chord,
+      // toward the trailing edge. Five splayed primaries at the tip. The wing foreshortens as it comes level.
+      const fl = (flap >= 0 ? 1 : -1)*(0.28 + 0.72*Math.abs(flap));     // never dead-flat: keeps a readable V mid-stroke
+      const wing = (rx, ry, L0, fp, amp, alpha) => {
+        const a = Math.PI + fp*amp, ux = Math.cos(a), uy = Math.sin(a), sg = uy < 0 ? 1 : -1, tx = sg*uy, ty = -sg*ux, L = L0*(0.5 + 0.5*Math.abs(uy));
+        const P = (u, v) => [rx + u*ux + v*tx, ry + u*uy + v*ty];
+        const pts = [[0, -0.02], [L*0.55, -0.08], [L, 0], [L*1.08, 0.14], [L*0.93, 0.1], [L*1.02, 0.3], [L*0.84, 0.22], [L*0.9, 0.42], [L*0.72, 0.32], [L*0.72, 0.5], [L*0.56, 0.38], [L*0.3, 0.38], [0.02, 0.3]];
+        c.fillStyle = `rgba(0,0,0,${(alpha*(1 - k*0.35)).toFixed(3)})`;
+        c.beginPath();
+        pts.forEach((q, i) => { const [x, y] = P(q[0], q[1]); if(i === 0) c.moveTo(x, y); else if(i === 1 || i === 2){ const [mx, my] = P(q[0], q[1] - 0.06); c.quadraticCurveTo(mx, my, x, y); } else c.lineTo(x, y); });
+        c.closePath(); c.fill();
+      };
+      wing(-0.02, -0.02, 0.8, fl*0.85, 1.05, 0.7);                                      // far wing, smaller and a shade softer
+      // body: pointed beak, domed head, back, notched tail, breast
+      c.fillStyle = ink; c.beginPath();
+      c.moveTo(0.74, 0.01); c.quadraticCurveTo(0.56, -0.14, 0.42, -0.12); c.quadraticCurveTo(0.2, -0.15, 0.0, -0.12); c.quadraticCurveTo(-0.3, -0.08, -0.5, -0.08);
+      c.lineTo(-0.84, -0.14); c.lineTo(-0.8, -0.02); c.lineTo(-0.88, 0.06); c.lineTo(-0.74, 0.1); c.quadraticCurveTo(-0.5, 0.15, -0.1, 0.15); c.quadraticCurveTo(0.35, 0.15, 0.56, 0.06); c.closePath(); c.fill();
+      wing(0.1, -0.04, 1.0, fl, 1.2, 1);                                                // near wing
+      c.restore();
+      continue;
+    }
+    const p = proj(T.x, T.z), k = fog(T.dz);
+    const hgt = 7 + ihash(T.zi, T.j, 33)*7, rad = 0.16 + ihash(T.zi, T.j, 34)*0.22;
+    const topY = p.gy - (hgt - 0)*p.s, rw = rad*p.s;
+    if(p.sx < -rw*8 || p.sx > W + rw*8) continue;
+    const alpha = T.a*(1 - k*0.55), lit = ihash(T.zi, T.j, 35);
+    const tintI = Math.floor(ihash(T.zi, T.j, 36)*S.leafT.length), tintK = 0.5 + ihash(T.zi, T.j, 37)*0.5;   // this tree's own leaf colour
+    const tLeafD = mix(S.leafD, S.leafT[tintI], tintK*0.7), tLeafL = mix(S.leafL, S.leafT[tintI], tintK);
+    const tBark = mix(S.bark, S.barkT[tintI % S.barkT.length], 0.6), tBarkL = mix(S.barkL, S.barkT[(tintI + 2) % S.barkT.length], 0.4);   // browns only
+    const barkC = mix(mix(tBark, tBarkL, lit*0.35), S.haze, k), barkH = mix(mix(tBarkL, S.light, 0.15), S.haze, k);
+    const swayX = Math.sin(t*0.7*S.wind + T.z*0.9)*treeSway*(hgt*p.s);
+    // roots flare
+    c.fillStyle = rgb(mix(S.bark, S.haze, k), 1, alpha*0.9);
+    c.beginPath(); c.moveTo(p.sx - rw*2.6, p.gy + rw*0.4); c.quadraticCurveTo(p.sx - rw*1.1, p.gy - rw*1.2, p.sx - rw, p.gy - rw*4);
+    c.lineTo(p.sx + rw, p.gy - rw*4); c.quadraticCurveTo(p.sx + rw*1.1, p.gy - rw*1.2, p.sx + rw*2.6, p.gy + rw*0.4); c.closePath(); c.fill();
+    // trunk: tapered body plus three long brush strokes of shade and light
+    c.fillStyle = rgb(barkC, 1, alpha);
+    c.beginPath(); c.moveTo(p.sx - rw, p.gy); c.lineTo(p.sx - rw*0.55 + swayX, topY); c.lineTo(p.sx + rw*0.55 + swayX, topY); c.lineTo(p.sx + rw, p.gy); c.closePath(); c.fill();
+    if(rw > 1.2){
+      c.lineWidth = rw*0.55; c.strokeStyle = rgb(barkH, 1, alpha*0.5);
+      c.beginPath(); c.moveTo(p.sx - rw*0.45, p.gy - rw*2); c.lineTo(p.sx - rw*0.2 + swayX*0.9, topY + (p.gy - topY)*0.15); c.stroke();
+      c.lineWidth = rw*0.45; c.strokeStyle = rgb(mix(S.bark, [0, 0, 0], 0.35), 1, alpha*0.45);
+      c.beginPath(); c.moveTo(p.sx + rw*0.55, p.gy - rw); c.lineTo(p.sx + rw*0.3 + swayX*0.9, topY + (p.gy - topY)*0.25); c.stroke();
+      // moss creeping up the shaded side and pooling at the foot
+      const mossC = mix(S.mossL, S.haze, k);
+      for(let m = 0; m < 5; m++){ const u = ihash(T.zi, T.j, 40 + m); dab(p.sx - rw*(0.3 + u*0.5), p.gy - rw*(0.6 + u*6), rw*0.35, rw*(0.9 + u*1.6), mix(S.moss, mossC, u), alpha*0.55); }
+      dab(p.sx, p.gy - rw*0.2, rw*2.4, rw*0.7, mossC, alpha*0.7);
+    }
+    // branches and foliage: clusters of leaf dabs hung from the upper half, swaying in the wind
+    const nCl = Math.round((3 + dens*4 + hgt*0.25)*clamp(p.s/14, 0.3, 1)), leafA = alpha*(rw > 1.2 ? 0.85 : 0.6);
+    for(let b = 0; b < nCl; b++){
+      const u = ihash(T.zi, T.j, 50 + b), v = ihash(T.zi, T.j, 70 + b), side = u < 0.5 ? -1 : 1;
+      const by = topY + (p.gy - topY)*(0.02 + v*0.42), reach = (0.8 + u*2.6)*p.s, sw = Math.sin(t*0.9*S.wind + b*1.7 + T.z)*wind*0.05*p.s;
+      const bx = p.sx + side*reach + sw + swayX, br = (0.5 + ihash(T.zi, T.j, 90 + b)*0.9)*p.s;
+      if(bx < -br*2 || bx > W + br*2 || by > H) continue;
+      if(rw > 0.8){ c.lineWidth = Math.max(0.6, rw*0.35); c.strokeStyle = rgb(barkC, 1, alpha*0.8); c.beginPath(); c.moveTo(p.sx + swayX*0.8, by + br*0.3); c.quadraticCurveTo(p.sx + side*reach*0.5 + swayX, by - br*0.2, bx, by); c.stroke(); }
+      const accent = S.leafT[(tintI + b) % S.leafT.length];       // neighbouring clusters lean to neighbouring palette colours
+      const shade = mix(mix(tLeafD, tLeafL, 0.25 + v*0.3), S.haze, k), light = mix(mix(tLeafL, S.lightT[(tintI + b) % S.lightT.length], 0.3), S.haze, k);
+      dab(bx, by, br*1.5, br*0.9, shade, leafA*0.85, side*0.25);
+      dab(bx - side*br*0.4, by - br*0.35, br*0.9, br*0.55, light, leafA*0.55, side*0.3);
+      dab(bx + side*br*0.6, by + br*0.25, br*0.7, br*0.45, mix(mix(shade, tLeafD, 0.4), accent, 0.35), leafA*0.6);
+    }
+  }
+
+  // ---- canopy overhead: a soft dark band across the top with leaf dabs and pale sky peeping through ----
+  if(!bgStrip){
+    const cg = c.createLinearGradient(0, 0, 0, H*0.3);
+    cg.addColorStop(0, rgb(S.leafD, 0.85, 0.9)); cg.addColorStop(0.6, rgb(S.leafD, 1, 0.35)); cg.addColorStop(1, rgb(S.leafD, 1, 0));
+    c.fillStyle = cg; c.fillRect(0, 0, W, H*0.3);
+  }
+  const nCan = Math.round(20 + dens*60);
+  for(let i = 0; i < nCan; i++){
+    const u = ihash(i, S.k, 101), v = ihash(i, S.k, 102), x = ((u*W*1.4 - camZ*4*(0.3 + v*0.7)) % (W*1.4) + W*1.4) % (W*1.4) - W*0.2;
+    const y = v*v*H*0.22 + Math.sin(t*0.8*S.wind + i)*wind*1.2, r0 = (4 + ihash(i, S.k, 103)*10)*(0.6 + dens*0.5);
+    const pale = ihash(i, S.k, 104) < 0.25;
+    const cT = S.leafT[i % S.leafT.length];
+    dab(x, y, r0*1.4, r0*0.8, pale ? mix(S.lightT[i % S.lightT.length], S.leafL, 0.4) : mix(mix(S.leafD, S.leafL, ihash(i, S.k, 105)*0.45), cT, 0.4), pale ? 0.3 : 0.55, (u - 0.5)*0.8);
+  }
+
+  // ---- light shafts: bass swells them ----
+  if(!bgStrip){
+    const nSh = Math.round(S.shaftN*(0.5 + dens*0.8)), shA = 0.05 + G.shaft*0.12;
+    c.globalCompositeOperation = 'lighter';
+    for(let i = 0; i < nSh; i++){
+      const u = ihash(i, S.k, 111), x0 = W*(S.shaftX - 0.3 + u*0.6) + Math.sin(t*0.05 + i)*W*0.03, wdt = (0.03 + ihash(i, S.k, 112)*0.09)*W;
+      const ang = S.shaftAng*(0.7 + ihash(i, S.k, 113)*0.5), dx = -Math.tan(ang)*H, breathe = 0.7 + 0.3*Math.sin(t*0.23 + i*1.3);
+      const lg = c.createLinearGradient(x0, 0, x0 + dx, H);
+      const lc = S.lightT[i % S.lightT.length];
+      lg.addColorStop(0, rgb(lc, 1, shA*breathe)); lg.addColorStop(0.55, rgb(mix(lc, S.light, 0.5), 1, shA*0.5*breathe)); lg.addColorStop(1, rgb(S.light, 1, 0));
+      c.fillStyle = lg; c.beginPath(); c.moveTo(x0 - wdt*0.5, 0); c.lineTo(x0 + wdt*0.5, 0); c.lineTo(x0 + dx + wdt*1.4, H); c.lineTo(x0 + dx - wdt*1.4, H); c.closePath(); c.fill();
+    }
+    c.globalCompositeOperation = 'source-over';
+  }
+
+  // ---- drifting motes in the light: treble brings more of them out ----
+  const wantM = Math.round((6 + sm[3]*40)*(0.4 + dens*0.8));
+  while(G.motes.length < wantM) G.motes.push({ x: Math.random()*W, y: Math.random()*H, vx: (Math.random() - 0.5)*4, vy: -2 - Math.random()*5, life: 3 + Math.random()*5, age: 0, r: 0.6 + Math.random()*1.4, ci: Math.floor(Math.random()*S.lightT.length) });
+  if(G.motes.length > wantM + 20) G.motes.length = wantM + 20;
+  for(let i = G.motes.length - 1; i >= 0; i--){
+    const m = G.motes[i]; m.age += dt; if(m.age > m.life){ G.motes.splice(i, 1); continue; }
+    m.x += (m.vx + Math.sin(t + m.y*0.05)*3)*dt; m.y += m.vy*dt;
+    const a = Math.sin(m.age/m.life*Math.PI)*(0.35 + sm[3]*0.45);
+    dab(m.x, m.y, m.r, m.r, S.lightT[m.ci % S.lightT.length], a);
+  }
+
+  // ---- paint grain, then out to the main buffer with a slow breathing zoom ----
+  c.drawImage(G.grain, 0, 0);
+  const z = 1.02 + Math.sin(t*0.1)*0.012 + G.lean*0.012;
+  bctx.imageSmoothingEnabled = true;
+  bctx.save();
+  bctx.translate(bw*0.5 + Math.sin(t*0.06)*bw*0.005, bh*0.5 + Math.cos(t*0.08)*bh*0.005); bctx.scale(z, z);
+  bctx.drawImage(G.cv, -bw*0.5, -bh*0.5, bw, bh);
+  bctx.restore();
 }
 
 // VAPORWAVE: neon spectrogram grid under a low-poly wireframe range. The floor is a height field driven by a
@@ -6260,11 +6291,11 @@ const SHAPES = [
   { id:'odyssey', label:'ODYSSEY' }, { id:'supernova', label:'SUPERNOVA' }, { id:'blackhole', label:'BLACKHOLE' },
   { id:'constellation', label:'CONSTELLATION' }, { id:'glitch', label:'GLITCH' }, { id:'hlines', label:'HLINES' },
   { id:'moire', label:'MOIRE' }, { id:'colorbars', label:'COLORBARS' }, { id:'spiro', label:'SPIROGRAPH' },
-  { id:'pulses', label:'PULSES' }, { id:'forest', label:'FOREST' }, { id:'eclipse', label:'ECLIPSE' },
+  { id:'pulses', label:'PULSES' }, { id:'forest', label:'FOREST' }, { id:'snow', label:'SNOW' },
   { id:'rain', label:'RAIN' }, { id:'triangulation', label:'TRIANGLES' },
   { id:'rising', label:'RISING' }, { id:'vmsolid', label:'DIAMONDS' }, { id:'vmhollow', label:'HOLLOW' },
   { id:'solar', label:'SOLAR' }, { id:'liminal', label:'LIMINAL' }, { id:'sequencer', label:'SEQUENCER' },
-  { id:'modsynth', label:'SYNTH' }, { id:'web', label:'WEB' }, { id:'daisies', label:'DAISIES' },
+  { id:'modsynth', label:'SYNTH' }, { id:'web', label:'WEB' }, { id:'grove', label:'GROVE' },
   { id:'vaporland', label:'VAPORWAVE' }, { id:'asteroids', label:'ASTEROIDS' }, { id:'stickdancer', label:'DANCER' },
   { id:'cityflyover', label:'CITY' }, { id:'jellyfish', label:'JELLYFISH' },
   { id:'oilscape', label:'OIL PAINT' }, { id:'pixelworld', label:'PIXEL WORLD' },
@@ -6282,11 +6313,11 @@ const DRAW = {
   sonar:drawSonar, aurora:drawAurora, odyssey:drawOdyssey,
   supernova:drawSupernova, blackhole:drawBlackhole, constellation:drawConstellation,
   glitch:drawGlitch, hlines:drawHLines, moire:drawMoire, colorbars:drawColorbars,
-  spiro:drawSpiro, pulses:drawPulses, forest:drawForest, eclipse:drawEclipse,
+  spiro:drawSpiro, pulses:drawPulses, forest:drawForest, snow:drawSnow,
   rain:drawRain, triangulation:drawTriangulation, rising:drawRising,
   vmsolid:drawVMSolid, vmhollow:drawVMHollow, solar:drawSolarSystem,
   liminal:drawLiminalMaze, sequencer:drawSequencer, modsynth:drawModularSynth,
-  web:drawWeb, daisies:drawDaisyGarden, vaporland:drawVaporLandscape,
+  web:drawWeb, grove:drawGrove, vaporland:drawVaporLandscape,
   asteroids:drawAsteroids, stickdancer:drawStickDancer, cityflyover:drawPixelCity,
   jellyfish:drawJellyfish, oilscape:drawOilscape, pixelworld:drawPixelWorld,
   neoncity:drawNeonCity, scratch:drawScratch, skyline:drawSkylinePaint, amoebas:drawAmoebas,
@@ -6302,8 +6333,8 @@ const FILTERS = [
 const FX = {
   none: {},
   photo: { grain:16, flick:0.03, weaveX:1.2, weaveY:0.9, dust:[4,12], dustDark:[8,20], stains:true, tint:[1.07,1.01,0.88], sat:0.72, blur:0.5 },
-  mm16:  { grain:24, flick:0.075, weaveX:1.1, weaveY:0.9, dust:[2,8], tint:[1.06,1.0,0.90] },
-  mm35:  { grain:9,  flick:0.035, weaveX:0.4, weaveY:0.3, dust:[1,4], tint:[1.02,1.0,0.97] },
+  mm16:  { grain:24, weaveX:1.1, weaveY:0.9, dust:[2,8], tint:[1.06,1.0,0.90] },
+  mm35:  { grain:9,  weaveX:0.4, weaveY:0.3, dust:[1,4], tint:[1.02,1.0,0.97] },
   vhs:   { staticP:0.06, rowWob:3.5, caAdd:2, sat:0.8, flick:0.025, tint:[1.03,1.0,0.97] },
   cable: { staticP:0.035, blocks:8, soft:0.4, caAdd:1, flick:0.03 }
 };
