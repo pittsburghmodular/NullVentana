@@ -380,6 +380,18 @@
       </div>
     </div>
     <div class="fxrow">
+      <span class="lbl">PAINT BRUSH <b id="vPa"></b></span>
+      <input type="range" id="cPaint" min="0" max="100" value="0" title="repaints the picture as oil brush strokes that follow the image; higher = fatter, looser brush"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModPaint">0%</b></span>
+        <input type="range" class="mod-slider" id="cModPaint" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRatePaint">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRatePaint" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (LOW-MID) <b class="b-aud" id="vAudModPaint">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModPaint" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
       <span class="lbl">TRAILS <b id="vTr"></b></span>
       <input type="range" id="cTrails" min="0" max="100" value="0"/>
       <div class="mod-group">
@@ -612,6 +624,7 @@ const state = {
   fidelity:0.80, palette:0, filter:'none', fxLevel:0.7, audio:0.5, scan:true,
   trails:0, blur:0, glitch:0, seed:(Math.random()*0xffff)|0, beatReseed: false,
   comic:0, split:0, modComic:0.0, modSplit:0.0, lfoRateComic:0.25, lfoRateSplit:0.25, audModComic:0.0, audModSplit:0.0,
+  paint:0, modPaint:0.0, lfoRatePaint:0.25, audModPaint:0.0,
   feedback:0, fbZoom:0.12, fbRot:5.7, fbHue:0, fbKey:'off', fbKeyLevel:0.5, fbKeyGain:0.5, modFeedback:0.0, lfoRateFeedback:0.25, audModFeedback:0.0,
   invert:false, bgMode:'palette', noBgA:false, noBgB:false, videoLoop:false, videoGranular:false, grainMax:2.0, grainFade:0.15, srcMix:0, vidIn:0, vidOut:1, palAudio:false,
   camExp:0, camTemp:0, camSat:1, camSh:0, camMid:0, camHi:0,
@@ -628,11 +641,11 @@ const state = {
 };
 
 const lfoPhases = { 
-  rate: 0, mix: 0, den: 0, fid: 0, fxLvl: 0, trails: 0, blur: 0, glitch: 0, comic: 0, split: 0, feedback: 0,
+  rate: 0, mix: 0, den: 0, fid: 0, fxLvl: 0, trails: 0, blur: 0, glitch: 0, paint: 0, comic: 0, split: 0, feedback: 0,
   textScale: 0, textScatter: 0, textRotate: 0, textPulse: 0, textScan: 0
 };
 const eff = { 
-  rate: 0.45, mix: 0.0, density: 0.5, fidelity: 0.80, fxLevel: 0.7, trails: 0, blur: 0, glitch: 0, comic: 0, split: 0, feedback: 0,
+  rate: 0.45, mix: 0.0, density: 0.5, fidelity: 0.80, fxLevel: 0.7, trails: 0, blur: 0, glitch: 0, paint: 0, comic: 0, split: 0, feedback: 0,
   textScale: 46, textScatter: 0.15, textRotate: 0.0, textPulse: 0.30, textScan: 0.45
 };
 
@@ -1388,6 +1401,226 @@ function glitchPass(ctx, W, H, tw){
       ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35; ctx.drawImage(fxc, off, 0); ctx.drawImage(fxc, -off, 0);
     }
   }
+  ctx.restore();
+}
+
+
+// ---- PAINT BRUSH: repaints the frame as a field of oil brush strokes. The view is shrunk to a small analysis
+// buffer; each stroke sits on a jittered grid (positions fixed per cell so the painting doesn't shimmer), takes its
+// colour from the picture under it, and runs along the image's edges (perpendicular to the luma gradient) or, in
+// flat areas, along a slow swirl field. Every stroke remembers its colour, direction, length and presence and only
+// EASES toward what the picture now wants (a couple of seconds to settle), so the painting reworks itself slowly
+// and calmly instead of twitching with every frame. The paint canvas persists between frames: nothing is ever
+// wiped, strokes are laid over the previous painting. A coarse layer of fat strokes blocks in the picture, a fine
+// layer of small strokes fades in only along edges, then a canvas weave is laid over the top. The AMOUNT fades the
+// painting in over the first two-thirds of the slider and loosens the brush a little over the rest.
+const PB = { c:null, x:null, s:null, sx:null, pw:0, ph:0, sw:0, sh:0, luma:null, gx:null, gy:null, tex:null, texPat:null, armed:false, layers:[null, null], lastT:0 };
+const PB_COL_T = 2.2, PB_DIR_T = 3.0, PB_FADE_T = 1.6;   // seconds to settle: colour, direction/length, fine-stroke presence
+function paintTexture(){
+  if(PB.tex) return;
+  const T = 256, c = document.createElement('canvas'); c.width = T; c.height = T;
+  const x = c.getContext('2d'), img = x.createImageData(T, T), d = img.data;
+  for(let j = 0; j < T; j++) for(let i = 0; i < T; i++){
+    const weave = 0.5 + 0.5*Math.sin(i*1.9)*Math.sin(j*1.9)*0.6 + (Math.sin(i*0.7)*0.5 + Math.sin(j*0.7)*0.5)*0.12;
+    const grain = hash1(i*17 + j*131 + 7)*0.5 + hash1(i*3 + j*59 + 11)*0.5;
+    const v = 128 + (weave - 0.5)*70 + (grain - 0.5)*60, k = (j*T + i)*4;
+    d[k] = d[k+1] = d[k+2] = clamp(v, 0, 255) | 0; d[k+3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  PB.tex = c;
+}
+// Per-cell constants for a stroke layer, computed once when the layer is (re)built so the per-frame loop does no
+// hashing at all: position, source pixel, and every random trait the stroke owns. Stride PBC per cell.
+const PBC = 27;
+function buildPaintLayer(cols, rows, sp, salt, pw, ph, sw, sh, kx, ky){
+  const n = cols*rows, C = new Float32Array(n*PBC);
+  for(let r = 0; r < rows; r++) for(let c = 0; c < cols; c++){
+    const cell = r*cols + c, id = cell*7.13 + salt, o = cell*PBC;
+    const h0 = hash1(id), h1 = hash1(id + 1.7), h2 = hash1(id + 2.9), h3 = hash1(id + 4.1), h4 = hash1(id + 5.3);
+    const h5 = hash1(id + 6.7), h6 = hash1(id + 8.3), h7 = hash1(id + 9.1), h8 = hash1(id + 10.9), h9 = hash1(id + 12.3), h10 = hash1(id + 13.7);
+    const cx = (c + h0 - 0.5)*sp, cy = (r + h1 - 0.5)*sp;
+    const six = Math.min(sw - 1, Math.max(0, (cx*kx) | 0)), siy = Math.min(sh - 1, Math.max(0, (cy*ky) | 0));
+    C[o] = cx; C[o+1] = cy; C[o+2] = siy*sw + six; C[o+3] = h4;
+    C[o+4] = h0; C[o+5] = h6; C[o+6] = h7; C[o+7] = h8; C[o+8] = h9; C[o+9] = h10; C[o+10] = h5;
+    C[o+11] = 1 + (h3 - 0.5)*0.22;           // brightness wobble
+    C[o+12] = (h2 - 0.5)*14;                 // warmth wobble
+    C[o+13] = 0.7 + h3*0.6;                  // length wobble
+    C[o+14] = (h2 - 0.5)*0.5;                // swirl angle wobble
+    C[o+15] = 0.6 + h7*0.9;                  // brush load (width factor)
+    C[o+16] = 0.78 + h8*0.22;                // opacity
+    C[o+17] = 1 + (h9 - 0.5)*0.4;            // chroma factor
+    for(let i = 0; i < 3; i++){ C[o+18+i] = (i - 1)*0.36 + (hash1(id + 20 + i) - 0.5)*0.15; C[o+21+i] = 1 + (hash1(id + 30 + i) - 0.5)*0.16; C[o+24+i] = 0.7 + hash1(id + 40 + i)*0.6; }
+  }
+  return { cols, rows, sp, C, m: new Float32Array(n*7), init: new Uint8Array(n), cq: new Int32Array(n).fill(-1), cs: new Array(n) };
+}
+// One brush stroke. Every stroke gets its own character from its cell constants - width, opacity, curvature, chroma,
+// and one of five brush behaviours - so no two marks on the canvas are alike:
+//   flat     a plain loaded stroke, sometimes with bristle hairlines running through it
+//   tapered  starts fat and thins out as the brush lifts off
+//   dab      a short fat touch of the brush
+//   dry      a nearly-empty brush: three thin parallel streaks with canvas showing between
+//   broken   two slightly disagreeing strokes laid over each other, half-transparent
+function drawStroke(x, C, o, ca, sa, len, wid, col, R, G, B, pres, ridge){
+  const h0 = C[o+4], h6 = C[o+5], h7 = C[o+6], h8 = C[o+7], h9 = C[o+8], h10 = C[o+9], h5 = C[o+10];
+  const cx = C[o], cy = C[o+1], w = wid*C[o+15], alpha = C[o+16]*pres;
+  const px0 = -sa, py0 = ca;                                              // across the stroke
+  const bend = (h6 - 0.5)*len*(0.15 + h10*0.55);                          // some straight, some hooked
+  const hl = len*0.5, sx0 = cx - ca*hl, sy0 = cy - sa*hl, sx1 = cx + ca*hl, sy1 = cy + sa*hl, qx = cx + px0*bend, qy = cy + py0*bend;
+  const curve = (ox, w0, a0) => {
+    x.lineWidth = w0; x.globalAlpha = a0;
+    x.beginPath(); x.moveTo(sx0 + px0*ox, sy0 + py0*ox); x.quadraticCurveTo(qx + px0*ox, qy + py0*ox, sx1 + px0*ox, sy1 + py0*ox); x.stroke();
+  };
+  x.strokeStyle = col;
+  if(h5 < 0.40){                                                          // FLAT
+    curve(0, w, alpha);
+    if(h6 < 0.5){                                                         // bristle hairlines through the body of the stroke
+      x.strokeStyle = 'rgba(0,0,0,0.13)';  curve((h7 - 0.5)*w*0.7, w*0.12, alpha);
+      x.strokeStyle = 'rgba(255,255,255,0.10)'; curve((h9 - 0.5)*w*0.7, w*0.10, alpha);
+    }
+  } else if(h5 < 0.65){                                                  // TAPERED: fat to thin as the brush lifts
+    const flip = h8 < 0.5, N = 4;
+    let t = flip ? 1 : 0, u = 1 - t, ax = u*u*sx0 + 2*u*t*qx + t*t*sx1, ay = u*u*sy0 + 2*u*t*qy + t*t*sy1;
+    x.globalAlpha = alpha;
+    for(let i = 1; i <= N; i++){
+      t = flip ? 1 - i/N : i/N; u = 1 - t;
+      const bx = u*u*sx0 + 2*u*t*qx + t*t*sx1, by = u*u*sy0 + 2*u*t*qy + t*t*sy1;
+      x.lineWidth = w*(1.1 - 0.75*(i - 0.5)/N);
+      x.beginPath(); x.moveTo(ax, ay); x.lineTo(bx, by); x.stroke();
+      ax = bx; ay = by;
+    }
+  } else if(h5 < 0.78){                                                  // DAB: a short fat touch
+    x.lineWidth = w*1.3; x.globalAlpha = alpha;
+    const d = Math.max(1, w*0.6);
+    x.beginPath(); x.moveTo(cx - ca*d, cy - sa*d); x.lineTo(cx + ca*d, cy + sa*d); x.stroke();
+  } else if(h5 < 0.90){                                                  // DRY BRUSH: thin streaks with gaps
+    const ws = w*0.28;
+    for(let i = 0; i < 3; i++){
+      const v = C[o+21+i];
+      x.strokeStyle = 'rgb(' + (clamp(R*v, 0, 255) | 0) + ',' + (clamp(G*v, 0, 255) | 0) + ',' + (clamp(B*v, 0, 255) | 0) + ')';
+      curve(C[o+18+i]*w, ws*C[o+24+i], alpha*0.85);
+    }
+  } else {                                                                // BROKEN: two strokes that don't quite agree
+    curve(0, w*0.85, alpha*0.7);
+    const da = (h7 - 0.5)*0.7, cd = Math.cos(da), sd = Math.sin(da), c2 = ca*cd - sa*sd, s2 = sa*cd + ca*sd, l2 = len*0.4;
+    x.lineWidth = w*0.75; x.globalAlpha = alpha*0.6;
+    x.beginPath(); x.moveTo(cx - c2*l2, cy - s2*l2); x.lineTo(cx + c2*l2, cy + s2*l2); x.stroke();
+  }
+  if(ridge && h10 < 0.45 && h5 < 0.65){                                   // a lit ridge along one side: raised paint catching light
+    x.strokeStyle = 'rgba(' + (clamp(R*1.18 + 12, 0, 255) | 0) + ',' + (clamp(G*1.18 + 12, 0, 255) | 0) + ',' + (clamp(B*1.18 + 12, 0, 255) | 0) + ',0.32)';
+    curve(w*0.3*(h8 < 0.5 ? 1 : -1), w*0.28, alpha);
+  }
+}
+function paintPass(ctx, W, H, tw, a){
+  if(!PB.c){
+    PB.c = document.createElement('canvas'); PB.x = PB.c.getContext('2d');
+    PB.s = document.createElement('canvas'); PB.sx = PB.s.getContext('2d', { willReadFrequently: true });
+  }
+  const pw = Math.min(W, 960), ph = Math.max(2, Math.round(pw*H/W));
+  const sw = 240, sh = Math.max(2, Math.round(sw*H/W));
+  if(PB.c.width !== pw || PB.c.height !== ph){ PB.c.width = pw; PB.c.height = ph; PB.armed = false; PB.layers = [null, null]; }
+  if(PB.s.width !== sw || PB.s.height !== sh){
+    PB.s.width = sw; PB.s.height = sh;
+    PB.luma = new Float32Array(sw*sh); PB.gx = new Float32Array(sw*sh); PB.gy = new Float32Array(sw*sh);
+  }
+  PB.pw = pw; PB.ph = ph; PB.sw = sw; PB.sh = sh;
+  const dt = clamp(tw - PB.lastT, 0, 0.1); PB.lastT = tw;
+  const kCol = PB.armed ? 1 - Math.exp(-dt/PB_COL_T) : 1, kDir = PB.armed ? 1 - Math.exp(-dt/PB_DIR_T) : 1, kFade = PB.armed ? 1 - Math.exp(-dt/PB_FADE_T) : 1;
+  // shrink the picture and pull its pixels
+  const sx = PB.sx;
+  sx.globalCompositeOperation = 'copy'; sx.imageSmoothingEnabled = true; sx.drawImage(view, 0, 0, W, H, 0, 0, sw, sh);
+  const px = sx.getImageData(0, 0, sw, sh).data, L = PB.luma, GX = PB.gx, GY = PB.gy;
+  for(let i = 0, n = sw*sh; i < n; i++) L[i] = (px[i*4]*0.299 + px[i*4+1]*0.587 + px[i*4+2]*0.114)*(1/255);
+  // sobel gradient of the luma
+  for(let y = 1; y < sh - 1; y++){
+    const r0 = (y - 1)*sw, r1 = y*sw, r2 = (y + 1)*sw;
+    for(let x = 1; x < sw - 1; x++){
+      GX[r1 + x] = (L[r0 + x + 1] + 2*L[r1 + x + 1] + L[r2 + x + 1]) - (L[r0 + x - 1] + 2*L[r1 + x - 1] + L[r2 + x - 1]);
+      GY[r1 + x] = (L[r2 + x - 1] + 2*L[r2 + x] + L[r2 + x + 1]) - (L[r0 + x - 1] + 2*L[r0 + x] + L[r0 + x + 1]);
+    }
+  }
+  a *= 0.5;                                                             // the slider's 100% is the old 50%: fully painted, brush only a little loosened
+  const cover = clamp(a/0.35, 0, 1), loose = clamp((a - 0.35)/0.65, 0, 1);
+  const kx = sw/pw, ky = sh/ph;
+  const x = PB.x;
+  x.save();
+  x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1; x.filter = 'none';
+  if(!PB.armed){ x.drawImage(view, 0, 0, W, H, 0, 0, pw, ph); }   // first frame only: the picture as the underpainting
+  x.lineCap = 'round'; x.lineJoin = 'round';
+  const swirlT = tw*0.03;
+  // One layer of strokes on a fixed jittered grid, sized for the smallest brush this layer ever uses; looser brushes
+  // keep a stable subset of the cells. Per-cell memory: r,g,b, dir x,y, len, presence (7 floats); colour strings are
+  // cached per cell and only rebuilt when the eased colour moves by a visible step.
+  const layer = (li, widMin, wid, spacingK, lenK, gate, ridge, salt) => {
+    const sp = Math.max(2, widMin*spacingK), cols = Math.ceil(pw/sp) + 1, rows = Math.ceil(ph/sp) + 1;
+    const keep = Math.min(1, (widMin/wid)*(widMin/wid));                // thin the grid as the brush grows
+    let Ly = PB.layers[li];
+    if(!Ly || Ly.cols !== cols || Ly.rows !== rows || Ly.sp !== sp) Ly = PB.layers[li] = buildPaintLayer(cols, rows, sp, salt, pw, ph, sw, sh, kx, ky);
+    const M = Ly.m, IN = Ly.init, C = Ly.C, CQ = Ly.cq, CS = Ly.cs, n = cols*rows;
+    const lim = wid;
+    for(let cell = 0; cell < n; cell++){
+      const o = cell*PBC;
+      if(keep < 1 && C[o+3] > keep) continue;
+      const cx = C[o], cy = C[o+1];
+      if(cx < -lim || cy < -lim || cx > pw + lim || cy > ph + lim) continue;
+      const si = C[o+2], gx = GX[si], gy = GY[si], mag = Math.sqrt(gx*gx + gy*gy);
+      // target direction: along the edge where there is one (perpendicular to the gradient), otherwise a slow swirl field
+      const edgeW = mag*3.5 > 1 ? 1 : mag*3.5;
+      let tx, ty;
+      if(edgeW >= 1){ tx = -gy/mag; ty = gx/mag; }
+      else {
+        const ang1 = n2(cx*0.006, cy*0.006, swirlT)*2.4 + C[o+14];
+        tx = Math.cos(ang1)*(1 - edgeW); ty = Math.sin(ang1)*(1 - edgeW);
+        if(edgeW > 0){
+          const ex = -gy/mag, ey = gx/mag, flip = (ex*tx + ey*ty) < 0 ? -edgeW : edgeW;   // strokes have no front/back: align before mixing
+          tx += ex*flip; ty += ey*flip;
+        }
+      }
+      const tLen = lenK*C[o+13]/(1 + mag*4);                              // strokes shorten on strong edges (in brush widths)
+      // target colour from under the stroke with the cell's fixed wobble in brightness and warmth
+      const k4 = si*4, jb = C[o+11], jw = C[o+12];
+      let tR = px[k4]*jb + jw, tG = px[k4+1]*jb, tB = px[k4+2]*jb - jw;
+      tR = tR < 0 ? 0 : tR > 255 ? 255 : tR; tG = tG > 255 ? 255 : tG; tB = tB < 0 ? 0 : tB > 255 ? 255 : tB;
+      const tPres = mag >= gate ? 1 : 0;
+      // ease the cell's memory toward the targets
+      const m = cell*7;
+      if(!IN[cell]){ IN[cell] = 1; M[m] = tR; M[m+1] = tG; M[m+2] = tB; M[m+3] = tx; M[m+4] = ty; M[m+5] = tLen; M[m+6] = gate < 0 ? 1 : 0; }
+      else {
+        M[m]   += (tR - M[m])*kCol;   M[m+1] += (tG - M[m+1])*kCol; M[m+2] += (tB - M[m+2])*kCol;
+        // direction eases as a vector; keep it on the same side so it never spins through zero
+        const ax = M[m+3], ay = M[m+4], f2 = (ax*tx + ay*ty) < 0 ? -1 : 1;
+        M[m+3] += (tx*f2 - ax)*kDir; M[m+4] += (ty*f2 - ay)*kDir;
+        M[m+5] += (tLen - M[m+5])*kDir;
+        M[m+6] += (tPres - M[m+6])*kFade;
+      }
+      const pres = M[m+6];
+      if(pres < 0.03) continue;
+      // chroma: some strokes muddier, some purer than the picture underneath (cached as a string per cell)
+      let R = M[m], G = M[m+1], B = M[m+2];
+      const cf = C[o+17];
+      if(cf !== 1){ const lum = R*0.299 + G*0.587 + B*0.114; R = lum + (R - lum)*cf; G = lum + (G - lum)*cf; B = lum + (B - lum)*cf;
+        R = R < 0 ? 0 : R > 255 ? 255 : R; G = G < 0 ? 0 : G > 255 ? 255 : G; B = B < 0 ? 0 : B > 255 ? 255 : B; }
+      R |= 0; G |= 0; B |= 0;
+      const q = ((R >> 2) << 12) | ((G >> 2) << 6) | (B >> 2);
+      if(CQ[cell] !== q){ CQ[cell] = q; CS[cell] = 'rgb(' + R + ',' + G + ',' + B + ')'; }
+      const dx = M[m+3], dy = M[m+4], dn = 1/Math.sqrt(dx*dx + dy*dy);
+      drawStroke(x, C, o, dx*dn, dy*dn, wid*M[m+5], wid, CS[cell], R, G, B, pres, ridge);
+    }
+    x.globalAlpha = 1;
+  };
+  const baseMin = ph*0.028, base = ph*lerp(0.028, 0.06, loose);
+  layer(0, baseMin,      base,      0.8, lerp(2.6, 4.2, loose), -1,                      true,  1.0);   // block-in: covers everything
+  layer(1, baseMin*0.38, base*0.38, 0.9, lerp(2.2, 3.0, loose), lerp(0.06, 0.18, loose), false, 2.0);   // detail: fades in on edges only
+  PB.armed = true;
+  // canvas weave over the paint
+  paintTexture();
+  if(!PB.texPat) PB.texPat = x.createPattern(PB.tex, 'repeat');
+  x.globalCompositeOperation = 'overlay'; x.globalAlpha = 0.28 + 0.22*loose;
+  x.fillStyle = PB.texPat;
+  const tsc = pw/960; x.save(); x.scale(tsc, tsc); _protoFillRect.call(x, 0, 0, pw/tsc, ph/tsc); x.restore();
+  x.restore();
+  ctx.save(); ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none'; ctx.imageSmoothingEnabled = true;
+  ctx.globalAlpha = cover;
+  ctx.drawImage(PB.c, 0, 0, pw, ph, 0, 0, W, H);
   ctx.restore();
 }
 
@@ -6658,7 +6891,7 @@ function drawSlotB(id, alpha, tt){
 // ---------------------------------------------------------------------------------------------
 // Main loop: audio -> LFOs/eff -> base background (palette or BLACK/WHITE/GREEN override) -> shapes (with crossfade,
 // per-shape BACKGROUND OFF) -> invert -> COMIC INK -> postProcess -> film overlays -> downscale for FIDELITY ->
-// blit to view with weave/CA -> text overlay -> RGB SPLIT -> glitch -> blur -> trails -> FEEDBACK -> view-level filter noise -> scanlines
+// blit to view with weave/CA -> text overlay -> RGB SPLIT -> glitch -> PAINT BRUSH -> blur -> trails -> FEEDBACK -> view-level filter noise -> scanlines
 // ---------------------------------------------------------------------------------------------
 function frame(now){
   requestAnimationFrame(frame);
@@ -6677,6 +6910,7 @@ function frame(now){
   lfoPhases.trails      += dt * TAU * state.lfoRateTrails;
   lfoPhases.blur        += dt * TAU * state.lfoRateBlur;
   lfoPhases.glitch      += dt * TAU * state.lfoRateGlitch;
+  lfoPhases.paint       += dt * TAU * state.lfoRatePaint;
   lfoPhases.comic       += dt * TAU * state.lfoRateComic;
   lfoPhases.split       += dt * TAU * state.lfoRateSplit;
   lfoPhases.feedback    += dt * TAU * state.lfoRateFeedback;
@@ -6693,6 +6927,7 @@ function frame(now){
   eff.trails  = clamp(state.trails  + Math.sin(lfoPhases.trails) * state.modTrails + A[0] * state.audModTrails, 0, 1);
   eff.blur    = clamp(state.blur    + Math.sin(lfoPhases.blur)   * state.modBlur   + A[1] * state.audModBlur,   0, 1);
   eff.glitch  = clamp(state.glitch  + Math.sin(lfoPhases.glitch) * state.modGlitch + A[2] * state.audModGlitch, 0, 1);
+  eff.paint   = clamp(state.paint   + Math.sin(lfoPhases.paint)  * state.modPaint  + A[1] * state.audModPaint,  0, 1);
   eff.comic   = clamp(state.comic   + Math.sin(lfoPhases.comic)  * state.modComic  + A[2] * state.audModComic,  0, 1);
   eff.split   = clamp(state.split   + Math.sin(lfoPhases.split)  * state.modSplit  + A[0] * state.audModSplit,  0, 1);
   eff.feedback= clamp(state.feedback+ Math.sin(lfoPhases.feedback)* state.modFeedback + A[0] * state.audModFeedback, 0, 2);
@@ -6895,6 +7130,10 @@ function frame(now){
   // GLITCH runs before blur/trails so the slice displacement gets softened and smeared into the trail memory
   if(eff.glitch > 0.01) glitchPass(ctx, W, H, tw);
   else GL.until = 0;
+
+  // PAINT BRUSH sits between glitch and blur/trails: the brush strokes get softened and smeared like the rest
+  if(eff.paint > 0.01) paintPass(ctx, W, H, tw, eff.paint);
+  else PB.armed = false;
 
   if(eff.blur > 0.01 && FILTER_OK){
     ctx.save();
@@ -7166,6 +7405,7 @@ function syncFx(){
   update('vTr', trStr);
   update('vBl', blStr);
   update('vGl', glStr);
+  update('vPa', Math.round(state.paint * 100) + '%');
   update('vCo', Math.round(state.comic * 100) + '%');
   update('vSp', Math.round(state.split * 100) + '%');
   update('vFb', Math.round(state.feedback * 100) + '%');
@@ -7928,6 +8168,7 @@ function wireControls(targetDoc = document){
   const cTrails = targetDoc.getElementById('cTrails');
   const cBlur   = targetDoc.getElementById('cBlur');
   const cGlitch = targetDoc.getElementById('cGlitch');
+  const cPaint  = targetDoc.getElementById('cPaint');
   const cComic  = targetDoc.getElementById('cComic');
   const cSplit  = targetDoc.getElementById('cSplit');
 
@@ -7960,6 +8201,7 @@ function wireControls(targetDoc = document){
   if(cTrails) cTrails.addEventListener('input', ()=>{ state.trails = cTrails.value * 0.01; syncFx(); });
   if(cBlur)   cBlur.addEventListener('input',   ()=>{ state.blur = cBlur.value * 0.01; syncFx(); });
   if(cGlitch) cGlitch.addEventListener('input', ()=>{ state.glitch = cGlitch.value * 0.01; syncFx(); });
+  if(cPaint)  cPaint.addEventListener('input',  ()=>{ state.paint = cPaint.value * 0.01; syncFx(); });
   if(cComic)  cComic.addEventListener('input',  ()=>{ state.comic = cComic.value * 0.01; syncFx(); });
   if(cSplit)  cSplit.addEventListener('input',  ()=>{ state.split = cSplit.value * 0.01; syncFx(); });
   const cFeedback = targetDoc.getElementById('cFeedback');
@@ -8001,6 +8243,7 @@ function wireControls(targetDoc = document){
   bindDepth('cModTrails', 'vModTrails', 'modTrails');
   bindDepth('cModBlur', 'vModBlur', 'modBlur');
   bindDepth('cModGlitch', 'vModGlitch', 'modGlitch');
+  bindDepth('cModPaint', 'vModPaint', 'modPaint');
   bindDepth('cModComic', 'vModComic', 'modComic');
   bindDepth('cModSplit', 'vModSplit', 'modSplit');
   bindDepth('cModFeedback', 'vModFeedback', 'modFeedback');
@@ -8019,6 +8262,7 @@ function wireControls(targetDoc = document){
   bindLfo('cLfoRateTrails', 'vLfoRateTrails', 'lfoRateTrails');
   bindLfo('cLfoRateBlur', 'vLfoRateBlur', 'lfoRateBlur');
   bindLfo('cLfoRateGlitch', 'vLfoRateGlitch', 'lfoRateGlitch');
+  bindLfo('cLfoRatePaint', 'vLfoRatePaint', 'lfoRatePaint');
   bindLfo('cLfoRateComic', 'vLfoRateComic', 'lfoRateComic');
   bindLfo('cLfoRateSplit', 'vLfoRateSplit', 'lfoRateSplit');
   bindLfo('cLfoRateFeedback', 'vLfoRateFeedback', 'lfoRateFeedback');
@@ -8037,6 +8281,7 @@ function wireControls(targetDoc = document){
   bindDepth('cAudModTrails', 'vAudModTrails', 'audModTrails');
   bindDepth('cAudModBlur', 'vAudModBlur', 'audModBlur');
   bindDepth('cAudModGlitch', 'vAudModGlitch', 'audModGlitch');
+  bindDepth('cAudModPaint', 'vAudModPaint', 'audModPaint');
   bindDepth('cAudModComic', 'vAudModComic', 'audModComic');
   bindDepth('cAudModSplit', 'vAudModSplit', 'audModSplit');
   bindDepth('cAudModFeedback', 'vAudModFeedback', 'audModFeedback');
@@ -8202,15 +8447,21 @@ addEventListener('keydown', e => {
 });
 
 let idleTimer;
-// Auto-hide the UI after a period without mouse movement.
-function wake(){
-  document.body.classList.remove('idle');
-  clearTimeout(idleTimer);
-  idleTimer = setTimeout(()=>document.body.classList.add('idle'), 2600);
+// UI auto-hide: with the panel attached, it stays up only while the mouse is over it and fades out the moment the
+// mouse leaves the panel area. Moving the mouse back over the panel's strip brings it straight back. Keys and
+// touches (no hover) show it briefly instead.
+function wake(){ document.body.classList.remove('idle'); clearTimeout(idleTimer); }
+function sleep(){ clearTimeout(idleTimer); document.body.classList.add('idle'); }
+function wakeBriefly(){ wake(); idleTimer = setTimeout(sleep, 2600); }
+function overPanel(e){
+  if(document.body.classList.contains('nopanel')) return false;
+  const r = sideEl.getBoundingClientRect();
+  return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
 }
-addEventListener('mousemove', wake);
-addEventListener('keydown', wake);
-addEventListener('touchstart', wake, { passive: true });
+addEventListener('mousemove', e => { if(overPanel(e)) wake(); else sleep(); });
+addEventListener('mouseleave', sleep);
+addEventListener('keydown', wakeBriefly);
+addEventListener('touchstart', wakeBriefly, { passive: true });
 
 initMainCache();
 wireControls(document);
