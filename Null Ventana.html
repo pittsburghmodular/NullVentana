@@ -137,6 +137,15 @@
     </feComponentTransfer>
     <feColorMatrix id="ogSat" type="saturate" values="1"/>
   </filter>
+  <!-- SOURCE GRADE (video file + camera): same shape as #outGrade, tables set by gradeBuildLUT() -->
+  <filter id="srcGrade" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feComponentTransfer>
+      <feFuncR id="sgR" type="table" tableValues="0 1"/>
+      <feFuncG id="sgG" type="table" tableValues="0 1"/>
+      <feFuncB id="sgB" type="table" tableValues="0 1"/>
+    </feComponentTransfer>
+    <feColorMatrix id="sgSat" type="saturate" values="1"/>
+  </filter>
   <!-- FEEDBACK KEY: alpha is computed from colour (chroma) or brightness (luma); the matrix is set by fbKeyBuild() -->
   <filter id="fbKey" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
     <feColorMatrix id="fbKeyM" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/>
@@ -1128,12 +1137,35 @@ function gradeBuildLUT(){
     const x = tone(v/255 * gainE);
     GRADE.r[v] = x*mulR*255; GRADE.g[v] = x*mulG*255; GRADE.b[v] = x*mulB*255;
   }
+  // 64-entry transfer tables for the #srcGrade SVG filter (GPU path), interpolated by the browser
+  const N = 64, tr = [], tg = [], tb = [];
+  for(let i = 0; i < N; i++){ const v = Math.round(i/(N - 1)*255); tr.push((GRADE.r[v]/255).toFixed(4)); tg.push((GRADE.g[v]/255).toFixed(4)); tb.push((GRADE.b[v]/255).toFixed(4)); }
+  const set = (id, vals) => { const el = document.getElementById(id); if(el) el.setAttribute('tableValues', vals.join(' ')); };
+  set('sgR', tr); set('sgG', tg); set('sgB', tb);
+}
+function gradeSetSat(){
+  if(GRADE.satSet === state.camSat) return;
+  GRADE.satSet = state.camSat;
+  const sm = document.getElementById('sgSat'); if(sm) sm.setAttribute('values', String(state.camSat));
 }
 // Draw a camera or video frame through the grade into the buffer at the given opacity.
 function drawCamGraded(el, alpha){
   if(alpha <= 0.004) return;
   if(!gradeActive()){ drawCover(el, alpha); return; }
   gradeBuildLUT();
+  if(FILTER_OK){
+    // GPU path: the same per-channel tables + saturate matrix as an SVG filter, so graded video costs one drawImage
+    // instead of a full-buffer readback and per-pixel loop (which mattered at the 768 / 1024-wide FIDELITY tiers)
+    gradeSetSat();
+    const isV = el.tagName === 'VIDEO';
+    if(isV && (el.readyState < 2 || !el.videoWidth)) return;
+    const vw = isV ? el.videoWidth : el.width, vh = isV ? el.videoHeight : el.height, kk = Math.max(bw/vw, bh/vh);
+    const sw2 = bw/kk, sh2 = bh/kk;
+    bctx.globalCompositeOperation = 'source-over'; bctx.globalAlpha = alpha; bctx.filter = 'url(#srcGrade)';
+    bctx.drawImage(el, (vw - sw2)*0.5, (vh - sh2)*0.5, sw2, sh2, 0, 0, bw, bh);
+    bctx.filter = 'none'; bctx.globalAlpha = 1;
+    return;
+  }
   if(!GRADE.scratch){ GRADE.scratch = document.createElement('canvas'); GRADE.sctx = GRADE.scratch.getContext('2d', { willReadFrequently:true }); }
   const sc = GRADE.scratch, sx = GRADE.sctx;
   if(sc.width !== bw || sc.height !== bh){ sc.width = bw; sc.height = bh; }
@@ -4734,9 +4766,13 @@ function drawPlanet(t){
   const cols = pal.rgb, rgbOf = (i) => cols[((i % nc) + nc) % nc];
   const cLow = rgbOf(C.cLow), cHigh = rgbOf(C.cHigh), cRim = rgbOf(C.cRim), cSun = rgbOf(C.cSun), cWater = rgbOf(C.cWater);
   const skyBg = pal.bgRgb;
-  const nStars = Math.round(C.stars.length * (0.2 + 0.8*den));
+  const nStars = Math.round(C.stars.length * (0.2 + 0.8*den)), strip = bgStrip;
 
   // ---------------- sky (drawn with canvas ops, read back so the ground can occlude it) ----------------
+  // the sky only twinkles, so it is redrawn and read back every other frame (or when the picture changes shape)
+  PL.frameNo = (PL.frameNo || 0) + 1;
+  const skyStale = !PL.skyD || PL.skyD.length !== W*H*4 || PL.skyPal !== state.palette || strip !== PL.skyStrip;
+  if(skyStale || (PL.frameNo & 1)){
   const sx = PL.sctx;
   sx.globalCompositeOperation = 'source-over'; sx.globalAlpha = 1;
   const sg = sx.createLinearGradient(0, 0, 0, H);
@@ -4777,7 +4813,9 @@ function drawPlanet(t){
     lit.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},0.9)`); lit.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
     sx.fillStyle = lit; sx.beginPath(); sx.arc(mx, my, mr, 0, TAU); sx.fill();
   }
-  const skyD = sx.getImageData(0, 0, W, H).data;
+  PL.skyD = sx.getImageData(0, 0, W, H).data; PL.skyPal = state.palette; PL.skyStrip = strip;
+  }
+  const skyD = PL.skyD;
 
   // ---------------- ray-cast the planet ----------------
   const px = PL.img.data, HH = PL.HH, GX = PL.GX, GY = PL.GY, FM = PL.FM;
@@ -4787,7 +4825,7 @@ function drawPlanet(t){
   const cp = Math.cos(pitch), sp = Math.sin(pitch), crl = Math.cos(roll), srl = Math.sin(roll);
   const L = C.L, Lx = L[0], Ly = L[1], Lz = L[2];
   const S = 60*relief, thick = 0.028*(1 + 0.9*PL.mid), fogK = 1/0.24, par = 9;
-  const sea = C.sea, strip = bgStrip, ks = C.ks;
+  const sea = C.sea, ks = C.ks;
   const hazeR = cRim[0]*0.5 + skyBg[0]*0.4, hazeG = cRim[1]*0.5 + skyBg[1]*0.4, hazeB = cRim[2]*0.5 + skyBg[2]*0.4;
   const ambR = 0.14 + skyBg[0]/255*0.12, ambG = 0.14 + skyBg[1]/255*0.12, ambB = 0.14 + skyBg[2]/255*0.12;
   const grain = 0.008 + 0.022*den, DT = PL.DT;
