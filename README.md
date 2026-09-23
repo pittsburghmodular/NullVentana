@@ -28,8 +28,8 @@ Nothing is uploaded anywhere; audio, video and camera stay in the browser.
 The control panel sits on the left. The canvas fills the rest of the window.
 
 **Panel behaviour**
-- Every section header collapses when clicked.
-- The panel stays up only while the mouse is over it and fades out the moment the mouse leaves the panel area (or the window). Move the mouse back over the strip on the left to bring it straight back. A key press or a touch shows it for a couple of seconds instead, since neither has a hover.
+- Every section header collapses when clicked. TEXT OVERLAY and VIDEO start collapsed; click their headers to open them.
+- The panel stays up only while the mouse is over it and fades out the moment the mouse leaves the panel area (or the window). Move the mouse back over the strip on the left to bring it straight back. A key press or a touch shows it for a couple of seconds instead, since neither has a hover. The mouse cursor stays visible over the display.
 - **DETACH ↗** pops the whole panel into its own window so the visuals can go fullscreen on one display while you drive them from another. Every control stays in sync in both windows. **ATTACH ↙** brings it back.
 - **Double-click any slider** to reset it to its default.
 
@@ -101,9 +101,11 @@ On every detected beat the video jumps to a random point inside the LOOP START�
 
 With the camera on, GRANULAR RESET also loops the last slice (up to 2 s) of live footage from the moment of each beat.
 
+**Source grade**
+- **EXPOSURE / TEMPERATURE / SATURATION / SHADOWS / MIDTONES / HIGHLIGHTS** — a per-pixel grade applied to both the video file and the camera, each graded before SOURCE MIX blends them (the held frames used by GRAIN CROSSFADE are graded too). All six sit above the CAMERA button. Everything at neutral costs nothing.
+
 **Camera**
 - **CAMERA ON/OFF** and a device selector.
-- **EXPOSURE / TEMPERATURE / SATURATION / SHADOWS / MIDTONES / HIGHLIGHTS** — a per-pixel grade applied to the camera only.
 - **SOURCE MIX** — crossfade between the video file (left) and the camera (right). A source that isn't running drops out of the mix.
 
 ---
@@ -117,11 +119,13 @@ Two shape slots draw on top of the video layer.
 - **CROSSFADE** — mixes A and B. When Shape B has BACKGROUND OFF the slider becomes **OVERLAY**: A stays at full opacity and B is layered on top.
 - **AUTO ON/OFF** — sweeps the crossfade back and forth slowly by itself.
 
-Available shapes: ORBS, RINGS, SCOPE, WAVES, TUNNEL, MEMORY, LISSAJOUS, ALTITUDE, BLOBS, POLYLOCK, SONAR, AURORA, ODYSSEY, SUPERNOVA, BLACKHOLE, CONSTELLATION, GLITCH, HLINES, MOIRE, COLORBARS, SPIROGRAPH, PULSES, FOREST, SNOW, RAIN, TRIANGLES, RISING, DIAMONDS, HOLLOW, SOLAR, LIMINAL, SEQUENCER, SYNTH, WEB, GROVE, VAPORWAVE, ASTEROIDS, DANCER, CITY, JELLYFISH, OIL PAINT, PIXEL WORLD, NEON CITY, SCRATCH, SKYLINE, AMOEBAS, PLAYFIELD, SPRITES, MUNCH, PADDLES, QUILT.
+Available shapes: ORBS, RINGS, SCOPE, WAVES, TUNNEL, MEMORY, LISSAJOUS, ALTITUDE, BLOBS, POLYLOCK, SONAR, AURORA, ODYSSEY, SUPERNOVA, BLACKHOLE, CONSTELLATION, GLITCH, HLINES, MOIRE, COLORBARS, SPIROGRAPH, PULSES, FOREST, SNOW, RAIN, TRIANGLES, RISING, DIAMONDS, HOLLOW, SOLAR, LIMINAL, SYNTH, WEB, GROVE, VAPORWAVE, ASTEROIDS, CITY, PLANET, JELLYFISH, OIL PAINT, PIXEL WORLD, NEON CITY, SCRATCH, SKYLINE, AMOEBAS, PLAYFIELD, SPRITES, MUNCH, PADDLES, QUILT.
 
-Each shape reacts to the audio bands in its own way — SCOPE draws the raw waveform, DIAMONDS drives each ring from a different band, DANCER's crew bounces, steps and works its arms on bass/mids/highs, and so on. Experiment.
+Each shape reacts to the audio bands in its own way — SCOPE draws the raw waveform, DIAMONDS drives each ring from a different band, PLANET flies faster and dips lower on the bass, and so on. Experiment.
 
 ### Newer shapes
+
+- **PLANET** — a low-orbit flyover of a procedurally generated planet, a different world for every seed. The surface is a wrapping height map built from fractal and ridged noise (how mountainous it is varies by seed) with a field of up to 300 craters stamped on top: bowls that flatten the ground beneath them, broken uneven rims, ejecta aprons on the fresher ones and central peaks in the largest. About half of the worlds have liquid pooling in the low ground, with soft shorelines and a sun glint. Every pixel casts a ray at the sphere from a camera pitched toward the curved horizon; the ground is lit by a seeded sun (crater bowls sit in their own shadow), leans with the view for a sense of depth, and hazes out toward the limb, where a glowing atmosphere rim wraps the planet. The sky holds a seeded nebula, a star field, the sun and sometimes a moon. The flyover drifts forward slowly, banking gently as the heading wanders; RATE OF CHANGE and PAUSE apply. Bass pushes the speed and dips the altitude, low-mids swell the atmosphere, high-mids exaggerate the relief, air brightens the stars, sun and nebula. DENSITY sets how many craters are stamped, how much fine surface grain there is and how many stars are out. Colours for the terrain, liquid, rim, sun and nebula come from the palette. With BACKGROUND OFF the sky drops out and only the planet and its glowing rim are drawn. A new seed takes a moment to build the surface and moving DENSITY restamps the craters, so expect a brief hitch on those.
 
 - **VAPORWAVE** (rewritten) — a neon spectrogram grid under a low-poly wireframe mountain range. The floor is a height field: frequency runs across the columns (mirrored about a calm centre lane) and time runs into the distance, so every sound appears as a ridge at your feet and travels toward the horizon (some seeds reverse the direction or put the bass at the edges). Grid segments carrying energy light up toward white or an accent colour and the cells beneath them glow as tiles. Bass pulses the line glow, horizon line, sun and scroll speed; low-mids stretch the mountains; highs pump their neon edges and the stars. The grid reads the analyser spectrum directly in 32 bands. DENSITY changes the whole picture: grid cell size, mountain mesh resolution and number of ranges (one to three), stars, light streaks, sun stripe count and scanline pitch. SEED picks one of three scenes — night wireframe, dusk with a silhouette range and striped sun, or daylight pastel — plus horizon height, camera height and colour roles from the palette.
 - **MEMORY** (replaces PLASMA) — a warped field of soft flowing stripes with a sheet of fine lines twisting through a pinch point, both bent by the same swirl so the lines ride the flow. Bass tightens the swirl, low-mids push the stripes along, highs sharpen the stripe edges, and each line carries its slice of the spectrum as a zigzag. DENSITY raises the stripe frequency and the number of lines. With BACKGROUND OFF only the bright stripes and the lines remain.
@@ -145,13 +149,6 @@ Five shapes in the spirit of early home-console graphics: a coarse grid of wide,
 - **PADDLES** — bat and ball. A wall of bricks hangs from the top, one colour per row, each column as deep as its slice of the spectrum is loud. Square balls with stepped trails rattle between the wall and a bat that chases the lowest ball, rebounding off whichever bricks are lit at that instant. Bass speeds the balls and kicks them sideways, low-mids widen the bat. DENSITY adds balls, brick columns and rows.
 - **QUILT** — a one-dimensional cellular automaton, one generation per ring. New generations are born at the centre and push the older ones outward in whole-cell steps, wrapped around the centre with eight-fold symmetry. The spectrum seeds live cells into each new generation, low-mids set how fast generations are born, each ring's brightness follows its band, every eighth bass hit changes the rule (90, 30, 150, 110, 54) and every sixteenth changes the ring geometry (squares, diamonds, hourglass). DENSITY makes the cells smaller (8 to 36 rings to the screen edge).
 
-### DANCER (redesigned)
-A crew of club dancers drawn as slim, completely solid single-colour mannequins — head with a jaw and chin under a short bob of hair that sways lock by lock, short neck, shoulders sloping smoothly into the neck, tapered torso and limbs, ball joints. No outlines, no light trails, and nothing is drawn behind the figures, so they are transparent around the bodies in either BACKGROUND setting.
-
-There is no library of moves. Every few bars each dancer invents a phrase from random numbers alone and then throws it away: two to four key poses drawn from club-sized joint ranges (upright spine, elbows near the ribs, forearms folded up in front, a loose arm now and then, a hand in the air when the music is up), how the two arms relate (free, mirrored, parallel or one parked), how sharply poses land on the beat, which subdivision they land on, how deep the bounce is and whether it sits on the beat or the off-beat, how much the hips rock and the shoulders shimmy, whether the feet do a step-touch or small free steps, whether steps glide, whether the dancer drifts across the floor, and how likely a hop is. Feet are planted and the legs are solved from them, so weight stays on the floor.
-
-A beat clock tuned by the incoming bass onsets times the poses, steps and hops (it free-runs at about 115 BPM with no input). Bass drives the bounce, steps and hops; overall energy sets how big the poses are and whether they move in half-time or double-time; mids work the arms and the shimmy; highs lift the shoulders, nod the head and flick the hands. DENSITY sets the crew size from one to five; above three, every other dancer stands in a smaller, dimmer back row.
-
 Notes on existing shapes: HALO has been removed; CONSTELLATION's lines are twice as thick and keep a fixed weight (audio changes how far the links reach and how bright they are, not their thickness); SCOPE's trace, fill, bars and dots span the full width of the display; ALTITUDE with BACKGROUND OFF makes everything below sea level transparent (and drops the map grid), so the coastline opens and closes as the mids drain the sea; TUNNEL with BACKGROUND OFF leaves half of its wall panels unfilled — the open panels are fixed to the tunnel so they travel with it, and keep a thin frame line; ASTEROIDS rocks are see-through wireframes with uniform thin edges; COLORBARS responds to DENSITY (bar count); RAIN is now just the drops — the wet floor, its ripples and the streetlamp glow are gone, and each streak is a small teardrop (round belly, tapered tail, a glint on the nearer ones) that falls further down the frame before recycling, so it draws over whatever background is set and is transparent with BACKGROUND OFF (bass speeds the fall and stretches the tails, mids swell the drops, treble brightens them, DENSITY sets the count); FOREST now renders on a 480-pixel-wide buffer instead of 208 — about 2.3× the resolution — with the ground written per pixel, so mountains, trees, floor detail and clouds are much finer while keeping the crisp pixel look.
 
 ---
@@ -166,7 +163,8 @@ Notes on existing shapes: HALO has been removed; CONSTELLATION's lines are twice
 
 ## 8. EFFECTS & MODULATION
 
-All eight are modulatable (the FEEDBACK KEY controls are not).
+All nine are modulatable (the FEEDBACK KEY controls are not).
+- **FLUX LINES** — crackling static-electricity lines thrown out from the edges and corners of the picture. Each frame the picture is analysed for edges and corners, and a fixed seeded set of line sites snap to the strongest ones near them and grow outward, mostly down the brightness slope away from bright shapes (about a third climb the other way, out of dark holes), all bent by a shared slow swirl so neighbouring lines comb together. What gets drawn around each traced path is a jagged zigzag that is re-struck several times a second at the line's own rate — it snaps between shapes rather than easing, its brightness flickers per strike and now and then a line blinks out. Every site has its own character: hair-fine or thicker, short or very long, solid, a scattered trail of specks, or solid with a speck tail, with knots along some and forked side-sparks that split off the solid lines. Lines take their colour from the palette (near-white entries are skipped) and fade in and grow out instead of popping. The slider sets how many lines, how long and how bright; the AUDIO MOD here listens to the bass. Sits first in the chain, right after the shapes, so it is inked, degraded, split, glitched, painted, blurred, smeared into TRAILS and fed back like the picture it grew from. Saved in presets.
 - **COMIC INK** — black ink outlines with flattened colour.
 - **RGB SPLIT** — horizontal separation of the red, green and blue channels.
 - **GLITCH** — beat-triggered picture faults. Each detected bass onset rolls the dice: whether to glitch at all, for how long (a few frames up to about half a second), how hard, and which faults are in the burst — slice tearing that wraps around the frame, scattered and stretched blocks, vertical roll, a wide red/blue colour-plane split, frame stutter, mirrored bands, mosaic bands and inverted bars. The layout is re-rolled every one to four frames inside a burst, louder hits glitch harder, and a beat landing mid-burst sometimes just extends it. The slider scales the odds, the length and the violence; at low settings many beats pass clean. With no audio running, bursts arrive at random intervals instead (more often as the slider goes up).
@@ -213,7 +211,7 @@ A colour grade applied to the finished frame, after every other effect, so it co
 - **TINT AMOUNT** — 0–100%, how strongly the output is pushed toward the tint colour. Low values shift the colour without darkening the picture; 100% acts like a full colour gel.
 - **RESET GRADE** — all eight back to neutral.
 
-The first six are the same controls as the camera grade in the VIDEO section, but that one affects only the camera picture; this one affects the whole output (the tint is output-only). All eight are saved in presets.
+The first six are the same controls as the source grade in the VIDEO section, but that one affects only the video file and camera picture; this one affects the whole output (the tint is output-only). All eight are saved in presets.
 
 ---
 
@@ -263,9 +261,9 @@ Browsers can't register themselves as a webcam device, so this feature gets you 
 
 ## 14. Signal chain (for the curious)
 
-Background → video file / camera (graded, mixed) → Shape A / Shape B (crossfade or overlay) → INVERT → COMIC INK → FIDELITY post-processing (posterise, grain, colour fringing) → FIDELITY downscale → text overlay (fidelity-treated) → RGB SPLIT → GLITCH → POINTS → PAINT BRUSH → BLUR → TRAILS → FEEDBACK (with optional KEY) → DISPLAY FILTER (weave / tape wobble, colour offset, softening, tint and flicker, block noise, static, grain, dust and stains, vignette) → OUTPUT GRADE (including TINT) → scan lines.
+Background → video file / camera (graded, mixed) → Shape A / Shape B (crossfade or overlay) → FLUX LINES → INVERT → COMIC INK → FIDELITY post-processing (posterise, grain, colour fringing) → FIDELITY downscale → text overlay (fidelity-treated) → RGB SPLIT → GLITCH → POINTS → PAINT BRUSH → BLUR → TRAILS → FEEDBACK (with optional KEY) → DISPLAY FILTER (weave / tape wobble, colour offset, softening, tint and flicker, block noise, static, grain, dust and stains, vignette) → OUTPUT GRADE (including TINT) → scan lines.
 
-Knowing the order helps: FEEDBACK recirculates everything up to and including the text and effects; the DISPLAY FILTER comes after it, so the film or tape look sits on top of the loop rather than being fed back into it; COMIC INK is early, so it inks the video and shapes but not the effects.
+Knowing the order helps: FEEDBACK recirculates everything up to and including the text and effects; the DISPLAY FILTER comes after it, so the film or tape look sits on top of the loop rather than being fed back into it; COMIC INK is early, so it inks the video, shapes and FLUX LINES but not the later effects.
 
 ---
 
@@ -280,6 +278,7 @@ Knowing the order helps: FEEDBACK recirculates everything up to and including th
 - **Beat-cut chaos:** GLITCH around 40–60% with MIC ON fires on the kick only; add a little AUDIO MOD on GLITCH so louder passages glitch harder and more often.
 - **Living painting:** PAINT BRUSH at 70–100% over a slow shape (AURORA, GROVE, JELLYFISH) or a still camera, RATE OF CHANGE low, a touch of TRAILS. Add 20–30% AUDIO MOD on PAINT BRUSH so the brush loosens on the loud parts and tightens back up in the quiet ones.
 - **LED wall:** POINTS around 40–70% over a bright, slow shape (AURORA, ORBS, BLOBS) with a touch of TRAILS and BLUR; add 30–50% AUDIO MOD on POINTS so the dots swell and spread on the kick. Put FEEDBACK under 100% behind it and the dots tunnel away.
+- **Static overlay:** FLUX LINES at 30–60% over a high-contrast shape (SUPERNOVA, RINGS, text) so the sparks have edges and corners to grow from; add 40–70% AUDIO MOD so the static flares on the kick.
 - **Lo-fi overlay:** put SPRITES, PADDLES or QUILT in Shape B with BACKGROUND OFF over a video or a smooth shape in A — only the blocks land on top.
 - **Performing:** DETACH the panel to a second display, F for fullscreen on the main one, and save a few slots to jump between looks with SAVE/LOAD.
 - **Better recording audio:** feed a virtual audio device (BlackHole / VB-Cable) instead of a microphone for a clean direct signal.
@@ -294,8 +293,8 @@ Knowing the order helps: FEEDBACK recirculates everything up to and including th
 - **Video won't play** — the browser may not support that codec/container. Re-encode to H.264 MP4 or VP9 WebM.
 - **Recording is WebM, not MP4** — the browser (typically Firefox) has no MP4 muxer. Use Chrome, Edge or Safari, or convert afterwards.
 - **POPUP BLOCKED** — allow pop-ups for the file so the DETACH panel and virtual camera windows can open.
-- **Everything feels slow** — lower FIDELITY (it also lowers the render resolution), reduce DENSITY, turn off FEEDBACK, BLUR and PAINT BRUSH, or switch off one shape slot. POINTS and the DISPLAY FILTER are cheap: neither does per-pixel work at the output resolution. PAINT BRUSH draws several thousand strokes a frame; raising its slider actually makes it cheaper (fewer, fatter strokes). VAPORWAVE at high DENSITY with loud input is one of the heavier shapes at the top FIDELITY step.
-- **Old preset loads a different shape** — PLASMA, WOBBLE, LATTICE and ECHO were replaced; presets that used them load MEMORY, ODYSSEY, SUPERNOVA and BLACKHOLE respectively. HALO was removed; presets that used it load RINGS.
+- **Everything feels slow** — lower FIDELITY (it also lowers the render resolution), reduce DENSITY, turn off FEEDBACK, BLUR and PAINT BRUSH, or switch off one shape slot. POINTS and the DISPLAY FILTER are cheap: neither does per-pixel work at the output resolution. PAINT BRUSH draws several thousand strokes a frame; raising its slider actually makes it cheaper (fewer, fatter strokes). VAPORWAVE at high DENSITY with loud input is one of the heavier shapes at the top FIDELITY step. PLANET ray-casts every pixel of a 224-pixel-wide buffer each frame and pauses briefly to rebuild its surface on a new seed or a DENSITY change, so BEAT RESEED with PLANET will stutter on every kick.
+- **Old preset loads a different shape** — PLASMA, WOBBLE, LATTICE and ECHO were replaced; presets that used them load MEMORY, ODYSSEY, SUPERNOVA and BLACKHOLE respectively. HALO, SEQUENCER and DANCER were removed; presets that used them load RINGS, SYNTH and ORBS respectively.
 - **Presets vanished** — slots live in the browser's local storage for that file location; clearing site data or moving the HTML file resets them. Use EXPORT FILE for anything you want to keep.
 
 <img width="1500" height="963" alt="NV Screen" src="https://github.com/user-attachments/assets/d385c4a5-95db-47ff-830c-84131803d643" />
