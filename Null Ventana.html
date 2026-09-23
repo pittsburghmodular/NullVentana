@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>NULL VENTANA — ambient geometric generator</title>
+<title>NULL VENTANA</title>
 <style>
   :root { --fg:#cfd6dd; }
   * { box-sizing:border-box; margin:0; padding:0; }
@@ -113,7 +113,6 @@
   #bgModes { grid-template-columns:repeat(2,1fr); margin-top:6px; }
   .toggle-full { width:100%; padding:5px 0; }
   body.idle #side { opacity:0; pointer-events:none; }
-  body.idle { cursor:none; }
   #fsPrompt {
     display:none; position:fixed; top:20px; left:50%; transform:translateX(-50%);
     background:rgba(10,14,20,0.85); color:#9fd8ff; border:1px solid rgba(159,216,255,0.4);
@@ -157,7 +156,7 @@
     <button id="bPopout" title="Pop out control panel into separate window">DETACH ↗</button>
   </div>
 
-  <div class="feature-box">
+  <div class="feature-box collapsed">
     <div class="box-title">TEXT OVERLAY</div>
     <textarea id="cTextInput" class="textin" rows="1" placeholder="" title="Enter for a new line"></textarea>
     <div class="fxrow">
@@ -230,7 +229,7 @@
     </div>
   </div>
 
-  <div class="feature-box compact">
+  <div class="feature-box compact collapsed">
     <div class="box-title"><span>VIDEO <b id="vVidName"></b></span></div>
     <input type="file" id="cVideoFile" accept="video/*" style="display:none"/>
     <button id="bVideoLoad" class="toggle-full" title="choose a local video file to play beneath the shapes">LOAD VIDEO</button>
@@ -251,22 +250,22 @@
     <input type="range" class="aud-mod-slider" id="cGrainLen" min="10" max="800" value="200" title="longest grain the loop can pick"/>
     <span class="sub-lbl">GRAIN CROSSFADE <b class="b-aud" id="vGrainFade">150 ms</b></span>
     <input type="range" class="aud-mod-slider" id="cGrainFade" min="0" max="500" value="150" title="the frame before each jump / loop wrap is held and faded out over the new one, so cuts don't flash"/>
+    <div class="mod-group" style="border-left-color:rgba(159,216,255,0.5);margin-top:4px;" title="grade for the video file and the camera">
+      <span class="sub-lbl">EXPOSURE <b id="vCamExp">0.0 EV</b></span>
+      <input type="range" id="cCamExp" min="-200" max="200" value="0" title="video & camera exposure, ±2 EV"/>
+      <span class="sub-lbl">TEMPERATURE <b id="vCamTemp">0</b></span>
+      <input type="range" id="cCamTemp" min="-100" max="100" value="0" title="video & camera: cool (blue) to warm (amber)"/>
+      <span class="sub-lbl">SATURATION <b id="vCamSat">100%</b></span>
+      <input type="range" id="cCamSat" min="0" max="200" value="100" title="video & camera colour saturation"/>
+      <span class="sub-lbl">SHADOWS <b id="vCamSh">0</b></span>
+      <input type="range" id="cCamSh" min="-100" max="100" value="0" title="video & camera: lift or crush the darks"/>
+      <span class="sub-lbl">MIDTONES <b id="vCamMid">0</b></span>
+      <input type="range" id="cCamMid" min="-100" max="100" value="0" title="video & camera: raise or lower the mids"/>
+      <span class="sub-lbl">HIGHLIGHTS <b id="vCamHi">0</b></span>
+      <input type="range" id="cCamHi" min="-100" max="100" value="0" title="video & camera: boost or roll off the brights"/>
+    </div>
     <button id="bCam" class="toggle-full" style="margin-top:4px;" title="enable the camera as a live source">CAMERA OFF</button>
     <select id="cCamDev" title="camera device" style="width:100%;background:#0b0b10;color:#cfd6e6;border:1px solid rgba(255,255,255,0.15);font:inherit;font-size:9px;letter-spacing:.08em;padding:3px 2px;border-radius:2px;"><option value="">DEFAULT CAMERA</option></select>
-    <div class="mod-group" style="border-left-color:rgba(159,216,255,0.5);">
-      <span class="sub-lbl">EXPOSURE <b id="vCamExp">0.0 EV</b></span>
-      <input type="range" id="cCamExp" min="-200" max="200" value="0" title="camera exposure, ±2 EV"/>
-      <span class="sub-lbl">TEMPERATURE <b id="vCamTemp">0</b></span>
-      <input type="range" id="cCamTemp" min="-100" max="100" value="0" title="cool (blue) to warm (amber)"/>
-      <span class="sub-lbl">SATURATION <b id="vCamSat">100%</b></span>
-      <input type="range" id="cCamSat" min="0" max="200" value="100" title="camera colour saturation"/>
-      <span class="sub-lbl">SHADOWS <b id="vCamSh">0</b></span>
-      <input type="range" id="cCamSh" min="-100" max="100" value="0" title="lift or crush the darks"/>
-      <span class="sub-lbl">MIDTONES <b id="vCamMid">0</b></span>
-      <input type="range" id="cCamMid" min="-100" max="100" value="0" title="raise or lower the mids"/>
-      <span class="sub-lbl">HIGHLIGHTS <b id="vCamHi">0</b></span>
-      <input type="range" id="cCamHi" min="-100" max="100" value="0" title="boost or roll off the brights"/>
-    </div>
     <span class="lbl" style="margin-top:4px;">SOURCE MIX <b id="vSrcMix">VIDEO</b></span>
     <input type="range" id="cSrcMix" min="0" max="100" value="0" title="crossfade between the video file (left) and the camera (right)"/>
   </div>
@@ -331,6 +330,18 @@
   </div>
   <div class="feature-box">
     <div class="box-title">EFFECTS & MODULATION</div>
+    <div class="fxrow">
+      <span class="lbl">FLUX LINES <b id="vFlux"></b></span>
+      <input type="range" id="cFlux" min="0" max="100" value="0" title="crackling static-electricity lines thrown out from the edges and corners of the picture: mixed widths and lengths, some solid, some a trail of dots; higher = more and longer lines"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModFlux">0%</b></span>
+        <input type="range" class="mod-slider" id="cModFlux" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateFlux">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateFlux" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModFlux">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModFlux" min="-100" max="100" value="0"/>
+      </div>
+    </div>
     <div class="fxrow">
       <span class="lbl">COMIC INK <b id="vCo"></b></span>
       <input type="range" id="cComic" min="0" max="100" value="0" title="comic book ink outlines + flat colour"/>
@@ -500,8 +511,6 @@
         <option value="10">10 S</option><option value="30">30 S</option><option value="60" selected>1 MIN</option><option value="120">2 MIN</option><option value="0">∞</option>
       </select>
     </div>
-    <span class="sub-lbl">REC AUDIO LEVEL <b class="b-aud" id="vRecLvl">-3 dB</b></span>
-    <input type="range" class="aud-mod-slider" id="cRecLvl" min="20" max="100" value="70" title="target peak level of the saved audio; the recorder auto-levels the input up to this and limits anything louder"/>
     <span class="lbl" style="margin-top:6px;">VIRTUAL CAMERA</span>
     <div class="seg" style="grid-template-columns:2fr 1fr;">
       <button id="bVCam" title="floats the live output as a frameless always-on-top picture-in-picture window at the chosen resolution. To use it as a webcam: in OBS add a Window Capture of that window and press Start Virtual Camera, then pick OBS Virtual Camera in the other app.">VIRTUAL CAM OFF</button>
@@ -640,6 +649,7 @@ const state = {
   trails:0, blur:0, glitch:0, seed:(Math.random()*0xffff)|0, beatReseed: false,
   comic:0, split:0, modComic:0.0, modSplit:0.0, lfoRateComic:0.25, lfoRateSplit:0.25, audModComic:0.0, audModSplit:0.0,
   paint:0, modPaint:0.0, lfoRatePaint:0.25, audModPaint:0.0,
+  flux:0, modFlux:0.0, lfoRateFlux:0.25, audModFlux:0.0,
   points:0, modPoints:0.0, lfoRatePoints:0.25, audModPoints:0.0,
   feedback:0, fbZoom:0.12, fbRot:5.7, fbHue:0, fbKey:'off', fbKeyLevel:0.5, fbKeyGain:0.5, modFeedback:0.0, lfoRateFeedback:0.25, audModFeedback:0.0,
   invert:false, bgMode:'palette', noBgA:false, noBgB:false, videoLoop:false, videoGranular:false, grainMax:2.0, grainFade:0.15, srcMix:0, vidIn:0, vidOut:1, palAudio:false,
@@ -657,11 +667,11 @@ const state = {
 };
 
 const lfoPhases = { 
-  rate: 0, mix: 0, den: 0, fid: 0, fxLvl: 0, trails: 0, blur: 0, glitch: 0, points: 0, paint: 0, comic: 0, split: 0, feedback: 0,
+  rate: 0, mix: 0, den: 0, fid: 0, fxLvl: 0, trails: 0, blur: 0, glitch: 0, points: 0, paint: 0, flux: 0, comic: 0, split: 0, feedback: 0,
   textScale: 0, textScatter: 0, textRotate: 0, textPulse: 0, textScan: 0
 };
 const eff = { 
-  rate: 0.45, mix: 0.0, density: 0.5, fidelity: 0.80, fxLevel: 0.7, trails: 0, blur: 0, glitch: 0, points: 0, paint: 0, comic: 0, split: 0, feedback: 0,
+  rate: 0.45, mix: 0.0, density: 0.5, fidelity: 0.80, fxLevel: 0.7, trails: 0, blur: 0, glitch: 0, points: 0, paint: 0, flux: 0, comic: 0, split: 0, feedback: 0,
   textScale: 46, textScatter: 0.15, textRotate: 0.0, textPulse: 0.30, textScan: 0.45
 };
 
@@ -1096,8 +1106,8 @@ function camGranularTrigger(){
   const dur = Math.max(60, frames[frames.length - 1].t - t0 + 1000/32);
   CAMR.loop = { frames:copies, dur, start:now };
 }
-// ---- CAMERA GRADE: exposure, temperature, saturation and a shadows / midtones / highlights tone curve, applied
-// per pixel through three cached 256-entry LUTs (rebuilt only when a control moves) plus a saturation step.
+// ---- SOURCE GRADE (camera + video file): exposure, temperature, saturation and a shadows / midtones / highlights
+// tone curve, applied to both sources before they are mixed, per pixel through three cached 256-entry LUTs (rebuilt only when a control moves) plus a saturation step.
 const GRADE = { r:new Uint8ClampedArray(256), g:new Uint8ClampedArray(256), b:new Uint8ClampedArray(256), key:'', scratch:null, sctx:null };
 function gradeActive(){
   return state.camExp !== 0 || state.camTemp !== 0 || state.camSat !== 1 || state.camSh !== 0 || state.camMid !== 0 || state.camHi !== 0;
@@ -1119,7 +1129,7 @@ function gradeBuildLUT(){
     GRADE.r[v] = x*mulR*255; GRADE.g[v] = x*mulG*255; GRADE.b[v] = x*mulB*255;
   }
 }
-// Draw a camera frame through the grade into the buffer at the given opacity.
+// Draw a camera or video frame through the grade into the buffer at the given opacity.
 function drawCamGraded(el, alpha){
   if(alpha <= 0.004) return;
   if(!gradeActive()){ drawCover(el, alpha); return; }
@@ -1277,7 +1287,7 @@ function drawVideoLayer(){
   const haveVid = VID.playing && VID.ready, haveCam = CAM.on;
   if(!haveVid && !haveCam) return;
   const m = state.srcMix, camEl = haveCam ? camSource(now) : null;
-  const drawVid = ()=>{ drawCover(vid, 1); const ha = videoHoldAlpha(now); if(ha > 0) drawCover(vidHold, ha); };
+  const drawVid = ()=>{ drawCamGraded(vid, 1); const ha = videoHoldAlpha(now); if(ha > 0) drawCamGraded(vidHold, ha); };   // the source grade covers the video file too
   const drawCam = (alpha)=>{ drawCamGraded(camEl, alpha); const ha = camHoldAlpha(now); if(ha > 0 && CAMR.fade) drawCamGraded(CAMR.fade.c, alpha * ha); };
   if(haveVid && haveCam){ drawVid(); drawCam(m); }
   else if(haveVid) drawVid();
@@ -3677,126 +3687,6 @@ function drawLiminalMaze(t){
   bctx.fillRect(0, 0, bw, bh);
 }
 
-// SEQUENCER: grid step sequencer that locks tempo to bass onsets and records band onsets into its steps.
-function drawSequencer(t){
-  // SEQUENCER: a grid step sequencer that locks its tempo to the music and records the audio bands into its steps.
-  // 16 steps x N tracks; each track listens to one band - onsets that land on a step light that step, quiet steps fade.
-  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio * 1.25;
-  bctx.globalCompositeOperation = 'source-over';
-  const SQ = drawSequencer;
-  const STEPS = 16;
-  if(!SQ.init){
-    SQ.init = true; SQ.lastT = 0; SQ.pos = 0; SQ.bpm = 120; SQ.onsets = []; SQ.lvl = new Float32Array(4); SQ.prev = new Float32Array(4);
-    SQ.w = []; for(let k = 0; k < 8; k++) SQ.w.push(new Float32Array(STEPS));
-    SQ.flash = []; for(let k = 0; k < 8; k++) SQ.flash.push(new Float32Array(STEPS));
-    SQ.bar = 0; SQ.page = 0; SQ.knob = new Float32Array(8);
-  }
-  const now = performance.now()*0.001;
-  let dt = now - SQ.lastT; SQ.lastT = now; if(dt > 0.25 || dt < 0) dt = 0;
-  const tracks = 4 + Math.round(eff.density*4);
-  if(SQ.seed !== state.seed){                                   // seeded base pattern + colours
-    const r = mulberry32((state.seed|0) ^ 0x5e10);
-    SQ.base = [];
-    for(let k = 0; k < 8; k++){
-      const row = new Float32Array(STEPS), kind = k % 4;
-      for(let s = 0; s < STEPS; s++){
-        let p = kind === 0 ? (s % 4 === 0 ? 0.9 : s % 8 === 6 ? 0.35 : 0.05) : kind === 1 ? (s % 8 === 4 ? 0.9 : 0.06) : kind === 2 ? (s % 2 === 0 ? 0.7 : 0.2) : 0.25;
-        row[s] = r() < p ? 0.5 + r()*0.5 : 0;
-      }
-      SQ.base.push(row);
-    }
-    SQ.colOff = Math.floor(r()*pal.rgb.length); SQ.seed = state.seed;
-  }
-  // ---- tempo from bass onsets ----
-  let onset = [false, false, false, false];
-  for(let b = 0; b < 4; b++){
-    const v = clamp(A[b]*gain*1.3, 0, 1);
-    if(v > SQ.lvl[b]*1.35 + 0.1 && v > SQ.prev[b] && now - (SQ.lastOn ? SQ.lastOn[b] : 0) > 0.11){ onset[b] = true; if(!SQ.lastOn) SQ.lastOn = [0, 0, 0, 0]; SQ.lastOn[b] = now; }
-    SQ.lvl[b] = lerp(SQ.lvl[b], v, 0.12); SQ.prev[b] = v;
-  }
-  if(onset[0] || (onset[1] && SQ.lvl[0] < 0.15)){
-    SQ.onsets.push(now); if(SQ.onsets.length > 16) SQ.onsets.shift();
-    if(SQ.onsets.length >= 4){
-      const iv = []; for(let i = 1; i < SQ.onsets.length; i++) iv.push(SQ.onsets[i] - SQ.onsets[i-1]);
-      iv.sort((a, b) => a - b); let med = iv[iv.length >> 1];
-      while(med < 0.3) med *= 2; while(med > 1.2) med /= 2;              // fold into 50-200 BPM
-      SQ.bpm = lerp(SQ.bpm, 60/med, 0.25);
-    }
-    // pull the playhead toward the nearest quarter note so the grid locks to the beat
-    const q = Math.round(SQ.pos/4)*4, diff = q - SQ.pos; if(Math.abs(diff) < 1.5) SQ.pos += diff*0.5;
-  }
-  const stepDur = 60/SQ.bpm/4;
-  const prevStep = Math.floor(SQ.pos) % STEPS;
-  SQ.pos += dt/stepDur;
-  const step = Math.floor(SQ.pos) % STEPS;
-  if(step !== prevStep){
-    if(step === 0){
-      SQ.bar++; if(SQ.bar % 4 === 0) SQ.page = (SQ.page + 1) % 4;
-      // the pattern evolves: every bar a few steps flip on or off (musically weighted), more on page changes
-      const nMut = 2 + (SQ.bar % 4 === 0 ? 4 : 0);
-      for(let m = 0; m < nMut; m++){
-        const k = Math.floor(Math.random()*tracks), st = Math.floor(Math.random()*STEPS), kind = k % 4;
-        const bias = kind === 0 ? (st % 4 === 0 ? 0.85 : 0.15) : kind === 1 ? (st % 8 === 4 ? 0.85 : 0.12) : kind === 2 ? (st % 2 === 0 ? 0.6 : 0.3) : 0.3;
-        SQ.base[k][st] = SQ.base[k][st] > 0 && Math.random() > bias ? 0 : (SQ.base[k][st] === 0 && Math.random() < bias ? 0.5 + Math.random()*0.5 : SQ.base[k][st]);
-      }
-    }
-    for(let k = 0; k < tracks; k++){ if(SQ.w[k][step] + SQ.base[k][step] > 0.45) SQ.flash[k][step] = 1; }
-  }
-  // ---- record: an onset in a band lands on the current step of the tracks that listen to it ----
-  for(let k = 0; k < tracks; k++){
-    const b = k % 4;
-    if(onset[b] && (k < 4 || hash1(k*7 + step) < 0.5)) SQ.w[k][step] = Math.min(1, SQ.w[k][step] + 0.6);
-    for(let s = 0; s < STEPS; s++){ SQ.w[k][s] *= Math.max(0, 1 - dt*0.06); SQ.flash[k][s] *= Math.max(0, 1 - dt*9); }
-  }
-  for(let k = 0; k < 8; k++) SQ.knob[k] += (clamp(A[k & 3]*gain*1.2, 0, 1) - SQ.knob[k])*Math.min(1, dt*(8 + k));
-
-  // ---- panel ----
-  bctx.fillStyle = '#15161a'; bctx.fillRect(0, 0, bw, bh);
-  const g = bctx.createLinearGradient(0, 0, 0, bh); g.addColorStop(0, 'rgba(255,255,255,0.05)'); g.addColorStop(1, 'rgba(0,0,0,0.25)');
-  bctx.fillStyle = g; bctx.fillRect(0, 0, bw, bh);
-  const mx = bw*0.05, top = bh*0.2, bottom = bh*0.92, labelW = bw*0.03;
-  const gx0 = mx + labelW, gw = (bw - mx - gx0)/STEPS, gh = (bottom - top)/tracks;
-  const padW = gw*0.82, padH = gh*0.78;
-  const rnd = (x, y, w, h, r) => { bctx.beginPath(); bctx.moveTo(x + r, y); bctx.lineTo(x + w - r, y); bctx.quadraticCurveTo(x + w, y, x + w, y + r); bctx.lineTo(x + w, y + h - r); bctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h); bctx.lineTo(x + r, y + h); bctx.quadraticCurveTo(x, y + h, x, y + h - r); bctx.lineTo(x, y + r); bctx.quadraticCurveTo(x, y, x + r, y); bctx.closePath(); };
-  const fs = Math.max(7, minD*0.034);
-  // header: pattern-page LEDs only (no text, no knobs)
-  const hy = bh*0.1;
-  for(let pgi = 0; pgi < 4; pgi++){
-    const px = mx + labelW + pgi*fs*1.6; bctx.fillStyle = pgi === SQ.page ? m3Rgba(pal.rgb[SQ.colOff % pal.rgb.length], 1.3) : '#2a2c33';
-    bctx.beginPath(); bctx.arc(px, hy, fs*0.3, 0, TAU); bctx.fill();
-  }
-  // step number LEDs
-  for(let s = 0; s < STEPS; s++){
-    const x = gx0 + s*gw + gw*0.5, y = top - fs*0.9;
-    bctx.fillStyle = s === step ? '#fff' : (s % 4 === 0 ? '#6a6d78' : '#33353c'); bctx.beginPath(); bctx.arc(x, y, fs*0.22, 0, TAU); bctx.fill();
-  }
-  // tracks
-  for(let k = 0; k < tracks; k++){
-    const c = pal.rgb[(k + SQ.colOff) % pal.rgb.length], b = k % 4, y = top + k*gh;
-    // label + activity LED + mini meter
-    const led = clamp(SQ.lvl[b]*1.5, 0, 1);
-    bctx.fillStyle = m3Rgba(c, 0.4 + led); bctx.beginPath(); bctx.arc(gx0 - fs*0.6, y + gh*0.5, fs*0.2, 0, TAU); bctx.fill();
-    for(let s = 0; s < STEPS; s++){
-      const x = gx0 + s*gw + (gw - padW)*0.5, py = y + (gh - padH)*0.5;
-      const on = SQ.w[k][s] + SQ.base[k][s], active = on > 0.45, fl = SQ.flash[k][s];
-      const isHead = s === step;
-      // pad body
-      bctx.fillStyle = '#0a0b0e'; rnd(x, py, padW, padH, 3); bctx.fill();
-      let fill;
-      if(active) fill = m3Rgba(c, 0.55 + Math.min(1, on)*0.5 + fl*0.8);
-      else fill = s % 4 === 0 ? '#2a2c34' : '#202228';
-      bctx.fillStyle = fill; rnd(x + 1, py + 1, padW - 2, padH - 2, 3); bctx.fill();
-      if(active){ const hg = bctx.createLinearGradient(0, py, 0, py + padH); hg.addColorStop(0, 'rgba(255,255,255,0.25)'); hg.addColorStop(1, 'rgba(0,0,0,0.15)'); bctx.fillStyle = hg; rnd(x + 1, py + 1, padW - 2, padH - 2, 3); bctx.fill(); }
-      if(fl > 0.05){ bctx.fillStyle = `rgba(255,255,255,${fl*0.5})`; rnd(x - 2, py - 2, padW + 4, padH + 4, 4); bctx.fill(); }
-      if(isHead){ bctx.strokeStyle = 'rgba(255,255,255,0.9)'; bctx.lineWidth = Math.max(1.5, minD*0.005); rnd(x + 0.5, py + 0.5, padW - 1, padH - 1, 3); bctx.stroke(); }
-    }
-  }
-  // playhead column glow
-  const hx = gx0 + step*gw;
-  const pg = bctx.createLinearGradient(hx, 0, hx + gw, 0); pg.addColorStop(0, 'rgba(255,255,255,0)'); pg.addColorStop(0.5, 'rgba(255,255,255,0.16)'); pg.addColorStop(1, 'rgba(255,255,255,0)');
-  bctx.fillStyle = pg; bctx.fillRect(hx, top - fs*1.5, gw, bottom - top + fs*1.5);
-}
-
 // ---- SYNTH: 3D modular synthesizer with moving knobs, blinking LEDs and swaying patch cables ----
 const SYN = { built:false, seed:-1, modules:[], jacks:[], cables:[] };
 // Generate a modular rack from the seed: rows, width, case finish, module widths, knobs, sliders, jacks, LEDs, cables.
@@ -4703,247 +4593,287 @@ function drawAsteroids(t){
   }
 }
 
-// ---- DANCER: club dancers. Nothing here is a stored move: there is no pose or motif library.
-// A dancer is a rig with planted feet (legs solved by IK, so weight stays on the floor), a sprung upper body and a
-// beat clock locked to the incoming audio. Every few bars it invents a PHRASE from random numbers alone: 2-4 key poses
-// sampled from club-sized joint ranges (upright spine, elbows near the ribs, forearms folded up, now and then a hand
-// in the air), how the two arms relate (free, mirrored, parallel, one parked), how hard the poses land on the beat,
-// which subdivision they land on, how deep and on which half of the beat the bounce sits, how much the hips rock and
-// the shoulders shimmy, whether the feet do a step-touch or small free steps, how often, whether they glide, how
-// likely a hop is, plus a random oscillator per arm joint. The phrase loops for its random length and is then thrown
-// away. Bass drives the bounce, steps and hops, overall energy sets pose size and tempo subdivision, mids work the
-// arms and shimmy, highs lift the shoulders and nod the head. DENSITY = crew size (1-5).
-// Figures are solid single-colour artist's mannequins: head with a jaw and chin, long swinging hair, sloped-shoulder torso, pelvis block,
-// tapered limbs and ball joints, slim and completely solid - no outlines of any kind. No light trails; nothing is drawn behind them.
-const DANCE = { dancers:[], lastT:0, level:0, lastBeat:-10, beatCount:0, period:0.52, phase:0 };
-const DP = { lean:0, head:1, twist:2, lSh:3, lEl:4, rSh:5, rEl:6, drop:7, shift:8, shrug:9, N:10 };
-// R(a, b): uniform random in [a, b); pick(): random array element.
-const R = (a, b) => a + Math.random()*(b - a), pick = (arr) => arr[Math.floor(Math.random()*arr.length)];
-function danceNewDancer(i){
-  const d = { cur:new Float32Array(DP.N), vel:new Float32Array(DP.N), tgt:new Float32Array(DP.N), ph:null, phStart:0,
-    feet:[{ x:-0.11, from:-0.11, to:-0.11, u:1, dur:0.5, lift:0, dir:-1 }, { x:0.11, from:0.11, to:0.11, u:1, dur:0.5, lift:0, dir:1 }],
-    lastFoot:0, jump:0, jumpV:0, air:false, kd:[-1, 1], face:Math.random() < 0.5 ? -1 : 1, homeX:null, hue:i, tall:R(0.94, 1.06) };
-  d.cur[DP.drop] = 0.25; d.cur[DP.lSh] = -0.4; d.cur[DP.rSh] = 0.4;
-  return d;
+// ---- PLANET: low-orbit flyover of a seeded, procedurally generated planet ----
+// The surface is a wrapping 512x512 height tile: fractal + ridged noise for the base terrain (how mountainous is
+// seeded), with a crater field stamped on top (bowls that flatten the ground beneath, raised broken rims, ejecta
+// aprons, central peaks in the big ones). DENSITY sets how many of the seeded craters are stamped, how much fine
+// regolith grain is drawn and how many stars are out. Every frame each pixel of the render buffer casts a ray at
+// the sphere from a camera at low altitude pitched toward the horizon: hits sample the tile (with a one-step
+// parallax offset so bowls and rims lean with the view), are lit by a seeded sun, flood below the seeded liquid
+// level, and haze toward the limb; misses show the sky (seeded nebula, stars, sun, sometimes a moon) through an
+// atmosphere rim whose brightness follows how closely the ray grazes the planet. Bass pushes the flyover speed
+// and dips the altitude, low-mids swell the atmosphere, high-mids exaggerate the relief, air brightens the stars
+// and the sun.
+function planetHash(ix, iy, k){
+  let h = Math.imul(ix, 374761393) ^ Math.imul(iy, 668265263) ^ Math.imul(k, 2246822519);
+  h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
 }
-// one random key pose inside the phrase's envelope
-function danceRandPose(ph, energy){
-  const P = new Float32Array(DP.N), big = ph.size*(0.4 + energy*0.6);
-  P[DP.lean] = R(-0.16, 0.16)*big; P[DP.head] = R(-0.22, 0.22); P[DP.twist] = R(-0.8, 0.8)*ph.turn;
-  // club arms: elbows stay close to the ribs with the forearms folded up in front, a loose arm hangs now and then, and
-  // when the music is up a hand goes in the air. All of it is drawn from ranges, nothing is a stored position.
-  const arm = (side) => {
-    const r = Math.random();
-    if(r < ph.handsUp*(0.25 + energy)){ const sh = side*R(2.2, 3.0); return [sh, sh + R(-0.55, 0.55)]; }          // hand in the air
-    const sh = side*(0.08 + Math.pow(Math.random(), 1.8)*0.9*big);
-    if(r > 0.86) return [sh*0.5, sh*0.5 + side*R(-0.25, 0.5)];                                                   // hanging loose
-    return [sh, side*R(2.0, 3.4)];                                                                              // forearm folded up / across
-  };
-  let L = arm(-1), Rr = arm(1);
-  if(ph.armMode === 1) Rr = [-L[0], -L[1]];
-  else if(ph.armMode === 2) Rr = [L[0] + ph.armOff, L[1] + ph.armOff];
-  else if(ph.armMode === 3){ if(ph.parkSide < 0) L = ph.park; else Rr = ph.park; }
-  P[DP.lSh] = L[0]; P[DP.lEl] = L[1]; P[DP.rSh] = Rr[0]; P[DP.rEl] = Rr[1];
-  P[DP.drop] = clamp(ph.level + R(-0.08, 0.14)*big, 0.05, 0.5); P[DP.shift] = R(-1, 1); P[DP.shrug] = R(-0.6, 0.8);
-  return P;
+// tileable value noise on the height tile: (x, y) in tile pixels, `cells` lattice cells across the tile (power of 2)
+function planetVN(x, y, cells, k, TS){
+  const s = cells / TS; x *= s; y *= s;
+  const ix = Math.floor(x), iy = Math.floor(y), m = cells - 1;
+  let fx = x - ix, fy = y - iy; fx = fx*fx*(3 - 2*fx); fy = fy*fy*(3 - 2*fy);
+  const x0 = ix & m, x1 = (ix + 1) & m, y0 = iy & m, y1 = (iy + 1) & m;
+  const a = planetHash(x0, y0, k), b = planetHash(x1, y0, k), c = planetHash(x0, y1, k), d = planetHash(x1, y1, k);
+  const top = a + (b - a)*fx;
+  return top + ((c + (d - c)*fx) - top)*fy;
 }
-function danceNewPhrase(d, energy){
-  const subs = energy < 0.3 ? [2, 2, 1] : energy < 0.65 ? [1, 1, 2, 0.5] : [1, 0.5, 0.5, 1];
-  const ph = { n:2 + ((Math.random()*3) | 0), sub:pick(subs), snap:R(0, 0.65), size:R(0.5, 1.1), turn:R(0.1, 0.8), level:R(0.08, 0.3), handsUp:R(0, 0.5), shimmy:Math.random() < 0.6 ? R(0.2, 1) : 0, shimF:pick([1, 2, 2, 4]),
-    twoStep:Math.random() < 0.6, tsLen:pick([1, 2, 2, 4]),
-    armMode:(Math.random()*4) | 0, armOff:R(-0.4, 0.4), parkSide:Math.random() < 0.5 ? -1 : 1, park:null,
-    bounce:R(0.06, 0.14), bounceOff:Math.random() < 0.3 ? 0.5 : 0, rock:R(0.02, 0.1), rockDiv:pick([1, 2, 2, 4]),
-    stepP:R(0.35, 1), stepW:R(0.4, 1), glide:Math.random() < 0.2, cross:R(0, 0.12), travel:Math.random() < 0.3 ? R(-1, 1) : 0, jumpP:R(0, 0.5),
-    beats:4*pick([1, 2, 2, 4]), osc:[], poses:[] };
-  const ps = ph.parkSide; ph.park = [ps*R(0.05, 0.5), 0]; ph.park[1] = Math.random() < 0.5 ? ph.park[0] + ps*R(-0.2, 0.4) : ps*R(1.6, 3.1);
-  for(const j of [DP.lSh, DP.lEl, DP.rSh, DP.rEl, DP.head, DP.lean])
-    if(Math.random() < 0.55) ph.osc.push([j, R(0.08, j === DP.lean ? 0.08 : j === DP.head ? 0.2 : (j === DP.lEl || j === DP.rEl) ? 0.55 : 0.3), pick([0.5, 1, 1, 2]), R(0, TAU)]);
-  for(let k = 0; k < ph.n; k++) ph.poses.push(danceRandPose(ph, energy));
-  d.ph = ph; d.phStart = DANCE.beatCount;
-}
-function danceStep(d, energy, range){
-  const ph = d.ph;
-  let i, to;
-  if(ph.twoStep){          // step-touch: lead foot goes out, the other closes to it; direction turns round every few steps
-    if(d.tsN === undefined){ d.tsN = 0; d.tsDir = Math.random() < 0.5 ? -1 : 1; }
-    const closing = d.tsN % 2 === 1; if(!closing && (d.tsN/2) % ph.tsLen === 0) d.tsDir = -d.tsDir;
-    const mid0 = (d.feet[0].x + d.feet[1].x)*0.5; if(!closing && Math.abs(mid0) > range*0.6) d.tsDir = -Math.sign(mid0);
-    const lead = d.tsDir > 0 ? 1 : 0; i = closing ? 1 - lead : lead;
-    const o = d.feet[1 - i];
-    to = closing ? o.x - d.tsDir*R(0.09, 0.15) : o.x + d.tsDir*R(0.2, 0.34)*ph.stepW;
-    if(d.feet[i].u < 1 || d.air) return; d.tsN++;
-  } else {
-    i = Math.random() < 0.8 ? 1 - d.lastFoot : d.lastFoot;
-    const o = d.feet[1 - i], side = i ? 1 : -1;
-    if(d.feet[i].u < 1 || d.air) return;
-    to = o.x + side*R(0.09, 0.3)*ph.stepW*(Math.random() < ph.cross ? -0.4 : 1) + ph.travel*0.12;
-    const mid = (to + o.x)*0.5; if(Math.abs(mid) > range*0.7) to -= Math.sign(mid)*R(0.1, 0.25);
-  }
-  const f = d.feet[i];
-  f.from = f.x; f.to = clamp(to, -range - 0.2, range + 0.2); f.u = 0; f.dur = R(0.3, 0.55)*(ph.sub < 1 ? 0.7 : 1);
-  f.lift = ph.glide ? 0.006 : R(0.015, 0.06)*(0.6 + energy*0.8); f.dir = i ? 1 : -1; d.lastFoot = i;
-}
+function drawPlanet(t){
+  const pal = PALETTES[state.palette], gain = 0.25 + state.audio * 1.25, PL = drawPlanet, TS = 512, TM = TS - 1, TN = TS*TS;
+  bctx.globalCompositeOperation = 'source-over';
+  const den = clamp(eff.density, 0, 1), nc = pal.rgb.length;
 
-// DANCER: solid mannequins; see the block comment above for how the movement is generated.
-function drawStickDancer(t){
-  const g = bctx, pal = PALETTES[state.palette], minD = Math.min(bw, bh), gain = 0.25 + state.audio*1.25;
-  g.save(); g.globalCompositeOperation = 'source-over';
-  const count = 1 + Math.round(clamp(eff.density, 0, 1)*4);
-  while(DANCE.dancers.length < count) DANCE.dancers.push(danceNewDancer(DANCE.dancers.length));
-  let dt = t - DANCE.lastT; DANCE.lastT = t; if(dt < 0 || dt > 0.25) dt = 0;
-  const bands = [clamp(A[0]*gain*1.3, 0, 1), clamp(A[1]*gain*1.3, 0, 1), clamp(A[2]*gain*1.3, 0, 1), clamp(A[3]*gain*1.3, 0, 1)];
-  const energy = clamp((bands[0]*1.2 + bands[1] + bands[2]*0.8 + bands[3]*0.5)/3.5, 0, 1);
-  // beat clock: bass onsets tune the period and pull the phase; it free-runs between them
-  let tick = false, half = false;
-  if(A[0] > DANCE.level*1.3 + 0.1 && t - DANCE.lastBeat > 0.2){
-    const iv = t - DANCE.lastBeat; DANCE.lastBeat = t;
-    if(iv < 2.5){ let p = iv; while(p < 0.34) p *= 2; while(p > 0.8) p *= 0.5; DANCE.period = lerp(DANCE.period, p, 0.3); }
-    if(DANCE.phase > 0.6){ DANCE.phase = 0; DANCE.beatCount++; tick = true; } else if(DANCE.phase > 0.4) DANCE.phase = 0.5;
-    else DANCE.phase *= 0.5;
-  }
-  DANCE.level = lerp(DANCE.level, A[0], 0.15);
-  const p0 = DANCE.phase; DANCE.phase += dt/DANCE.period;
-  if(p0 < 0.5 && DANCE.phase >= 0.5) half = true;
-  if(DANCE.phase >= 1){ DANCE.phase -= 1; DANCE.beatCount++; tick = true; }
-  const beatPh = DANCE.phase, clock = DANCE.beatCount + beatPh;
-
-  const SD = drawStickDancer;
-  const o = g;                                               // solid fills only: straight into the buffer, no offscreen layer
-  const figBase = minD*(0.8 - 0.045*count), slotW = bw*0.84/count;
-  const order = []; for(let i = 0; i < count; i++) order.push(i);
-  const back = (i) => count > 3 && (i % 2 === 1);
-  order.sort((a, b) => (back(b) ? 1 : 0) - (back(a) ? 1 : 0));
-  for(const di of order){
-    const d = DANCE.dancers[di], isBack = back(di), fig = figBase*d.tall*(isBack ? 0.84 : 1), floorY = bh*(isBack ? 0.84 : 0.93);
-    const home = bw*0.08 + slotW*(di + 0.5); if(d.homeX === null) d.homeX = home; d.homeX += (home - d.homeX)*Math.min(1, dt*2);
-    const range = Math.max(0.22, slotW*0.4/fig);
-    if(!d.ph || DANCE.beatCount - d.phStart >= d.ph.beats) danceNewPhrase(d, energy);
-    const ph = d.ph, pc = Math.max(0, clock - d.phStart);
-    // pose track: hold the pose, then whip to the next one so it lands exactly on the subdivision
-    const q = pc/ph.sub, idx = Math.floor(q), w = lerp(0.95, 0.28, ph.snap);
-    let u = clamp((fract(q) - (1 - w))/w, 0, 1); u = u*u*(3 - 2*u);
-    const Pa = ph.poses[idx % ph.n], Pb = ph.poses[(idx + 1) % ph.n], T = d.tgt;
-    for(let j = 0; j < DP.N; j++) T[j] = lerp(Pa[j], Pb[j], u);
-    for(const [j, amp, f, o] of ph.osc) T[j] += amp*Math.sin(TAU*pc*f + o)*(0.35 + bands[1]*1.1);
-    const bcurve = Math.pow(0.5 + 0.5*Math.cos(TAU*(beatPh + ph.bounceOff)), 1.6);          // 1 on the (off)beat, 0 between
-    T[DP.drop] += ph.bounce*(0.45 + bands[0]*1.5)*bcurve*3;
-    const rock = Math.sin(TAU*pc/ph.rockDiv)*ph.rock*(0.5 + energy);
-    T[DP.lean] += rock; T[DP.shift] -= rock*4;
-    T[DP.shrug] += bands[3]*1.0*bcurve; T[DP.head] += d.face*0.16*bcurve*(0.4 + bands[2]);
-    const k = lerp(150, 330, energy), damp = 1.5*Math.sqrt(k);
-    for(let j = 0; j < DP.N; j++){ const a = (T[j] - d.cur[j])*k - d.vel[j]*damp; d.vel[j] += a*dt; d.cur[j] += d.vel[j]*dt; }
-    const C = d.cur;
-    // footwork and jumps happen on beats (and half-beats in double time)
-    if(tick || (half && (ph.sub < 1 || Math.random() < 0.25))){
-      if(Math.random() < ph.stepP*(0.35 + energy*0.9)) danceStep(d, energy, range);
-      if(tick && !d.air && energy > 0.5 && bands[0] > 0.55 && Math.random() < ph.jumpP){ d.air = true; d.jumpV = R(0.8, 1.5);      // take off: the feet travel to a new random stance while airborne
-        const c0 = (d.feet[0].x + d.feet[1].x)*0.5, wd = R(0.08, 0.2)*ph.stepW, beats = 2*d.jumpV/11/DANCE.period*0.9;
-        d.feet.forEach((f, i) => { f.from = f.x; f.to = c0 + (i ? wd : -wd); f.u = 0; f.dur = beats; f.lift = 0.04; }); }
-    }
-    if(d.air){ d.jumpV -= 11*dt; d.jump += d.jumpV*dt; if(d.jump <= 0){ d.jump = 0; d.air = false;
-      d.vel[DP.drop] += 3; } }
-    for(const f of d.feet) if(f.u < 1){ f.u = Math.min(1, f.u + dt/(f.dur*DANCE.period)); const s = f.u*f.u*(3 - 2*f.u); f.x = lerp(f.from, f.to, s); }
-    const tw = clamp(C[DP.twist], -1.3, 1.3); if(Math.abs(tw) > 0.2) d.face = tw > 0 ? 1 : -1;
-    const facing = Math.max(0.5, Math.abs(Math.cos(tw*0.9)));
-    // skeleton
-    const thigh = fig*0.235, shin = fig*0.225, legL = (thigh + shin)*0.992, ankH = fig*0.03, jumpPx = d.jump*fig*0.4;
-    const fx = [d.homeX + d.feet[0].x*fig, d.homeX + d.feet[1].x*fig], ctr = (fx[0] + fx[1])*0.5, halfSt = Math.abs(fx[1] - fx[0])*0.5;
-    const hipX = ctr + clamp(C[DP.shift], -1.2, 1.2)*halfSt*0.6, hw = fig*0.055*0.7*facing;
-    const fy = [0, 1].map(i => { const f = d.feet[i]; return floorY - ankH - jumpPx*(1 + 0.5*Math.sin(Math.min(1, d.jump*2)*Math.PI)) - (f.u < 1 ? Math.sin(f.u*Math.PI)*f.lift*fig : 0); });
-    let hipH = legL*(1 - clamp(C[DP.drop], 0.04, 0.6)*0.3);
-    for(let i = 0; i < 2; i++){ if(d.feet[i].u < 1 && !d.air) continue; const dx = fx[i] - (hipX + (i ? hw : -hw)); hipH = Math.min(hipH, Math.sqrt(Math.max(legL*legL*0.2, legL*legL - dx*dx))); }
-    const hipY = floorY - ankH - jumpPx - hipH;
-    const lean = C[DP.lean], torso = fig*0.29, chestX = hipX + Math.sin(lean)*torso, chestY = hipY - Math.cos(lean)*torso;
-    const shrug = clamp(C[DP.shrug], -1, 2), sw = fig*0.118*0.7*facing, shY = chestY - shrug*fig*0.012;
-    const ux = Math.sin(lean), uy = -Math.cos(lean), vx = Math.cos(lean), vy = Math.sin(lean);          // torso axes: u = up the spine, v = across the shoulders
-    const headA = lean + clamp(C[DP.head], -0.45, 0.45), headR = fig*0.068, nkX = chestX + ux*fig*0.03, nkY = chestY + uy*fig*0.03, headX = nkX + Math.sin(headA)*fig*0.073, headY = nkY - Math.cos(headA)*fig*0.073;   // visible neck = half its earlier length
-    const shim = ph.shimmy*Math.sin(TAU*pc*ph.shimF)*fig*0.014*(0.4 + bands[2]*1.2);
-    const seg = (x, y, ang, len) => [x + Math.sin(ang)*len, y + Math.cos(ang)*len];
-    const upper = fig*0.15, fore = fig*0.14;
-    const shUp = (shY - chestY), slope = fig*0.02;          // shoulders sit a little below the base of the neck so the line slopes
-    const sh = [[chestX - vx*sw - ux*slope, chestY - vy*sw - uy*slope + shUp - shim], [chestX + vx*sw - ux*slope, chestY + vy*sw - uy*slope + shUp + shim]];
-    const elb = [seg(sh[0][0], sh[0][1], C[DP.lSh], upper), seg(sh[1][0], sh[1][1], C[DP.rSh], upper)];
-    const flick = bands[3]*0.5*Math.sin(t*19 + di);
-    const wri = [seg(elb[0][0], elb[0][1], C[DP.lEl] + flick, fore), seg(elb[1][0], elb[1][1], C[DP.rEl] - flick, fore)];
-    const knee = [];
-    for(let i = 0; i < 2; i++){
-      const s = i ? 1 : -1; let kT = clamp(s*0.3*(1 - Math.abs(tw)) + tw*0.9, -1, 1); if(Math.abs(kT) < 0.22) kT = 0.22*(kT < 0 ? -1 : kT > 0 ? 1 : s);   // knees bend forward (foreshortened), not turned out
-      d.kd[i] += (kT - d.kd[i])*Math.min(1, dt*8);
-      const hx = hipX + s*hw, dx = fx[i] - hx, dy = fy[i] - hipY, dist = Math.min(hyp(dx, dy) || 1, legL), D = hyp(dx, dy) || 1;
-      const along = (thigh*thigh - shin*shin + dist*dist)/(2*dist), hgt = Math.sqrt(Math.max(0, thigh*thigh - along*along));
-      knee.push([hx + dx/D*along + dy/D*hgt*d.kd[i], hipY + dy/D*along - dx/D*hgt*d.kd[i]]);
-      if(D > legL){ fx[i] = hx + dx/D*legL; fy[i] = hipY + dy/D*legL; }
-    }
-    // ---- mannequin: slim, completely solid single-colour figure (egg head, neck, straight-shouldered tapered torso,
-    // pelvis, tapered limbs, ball joints). No outlines, keylines or gaps: overlapping parts simply merge.
-    const c = pal.rgb[(d.hue + Math.floor(t*0.08)) % pal.rgb.length], col = m3Rgba(c, isBack ? 0.55 : 1, 1);
-    const K = 0.7;                                          // girth: 30% slimmer than the first mannequin build
-    o.fillStyle = col;
-    const part = (pathFn) => { pathFn(); o.fill(); };
-    const cap = (a, b, ra, rb) => part(() => { const th = Math.atan2(b[1] - a[1], b[0] - a[0]);
-      o.beginPath(); o.arc(a[0], a[1], ra*K, th + Math.PI*0.5, th + Math.PI*1.5); o.arc(b[0], b[1], rb*K, th - Math.PI*0.5, th + Math.PI*0.5); o.closePath(); });
-    const ball = (p, r) => part(() => { o.beginPath(); o.arc(p[0], p[1], r*K, 0, TAU); });
-    const egg = (p, rx, ry, rot) => part(() => { o.beginPath(); o.ellipse(p[0], p[1], rx, ry, rot, 0, TAU); });
-    const F = 0.8 + 0.2*facing;
-    const drawArm = (i) => {
-      const S = sh[i], E = elb[i], Wp = wri[i], ux = (Wp[0] - E[0])/fore, uy = (Wp[1] - E[1])/fore;
-      ball(S, fig*0.036); cap(S, E, fig*0.04, fig*0.031); cap(E, Wp, fig*0.033, fig*0.023); ball(E, fig*0.027);
-      egg([Wp[0] + ux*fig*0.03, Wp[1] + uy*fig*0.03], fig*0.03, fig*0.015, Math.atan2(uy, ux));
-    };
-    const drawLeg = (i) => {
-      const s = i ? 1 : -1, H = [hipX + s*hw, hipY], K = knee[i], An = [fx[i], fy[i]];
-      const f = d.feet[i], up = f.u < 1 ? Math.sin(f.u*Math.PI) : 0, dir = f.dir || d.face, fa = dir*(up*0.5 + (d.air ? 0.55 : 0)), fl = fig*0.085;
-      cap(An, [An[0] + dir*Math.cos(fa)*fl, An[1] + fig*0.008 + dir*Math.sin(fa)*fl], fig*0.026, fig*0.018);
-      cap(K, An, fig*0.046, fig*0.027); cap(H, K, fig*0.064, fig*0.044); ball(K, fig*0.035); ball(An, fig*0.022);
-    };
-    const near = d.face > 0 ? 0 : 1, far = 1 - near;
-    const waist = [lerp(hipX, chestX, 0.42), lerp(hipY, chestY, 0.42)];
-    drawArm(far); drawLeg(far); drawLeg(near);
-    cap([hipX, hipY + fig*0.005], waist, fig*0.084*F, fig*0.076*F);                                    // pelvis
-    // torso: level shoulder line, short trapezius slope into the neck, straight taper to the waist - no dome on top
-    part(() => { const W = fig*0.08*F*K, nk = fig*0.034*K, tp = fig*0.04, rS = fig*0.04*K*0.92, P = (a, b) => [chestX + vx*a + ux*b, chestY + vy*a + uy*b];
-      const sl = sh[0], sr = sh[1], nl = P(-nk, tp), nr = P(nk, tp), rl = P(-sw*0.92, -torso*0.32), rr = P(sw*0.92, -torso*0.32);
-      const wl = [waist[0] - vx*W, waist[1] - vy*W], wr = [waist[0] + vx*W, waist[1] + vy*W];
-      // collarbone line: from the top of each upper arm a concave curve sweeps up into the side of the neck
-      const tl = [sl[0] + ux*rS, sl[1] + uy*rS], tr = [sr[0] + ux*rS, sr[1] + uy*rS], cl = P(-sw*0.3, tp*0.4), cr = P(sw*0.3, tp*0.4);
-      o.beginPath(); o.moveTo(sl[0], sl[1]); o.lineTo(tl[0], tl[1]); o.quadraticCurveTo(cl[0], cl[1], nl[0], nl[1]); o.lineTo(nr[0], nr[1]); o.quadraticCurveTo(cr[0], cr[1], tr[0], tr[1]); o.lineTo(sr[0], sr[1]);
-      o.quadraticCurveTo(rr[0], rr[1], wr[0], wr[1]); o.quadraticCurveTo(waist[0] - ux*W*0.5, waist[1] - uy*W*0.5, wl[0], wl[1]); o.quadraticCurveTo(rl[0], rl[1], sl[0], sl[1]); o.closePath(); });
-    cap([nkX, nkY], [lerp(nkX, headX, 0.5), lerp(nkY, headY, 0.5)], fig*0.0295, fig*0.0265);           // neck
-    // head: round cranium narrowing through the cheeks into a jaw and chin; the chin swings toward the way the body is turned
-    const hrx = Math.cos(headA), hry = Math.sin(headA), HP = (a, b) => [headX + hrx*a - hry*b, headY + hry*a + hrx*b];   // a = to the right, b = down the face
-    const turn = clamp(tw, -1, 1), rC = headR*0.76, cy0 = -headR*0.22, chinX = turn*headR*0.3, jawW = rC*0.74;
-    part(() => { const cL = HP(-rC*0.97, cy0 + rC*0.25), cR = HP(rC*0.97, cy0 + rC*0.25), jl = HP(-jawW + chinX*0.5, headR*0.62), jr = HP(jawW + chinX*0.5, headR*0.62);
-      const ch = HP(chinX, headR*1.06), cc = HP(0, cy0), a0 = Math.atan2(cL[1] - cc[1], cL[0] - cc[0]), a1 = Math.atan2(cR[1] - cc[1], cR[0] - cc[0]);
-      o.beginPath(); o.moveTo(cL[0], cL[1]); o.arc(cc[0], cc[1], rC, a0, a1 + (a1 < a0 ? TAU : 0));
-      o.quadraticCurveTo(jr[0], jr[1], ch[0] + hrx*headR*0.2, ch[1] + hry*headR*0.2); o.quadraticCurveTo(ch[0], ch[1] + headR*0.07, ch[0] - hrx*headR*0.2, ch[1] - hry*headR*0.2); o.quadraticCurveTo(jl[0], jl[1], cL[0], cL[1]); o.closePath(); });
-    // long hair: a cap of volume over the skull plus hanging locks. Each lock is a little chain with its own inertia
-    // (verlet), pinned to the skull, so the hair swings, lags and whips with the bounce, the head nod and every step.
-    if(d.hs === undefined) d.hs = -d.face; d.hs += (-d.face - d.hs)*Math.min(1, dt*4);              // hair is swept to the side away from the face, so the jawline stays clear
-    const hsd = d.hs;
-    part(() => { const cc = HP(hsd*headR*0.08, cy0 - headR*0.05); o.beginPath(); o.arc(cc[0], cc[1], rC*1.14, 0, TAU); });        // full cap of hair over the whole skull
-    const NL = 9, NS = 4, segL = fig*0.054/NS;
-    if(!d.hair || d.hair.length !== NL){ d.hair = []; for(let k = 0; k < NL; k++) d.hair.push(null); }
-    const hdt = Math.min(dt, 0.033), keep = Math.pow(0.012, hdt);
-    for(let k = 0; k < NL; k++){
-      // locks are pinned all the way round the skull, from one temple over the back to the other, so the hair frames the whole head
-      // (evenly spaced from ear to ear across the back of the head, so they hang as one continuous curtain - no gap in the middle)
-      const sgn = k/(NL - 1)*2 - 1, u = 1 - Math.abs(sgn), anchor = HP(sgn*rC*0.72 + hsd*headR*0.08, cy0 + rC*(0.12 + 0.22*u));
-      let H = d.hair[k];
-      if(!H || !isFinite(H[NS][0]) || hyp(H[0][0] - anchor[0], H[0][1] - anchor[1]) > fig*0.35){
-        H = d.hair[k] = []; for(let q = 0; q <= NS; q++) H.push([anchor[0], anchor[1] + q*segL, anchor[0], anchor[1] + q*segL]); }
-      H[0][0] = anchor[0]; H[0][1] = anchor[1];
-      if(hdt > 0){
-        for(let q = 1; q <= NS; q++){ const P = H[q], vx0 = (P[0] - P[2])*keep, vy0 = (P[1] - P[3])*keep; P[2] = P[0]; P[3] = P[1];
-          P[0] += vx0 + (sgn*fig*0.5 + hsd*fig*0.4)*hdt*hdt; P[1] += vy0 + fig*14*hdt*hdt; }
-        for(let it = 0; it < 3; it++) for(let q = 1; q <= NS; q++){ const A0 = H[q - 1], P = H[q], dx = P[0] - A0[0], dy = P[1] - A0[1], L = hyp(dx, dy) || 1, f = (L - segL)/L;
-          if(q === 1){ P[0] -= dx*f; P[1] -= dy*f; } else { P[0] -= dx*f*0.5; P[1] -= dy*f*0.5; A0[0] += dx*f*0.5; A0[1] += dy*f*0.5; } }
+  // ---------------- seeded world ----------------
+  if(PL.seed !== state.seed){
+    const r = mulberry32((state.seed ^ 0x9a7e7) >>> 0), ks = (state.seed * 7919) | 0;
+    const pick = (avoid) => { let k = Math.floor(r()*nc); if(nc > 1 && avoid.indexOf(k) >= 0) k = (k + 1 + Math.floor(r()*(nc - 1))) % nc; return k; };
+    const cLow = pick([]), cHigh = pick([cLow]), cRim = pick([cLow]), cSun = pick([cRim]), cWater = pick([cLow, cHigh]), cNeb = pick([cRim]);
+    const mount = r()*r();                                   // 0 cratered plains ... 1 broken highlands
+    const az = 0.45 + r()*2.25, el = 0.22 + r()*0.75;        // sun direction: azimuth ahead of the camera, elevation
+    const sea = r() < 0.55 ? 0.30 + r()*0.2 : -1;            // liquid fills the ground below this height
+    const stars = [];
+    for(let i = 0; i < 520; i++) stars.push({ x:r(), y:Math.pow(r(), 1.4), sz:r() < 0.15 ? 2 : 1, b:0.35 + r()*0.65, ph:r()*TAU, rate:0.6 + r()*2.4, ci:r() < 0.7 ? -1 : Math.floor(r()*nc) });
+    const nebs = [];
+    for(let i = 0, n = 2 + Math.floor(r()*2); i < n; i++) nebs.push({ x:r(), y:r()*0.7, rx:0.25 + r()*0.4, ry:0.12 + r()*0.25, ci:i === 0 ? cNeb : Math.floor(r()*nc), a:0.14 + r()*0.16, sp:(r() - 0.5)*0.01 });
+    // craters: mostly small, a few huge; the first `count` of this list are stamped, so DENSITY adds craters in order
+    const craters = [];
+    for(let i = 0; i < 300; i++){ const rad = 4 + 64*Math.pow(r(), 2.8); craters.push({ x:r()*TS, y:r()*TS, rad, depth:(0.10 + r()*0.22) * Math.pow(rad/64, 0.35), rn:r()*1000, peak:rad > 26 && r() < 0.6, fresh:r() }); }
+    PL.cfg = { cLow, cHigh, cRim, cSun, cWater, cNeb, mount, sea,
+      L:[Math.cos(el)*Math.cos(az), Math.cos(el)*Math.sin(az), Math.sin(el)],
+      sunX:0.5 + 0.42*Math.cos(az), sunY:0.05 + 0.22*(1 - el/0.97), sunR:0.05 + r()*0.05, sunOn:Math.sin(az) > 0.35 || r() < 0.3,
+      moon:r() < 0.55 ? { x:0.12 + r()*0.76, y:0.08 + r()*0.3, rad:0.02 + r()*0.05, ph:r()*TAU, ci:Math.floor(r()*nc) } : null,
+      alt:0.075 + r()*0.06, pitch:0.5 + r()*0.16, span:0.8 + r()*0.3, stars, nebs, craters, ks, wobble:r()*TAU };
+    // base terrain
+    if(!PL.H0){ PL.H0 = new Float32Array(TN); PL.HC = new Float32Array(TN); PL.HR = new Float32Array(TN); PL.FM = new Float32Array(TN); PL.HH = new Float32Array(TN); PL.GX = new Float32Array(TN); PL.GY = new Float32Array(TN); }
+    // base terrain is generated at half resolution and upsampled (the crater stamps and grain supply the fine detail)
+    const H0 = PL.H0, flat = 1 - mount*0.55, HS = TS >> 1, HM = HS - 1, half = PL.half || (PL.half = new Float32Array(HS*HS));
+    for(let y = 0, i = 0; y < HS; y++){
+      for(let x = 0; x < HS; x++, i++){
+        let h = 0, amp = 0.5, c = 4;
+        for(let o = 0; o < 5; o++){ h += (planetVN(x, y, c, ks + o, HS)*2 - 1)*amp; amp *= 0.5; c *= 2; }
+        let rg = 0, a2 = 0.5, c2 = 8;   // ridged component (8, 16, 32, 64 cells)
+        for(let o = 0; o < 4; o++){ rg += (1 - Math.abs(planetVN(x, y, c2, ks + 20 + o, HS)*2 - 1))*a2; a2 *= 0.5; c2 *= 2; }
+        half[i] = 0.5 + h*0.34*flat + (rg - 0.62)*mount*0.7;
       }
-      const w0 = fig*0.022, w1 = fig*0.013;
-      for(let q = 0; q < NS; q++) cap(H[q], H[q + 1], lerp(w0, w1, q/NS)/K, lerp(w0, w1, (q + 1)/NS)/K);
     }
-    drawArm(near);
+    for(let y = 0; y < TS; y++){
+      const fy = y*0.5 - 0.25, iy = Math.floor(fy), ty = fy - iy, y0 = (iy & HM)*HS, y1 = ((iy + 1) & HM)*HS;
+      for(let x = 0; x < TS; x++){
+        const fx = x*0.5 - 0.25, ix = Math.floor(fx), tx = fx - ix, x0 = ix & HM, x1 = (ix + 1) & HM;
+        const top = half[y0 + x0] + (half[y0 + x1] - half[y0 + x0])*tx;
+        H0[y*TS + x] = top + ((half[y1 + x0] + (half[y1 + x1] - half[y1 + x0])*tx) - top)*ty;
+      }
+    }
+    // fine regolith grain: a small wrapping detail tile sampled at a higher frequency than the terrain
+    const DT = PL.DT || (PL.DT = new Float32Array(128*128));
+    for(let y = 0, i = 0; y < 128; y++) for(let x = 0; x < 128; x++, i++) DT[i] = (planetVN(x, y, 16, ks + 5, 128) - 0.5)*0.55 + (planetVN(x, y, 64, ks + 6, 128) - 0.5)*0.45;
+    PL.seed = state.seed; PL.count = -1;
+    PL.u = (state.seed % 977) * 0.5; PL.v = (state.seed % 731) * 0.7; PL.lastT = t; PL.bass = 0; PL.mid = 0; PL.hi = 0;
   }
-  g.restore();
+  const C = PL.cfg;
+
+  // ---------------- crater layer, restamped when DENSITY moves the count ----------------
+  const count = Math.round(300 * (0.04 + 0.96*den) / 12) * 12;
+  if(count !== PL.count){
+    PL.count = count;
+    const HC = PL.HC, HR = PL.HR, FM = PL.FM, H0 = PL.H0;
+    HC.fill(0); HR.fill(0); FM.fill(0);
+    for(let ci = 0; ci < count; ci++){
+      const cr = C.craters[ci], rad = cr.rad, R2 = Math.ceil(rad*1.7), cx = Math.round(cr.x), cy = Math.round(cr.y);
+      const base = H0[((cy & TM)*TS) + (cx & TM)], dep = cr.depth, rimH = dep*0.42, ir = 1/rad;
+      const ridgeW = cr.fresh < 0.4 ? 0.05 : 0.09, ej = cr.fresh > 0.5 ? dep*0.06 : 0;
+      for(let j = -R2; j <= R2; j++){
+        const ky = (cy + j) & TM;
+        for(let i = -R2; i <= R2; i++){
+          const d = Math.sqrt(i*i + j*j)*ir; if(d > 1.7) continue;
+          const kx = (cx + i) & TM, k = ky*TS + kx;
+          if(d < 1){
+            const w = d < 0.82 ? 1 : (1 - d)/0.18, ww = w*w*(3 - 2*w);
+            const bowl = base - dep*(1 - d*d)*(cr.fresh < 0.4 ? 1 : 0.85 + 0.15*(1 - d));
+            HC[k] = HC[k]*(1 - ww) + bowl*ww; FM[k] = FM[k]*(1 - ww) + ww;
+            if(cr.peak) HR[k] += dep*0.55*Math.exp(-d*d/(0.11*0.11));
+          }
+          const ang = Math.atan2(j, i);
+          const rn = 0.65 + 0.7*planetVN(kx + cr.rn, ky - cr.rn, 128, C.ks + 40, TS)*Math.max(0.3, Math.abs(Math.sin(ang*3 + cr.rn)));
+          HR[k] += rimH*rn*Math.exp(-(d - 1)*(d - 1)/(2*ridgeW*ridgeW));
+          if(ej > 0 && d > 1 && d < 1.7) HR[k] += ej*(1.7 - d)*planetVN(kx*3, ky*3, 512, C.ks + 41, TS);
+        }
+      }
+    }
+    // combine: bowls replace the terrain under them, rims / ejecta / peaks add on top, then gradients (wrapping)
+    const HH = PL.HH, GX = PL.GX, GY = PL.GY;
+    for(let k = 0; k < TN; k++) HH[k] = H0[k]*(1 - FM[k]) + HC[k] + HR[k];
+    for(let y = 0; y < TS; y++){
+      const ym = ((y - 1) & TM)*TS, yp = ((y + 1) & TM)*TS, y0 = y*TS;
+      for(let x = 0; x < TS; x++){
+        GX[y0 + x] = (HH[y0 + ((x + 1) & TM)] - HH[y0 + ((x - 1) & TM)])*0.5;
+        GY[y0 + x] = (HH[yp + x] - HH[ym + x])*0.5;
+      }
+    }
+  }
+
+  // ---------------- per-frame state ----------------
+  let dt = t - PL.lastT; PL.lastT = t; if(dt < 0 || dt > 0.25) dt = 0;
+  const kA = Math.min(1, dt*9);
+  PL.bass += (clamp(A[0]*gain*1.3, 0, 1) - PL.bass)*kA;
+  PL.mid  += (clamp(A[1]*gain*1.3, 0, 1) - PL.mid)*kA;
+  PL.hi   += (clamp(A[3]*gain*1.4, 0, 1) - PL.hi)*kA;
+  const relief = 1 + clamp(A[2]*gain*1.2, 0, 1)*1.1;
+  const W = 224, H = Math.max(32, Math.round(W * bh / bw));
+  if(!PL.oc || PL.ow !== W || PL.oh !== H){
+    PL.oc = document.createElement('canvas'); PL.oc.width = W; PL.oc.height = H; PL.octx = PL.oc.getContext('2d');
+    PL.img = PL.octx.createImageData(W, H);
+    PL.sc = document.createElement('canvas'); PL.sc.width = W; PL.sc.height = H; PL.sctx = PL.sc.getContext('2d', { willReadFrequently:true });
+    PL.ow = W; PL.oh = H;
+  }
+  const K = TS / C.span;                                        // tile pixels per radian of surface
+  PL.v += dt * 0.022 * K * (1 + 1.6*PL.bass);                   // fly forward (slow drift), bass pushes harder
+  const bank = Math.sin(t*0.05 + C.wobble);
+  PL.u += dt * 0.006 * K * bank;                                 // slow heading wander
+  const cols = pal.rgb, rgbOf = (i) => cols[((i % nc) + nc) % nc];
+  const cLow = rgbOf(C.cLow), cHigh = rgbOf(C.cHigh), cRim = rgbOf(C.cRim), cSun = rgbOf(C.cSun), cWater = rgbOf(C.cWater);
+  const skyBg = pal.bgRgb;
+  const nStars = Math.round(C.stars.length * (0.2 + 0.8*den));
+
+  // ---------------- sky (drawn with canvas ops, read back so the ground can occlude it) ----------------
+  const sx = PL.sctx;
+  sx.globalCompositeOperation = 'source-over'; sx.globalAlpha = 1;
+  const sg = sx.createLinearGradient(0, 0, 0, H);
+  sg.addColorStop(0, `rgb(${skyBg[0]*0.35|0},${skyBg[1]*0.35|0},${skyBg[2]*0.4|0})`);
+  sg.addColorStop(1, `rgb(${Math.min(255, skyBg[0]*0.6 + cRim[0]*0.12)|0},${Math.min(255, skyBg[1]*0.6 + cRim[1]*0.12)|0},${Math.min(255, skyBg[2]*0.6 + cRim[2]*0.12)|0})`);
+  sx.fillStyle = sg; sx.fillRect(0, 0, W, H);
+  sx.globalCompositeOperation = 'lighter';
+  for(const nb of C.nebs){
+    const c = rgbOf(nb.ci), cxp = ((nb.x + t*nb.sp) % 1 + 1) % 1 * W, cyp = nb.y*H, rr = Math.max(nb.rx*W, nb.ry*H);
+    const g = sx.createRadialGradient(cxp, cyp, 0, cxp, cyp, rr);
+    const a = nb.a*(0.8 + 0.5*PL.hi);
+    g.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`); g.addColorStop(0.5, `rgba(${c[0]},${c[1]},${c[2]},${(a*0.35).toFixed(3)})`); g.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
+    sx.save(); sx.translate(cxp, cyp); sx.scale(nb.rx*W/rr, nb.ry*H/rr); sx.translate(-cxp, -cyp);
+    sx.fillStyle = g; sx.fillRect(cxp - rr, cyp - rr, rr*2, rr*2); sx.restore();
+  }
+  const starDrift = t*0.004;
+  for(let i = 0; i < nStars; i++){
+    const s = C.stars[i], px = ((s.x + starDrift) % 1)*W, py = s.y*H*0.92;
+    const tw = 0.55 + 0.45*Math.sin(t*s.rate + s.ph);
+    sx.globalAlpha = Math.min(1, s.b*tw*(0.7 + 0.6*PL.hi));
+    const c = s.ci < 0 ? null : rgbOf(s.ci);
+    sx.fillStyle = c ? `rgb(${c[0]},${c[1]},${c[2]})` : '#ffffff';
+    sx.fillRect(px, py, s.sz, s.sz);
+  }
+  sx.globalAlpha = 1;
+  if(C.sunOn){
+    const sxp = C.sunX*W, syp = C.sunY*H, sr = C.sunR*W*(1 + 0.25*PL.hi) * 3;
+    const g = sx.createRadialGradient(sxp, syp, 0, sxp, syp, sr);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.12, `rgba(${cSun[0]},${cSun[1]},${cSun[2]},0.95)`);
+    g.addColorStop(0.3, `rgba(${cSun[0]},${cSun[1]},${cSun[2]},0.28)`); g.addColorStop(1, `rgba(${cSun[0]},${cSun[1]},${cSun[2]},0)`);
+    sx.fillStyle = g; sx.fillRect(sxp - sr, syp - sr, sr*2, sr*2);
+  }
+  if(C.moon){
+    const m = C.moon, c = rgbOf(m.ci), mx = m.x*W, my = m.y*H, mr = m.rad*W;
+    sx.globalCompositeOperation = 'source-over';
+    sx.fillStyle = `rgb(${c[0]*0.22|0},${c[1]*0.22|0},${c[2]*0.25|0})`; sx.beginPath(); sx.arc(mx, my, mr, 0, TAU); sx.fill();
+    const lit = sx.createRadialGradient(mx + Math.cos(m.ph)*mr*0.6, my + Math.sin(m.ph)*mr*0.6, 0, mx, my, mr*1.1);
+    lit.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},0.9)`); lit.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
+    sx.fillStyle = lit; sx.beginPath(); sx.arc(mx, my, mr, 0, TAU); sx.fill();
+  }
+  const skyD = sx.getImageData(0, 0, W, H).data;
+
+  // ---------------- ray-cast the planet ----------------
+  const px = PL.img.data, HH = PL.HH, GX = PL.GX, GY = PL.GY, FM = PL.FM;
+  const oy = 1 + C.alt*(1 - 0.3*PL.bass), c0 = oy*oy - 1;          // camera height above the unit sphere's centre
+  const tanH = Math.tan(0.62), tanV = tanH*H/W;
+  const pitch = C.pitch + 0.03*Math.sin(t*0.11), roll = 0.07*bank;
+  const cp = Math.cos(pitch), sp = Math.sin(pitch), crl = Math.cos(roll), srl = Math.sin(roll);
+  const L = C.L, Lx = L[0], Ly = L[1], Lz = L[2];
+  const S = 60*relief, thick = 0.028*(1 + 0.9*PL.mid), fogK = 1/0.24, par = 9;
+  const sea = C.sea, strip = bgStrip, ks = C.ks;
+  const hazeR = cRim[0]*0.5 + skyBg[0]*0.4, hazeG = cRim[1]*0.5 + skyBg[1]*0.4, hazeB = cRim[2]*0.5 + skyBg[2]*0.4;
+  const ambR = 0.14 + skyBg[0]/255*0.12, ambG = 0.14 + skyBg[1]/255*0.12, ambB = 0.14 + skyBg[2]/255*0.12;
+  const grain = 0.008 + 0.022*den, DT = PL.DT;
+  let p = 0;
+  for(let y = 0; y < H; y++){
+    const vy0 = (0.5 - (y + 0.5)/H)*2*tanV;
+    for(let x = 0; x < W; x++, p += 4){
+      const vx0 = ((x + 0.5)/W - 0.5)*2*tanH;
+      const vx = vx0*crl - vy0*srl, vy1 = vx0*srl + vy0*crl;
+      let dx = vx, dy = vy1*cp - sp, dz = vy1*sp + cp;
+      const il = 1/Math.sqrt(dx*dx + dy*dy + dz*dz); dx *= il; dy *= il; dz *= il;
+      const bq = oy*dy, disc = bq*bq - c0;
+      if(disc < 0 || bq > 0){
+        // ---- sky pixel, with the atmosphere rim where the ray grazes the planet
+        let glow = 0;
+        if(bq < 0){ const dl = Math.sqrt(oy*oy - bq*bq) - 1; glow = Math.exp(-dl/thick)*1.1 + Math.exp(-dl/(thick*7))*0.3; }
+        if(strip){
+          const a = Math.min(1, glow);
+          px[p] = cRim[0]; px[p+1] = cRim[1]; px[p+2] = cRim[2]; px[p+3] = a*255;
+        } else {
+          px[p]   = Math.min(255, skyD[p]   + cRim[0]*glow);
+          px[p+1] = Math.min(255, skyD[p+1] + cRim[1]*glow);
+          px[p+2] = Math.min(255, skyD[p+2] + cRim[2]*glow);
+          px[p+3] = 255;
+        }
+        continue;
+      }
+      const th = -bq - Math.sqrt(disc);
+      const hx = dx*th, hy = dy*th + oy, hz = dz*th;                 // hit point relative to the planet's centre
+      const zx = hx/hy, zz = hz/hy, zx2 = zx*zx, zz2 = zz*zz;                // atan series: the ratios stay below ~0.7
+      const u = zx*(1 - zx2*(0.3333 - zx2*0.2))*K + PL.u, v = zz*(1 - zz2*(0.3333 - zz2*0.2))*K + PL.v;
+      // bilinear tile samples (wrapping), first the height, then everything again at the parallax-shifted point
+      let iu = Math.floor(u), iv = Math.floor(v), fu = u - iu, fv = v - iv;
+      let x0 = iu & TM, x1 = (iu + 1) & TM, y0 = (iv & TM)*TS, y1 = ((iv + 1) & TM)*TS;
+      let i0 = y0 + x0, i1 = y0 + x1, i2 = y1 + x0, i3 = y1 + x1;
+      let tp = HH[i0] + (HH[i1] - HH[i0])*fu;
+      const h0 = tp + ((HH[i2] + (HH[i3] - HH[i2])*fu) - tp)*fv;
+      const u2 = u - dx*(h0 - 0.5)*par, v2 = v - dz*(h0 - 0.5)*par;   // parallax: high ground leans toward the camera
+      iu = Math.floor(u2); iv = Math.floor(v2); fu = u2 - iu; fv = v2 - iv;
+      x0 = iu & TM; x1 = (iu + 1) & TM; y0 = (iv & TM)*TS; y1 = ((iv + 1) & TM)*TS;
+      i0 = y0 + x0; i1 = y0 + x1; i2 = y1 + x0; i3 = y1 + x1;
+      const w0 = (1 - fu)*(1 - fv), w1 = fu*(1 - fv), w2 = (1 - fu)*fv, w3 = fu*fv;
+      let h = HH[i0]*w0 + HH[i1]*w1 + HH[i2]*w2 + HH[i3]*w3;
+      let gx = GX[i0]*w0 + GX[i1]*w1 + GX[i2]*w2 + GX[i3]*w3, gy = GY[i0]*w0 + GY[i1]*w1 + GY[i2]*w2 + GY[i3]*w3;
+      const fm = FM[i0]*w0 + FM[i1]*w1 + FM[i2]*w2 + FM[i3]*w3;
+      // fine regolith grain from the detail tile (bilinear, wrapping at 128)
+      const gu = u*2.3, gv = v*2.3, giu = Math.floor(gu), giv = Math.floor(gv), gfu = gu - giu, gfv = gv - giv;
+      const gx0 = giu & 127, gx1 = (giu + 1) & 127, gy0 = (giv & 127)*128, gy1 = ((giv + 1) & 127)*128;
+      const gt = DT[gy0 + gx0] + (DT[gy0 + gx1] - DT[gy0 + gx0])*gfu;
+      const dn = gt + ((DT[gy1 + gx0] + (DT[gy1 + gx1] - DT[gy1 + gx0])*gfu) - gt)*gfv;
+      h += dn*grain*0.5; gx += dn*grain; gy -= dn*grain*0.8;
+      const Sd = S*(0.3 + 0.7*Math.exp(-th*5));                         // relief calms with distance so the far field doesn't shimmer
+      let nx = -gx*Sd, ny = -gy*Sd, nz = 1; const nl = 1/Math.sqrt(nx*nx + ny*ny + 1); nx *= nl; ny *= nl; nz *= nl;
+      let diff = nx*Lx + ny*Ly + nz*Lz; if(diff < 0) diff = 0;
+      let r, g, b;
+      // shoreline: the liquid and the land are both shaded and blended across a soft band around the liquid level,
+      // so the water's edge is smooth instead of a hard aliased cut
+      const wet = sea > 0 ? (sea + 0.018 - h)/0.036 : 0;
+      const wm = wet <= 0 ? 0 : wet >= 1 ? 1 : wet*wet*(3 - 2*wet);
+      let lr_ = 0, lg_ = 0, lb_ = 0;
+      if(wm < 1){
+        let tl = (h - 0.22)/0.55; tl = tl < 0 ? 0 : tl > 1 ? 1 : tl; tl = tl*tl*(3 - 2*tl);
+        const lo = 0.5 + 0.5*tl;
+        lr_ = (cLow[0]*lo*(1 - tl) + cHigh[0]*tl)*0.82; lg_ = (cLow[1]*lo*(1 - tl) + cHigh[1]*tl)*0.82; lb_ = (cLow[2]*lo*(1 - tl) + cHigh[2]*tl)*0.82;
+        if(h > 0.86){ const sn = Math.min(1, (h - 0.86)/0.1)*0.5; lr_ += (235 - lr_)*sn; lg_ += (235 - lg_)*sn; lb_ += (245 - lb_)*sn; }
+        const occ = 1 - 0.4*fm, li = 1.25*diff*occ;   // crater bowls sit in their own shadow
+        lr_ *= (ambR + li)*occ; lg_ *= (ambG + li)*occ; lb_ *= (ambB + li)*occ;
+      }
+      if(wm > 0){
+        const depth = Math.max(0, sea - h), shade = 0.3 + 0.55*Math.exp(-depth*7);
+        r = cWater[0]*shade; g = cWater[1]*shade; b = cWater[2]*shade;
+        let hxv = Lx - dx, hyv = Ly - dz, hzv = Lz - dy; const hl = 1/Math.sqrt(hxv*hxv + hyv*hyv + hzv*hzv);
+        const ndh = (dn*0.06*hxv + dn*0.05*hyv + hzv)*hl;
+        const spec = ndh > 0 ? Math.pow(ndh, 90)*1.4 : 0;
+        r += cSun[0]*spec + 20*spec; g += cSun[1]*spec + 20*spec; b += cSun[2]*spec + 20*spec;
+        if(wm < 1){ r = lr_ + (r - lr_)*wm; g = lg_ + (g - lg_)*wm; b = lb_ + (b - lb_)*wm; }
+      } else { r = lr_; g = lg_; b = lb_; }
+      // haze with distance, and the atmosphere lighting up where the ground grazes the limb
+      const fog = 1 - Math.exp(-th*fogK), gr = Math.exp(-disc*260)*1.1;
+      r = r*(1 - fog) + hazeR*fog + cRim[0]*gr; g = g*(1 - fog) + hazeG*fog + cRim[1]*gr; b = b*(1 - fog) + hazeB*fog + cRim[2]*gr;
+      px[p] = r > 255 ? 255 : r; px[p+1] = g > 255 ? 255 : g; px[p+2] = b > 255 ? 255 : b; px[p+3] = 255;
+    }
+  }
+  PL.octx.putImageData(PL.img, 0, 0);
+  bctx.imageSmoothingEnabled = true;
+  bctx.drawImage(PL.oc, 0, 0, W, H, 0, 0, bw, bh);
 }
 
 // ---- CITY: endlessly scrolling randomized isometric 8-bit pixel-art city ----
@@ -6638,10 +6568,10 @@ const SHAPES = [
   { id:'pulses', label:'PULSES' }, { id:'forest', label:'FOREST' }, { id:'snow', label:'SNOW' },
   { id:'rain', label:'RAIN' }, { id:'triangulation', label:'TRIANGLES' },
   { id:'rising', label:'RISING' }, { id:'vmsolid', label:'DIAMONDS' }, { id:'vmhollow', label:'HOLLOW' },
-  { id:'solar', label:'SOLAR' }, { id:'liminal', label:'LIMINAL' }, { id:'sequencer', label:'SEQUENCER' },
+  { id:'solar', label:'SOLAR' }, { id:'liminal', label:'LIMINAL' },
   { id:'modsynth', label:'SYNTH' }, { id:'web', label:'WEB' }, { id:'grove', label:'GROVE' },
-  { id:'vaporland', label:'VAPORWAVE' }, { id:'asteroids', label:'ASTEROIDS' }, { id:'stickdancer', label:'DANCER' },
-  { id:'cityflyover', label:'CITY' }, { id:'jellyfish', label:'JELLYFISH' },
+  { id:'vaporland', label:'VAPORWAVE' }, { id:'asteroids', label:'ASTEROIDS' },
+  { id:'cityflyover', label:'CITY' }, { id:'planet', label:'PLANET' }, { id:'jellyfish', label:'JELLYFISH' },
   { id:'oilscape', label:'OIL PAINT' }, { id:'pixelworld', label:'PIXEL WORLD' },
   { id:'neoncity', label:'NEON CITY' }, { id:'scratch', label:'SCRATCH' },
   { id:'skyline', label:'SKYLINE' }, { id:'amoebas', label:'AMOEBAS' },
@@ -6660,9 +6590,9 @@ const DRAW = {
   spiro:drawSpiro, pulses:drawPulses, forest:drawForest, snow:drawSnow,
   rain:drawRain, triangulation:drawTriangulation, rising:drawRising,
   vmsolid:drawVMSolid, vmhollow:drawVMHollow, solar:drawSolarSystem,
-  liminal:drawLiminalMaze, sequencer:drawSequencer, modsynth:drawModularSynth,
+  liminal:drawLiminalMaze, modsynth:drawModularSynth,
   web:drawWeb, grove:drawGrove, vaporland:drawVaporLandscape,
-  asteroids:drawAsteroids, stickdancer:drawStickDancer, cityflyover:drawPixelCity,
+  asteroids:drawAsteroids, cityflyover:drawPixelCity, planet:drawPlanet,
   jellyfish:drawJellyfish, oilscape:drawOilscape, pixelworld:drawPixelWorld,
   neoncity:drawNeonCity, scratch:drawScratch, skyline:drawSkylinePaint, amoebas:drawAmoebas,
   playfield:drawPlayfield, sprites:drawSprites, munch:drawMunch, paddles:drawPaddles, quilt:drawQuilt
@@ -6711,6 +6641,326 @@ function pixelStage(){
   if(doComic) comicInkData(d, eff.comic);
   if(doPost) postProcessData(d);
   bctx.putImageData(img, 0, 0);
+}
+
+// FLUX LINES: fine field lines combed out of the edges and corners of the picture, like iron filings around a
+// magnet or the fibres of an iris. Each frame a small copy of the buffer is analysed (blurred luminance gradient +
+// Harris corner response). A fixed, seeded set of line "sites" each snap to the strongest edge / corner near them,
+// then trace a streamline outward (mostly down the luminance slope, away from bright shapes; about a third climb
+// the other way, out of dark holes across brighter surfaces) that is bent by a shared
+// slow swirl field, so neighbouring lines comb together. Each traced path is only the backbone: what gets drawn is
+// a jagged, crackling zigzag of static electricity thrown around it, re-struck several times a second, with forked
+// side-sparks and a flickering brightness. Every site keeps its own character - width, length,
+// solid / dotted / solid-with-a-dotted-tail, beads, curl - and fades in / grows out instead of popping.
+// `a` = 0..1: how many lines, how long, how bright.
+const FL = { live:false, seed:-1, sites:null, an:null, ax:null, aw:0, ah:0, L:null, Lb:null, gx:null, gy:null,
+             hr:null, sc:null, claim:null, lastT:0, px:new Float32Array(1024), jz:new Float32Array(1200) };
+const FL_MAX = 320, FL_AW = 128;
+// cheap integer hash -> 0..1, used to re-strike each spark's zigzag deterministically per time tick
+function flHash(a, b, c){
+  let h = Math.imul((a | 0) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul((b | 0) + 0x7f4a7c15, 0xc2b2ae35) ^ Math.imul((c | 0) + 0x165667b1, 0x27d4eb2f);
+  h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12; h = Math.imul(h, 0x297a2d39); h ^= h >>> 15;
+  return (h >>> 0) / 4294967296;
+}
+function fluxSites(){
+  const r = mulberry32((state.seed ^ 0x51f7) >>> 0), sites = [];
+  for(let i = 0; i < FL_MAX; i++){
+    const u = r(), kind = r();
+    sites.push({
+      x:r(), y:r(),                                                    // home position (0..1), snaps to nearby edges
+      len:(0.22 + 0.78*r()*r()) * (r() < 0.14 ? 1.9 : 1),               // mostly short/medium, a few very long
+      w:0.35 + 2.1*u*u*u,                                              // mostly hair-fine, a few thick
+      style:kind < 0.24 ? 1 : kind < 0.42 ? 2 : 0,                     // 0 solid, 1 dotted, 2 solid with a dotted tail
+      gap:2.2 + 4.5*r(),                                               // dot spacing (in widths)
+      beads:r() < 0.35 ? 1 + (r()*3 | 0) : 0, bseed:r(),               // little knots along solid lines
+      curl:(r() - 0.5) * 1.1, jit:r() - 0.5, tone:0.82 + 0.18*r(),
+      side:r() < 0.68 ? 1 : -1,                                        // most comb out into the darker side, some climb onto the brighter one
+      bundle:1 + (r() < 0.55 ? 1 : 0) + (r() < 0.3 ? 1 : 0), spread:2 + 3*r(),   // strands per site, their spacing
+      ci:r(), sway:r() * TAU,                                          // which palette colour, phase of its slow sway
+      ax:-1, ay:-1, act:0, corner:0, str:0, dx:0, dy:0, lenS:0, cr:-1, cg:0, cb:0
+    });
+  }
+  FL.sites = sites; FL.seed = state.seed;
+}
+function fluxAnalyse(){
+  const aw = FL_AW, ah = Math.max(8, Math.round(FL_AW * bh / bw)), n = aw * ah;
+  if(!FL.an){ FL.an = document.createElement('canvas'); FL.ax = FL.an.getContext('2d', { willReadFrequently:true }); }
+  if(FL.aw !== aw || FL.ah !== ah){
+    FL.an.width = aw; FL.an.height = ah; FL.aw = aw; FL.ah = ah;
+    FL.L = new Float32Array(n); FL.Lb = new Float32Array(n); FL.gx = new Float32Array(n); FL.gy = new Float32Array(n);
+    FL.hr = new Float32Array(n); FL.sc = new Float32Array(n); FL.claim = new Uint8Array(n); FL.Ls = null;
+  }
+  FL.ax.clearRect(0, 0, aw, ah);
+  FL.ax.imageSmoothingEnabled = true;
+  FL.ax.drawImage(buf, 0, 0, bw, bh, 0, 0, aw, ah);
+  const d = FL.ax.getImageData(0, 0, aw, ah).data, L = FL.L, Lb = FL.Lb, gx = FL.gx, gy = FL.gy, hr = FL.hr, sc = FL.sc;
+  for(let i = 0, p = 0; i < n; i++, p += 4) L[i] = (d[p]*0.299 + d[p+1]*0.587 + d[p+2]*0.114) * d[p+3] * (1/65025);
+  // temporal smoothing: the field eases toward the new frame instead of jumping, which keeps roots and directions calm
+  if(!FL.Ls){ FL.Ls = new Float32Array(L); }
+  else { const Ls = FL.Ls; for(let i = 0; i < n; i++){ Ls[i] += (L[i] - Ls[i]) * 0.35; L[i] = Ls[i]; } }
+  // 3x3 box blur -> smooth field for gradients
+  for(let y = 0; y < ah; y++){
+    const y0 = (y > 0 ? y - 1 : y)*aw, y1 = y*aw, y2 = (y < ah - 1 ? y + 1 : y)*aw;
+    for(let x = 0; x < aw; x++){
+      const x0 = x > 0 ? x - 1 : x, x2 = x < aw - 1 ? x + 1 : x;
+      Lb[y1 + x] = (L[y0+x0] + L[y0+x] + L[y0+x2] + L[y1+x0] + L[y1+x] + L[y1+x2] + L[y2+x0] + L[y2+x] + L[y2+x2]) * (1/9);
+    }
+  }
+  let maxM = 0;
+  for(let y = 0; y < ah; y++){
+    const y0 = (y > 0 ? y - 1 : y)*aw, y1 = y*aw, y2 = (y < ah - 1 ? y + 1 : y)*aw;
+    for(let x = 0; x < aw; x++){
+      const x0 = x > 0 ? x - 1 : x, x2 = x < aw - 1 ? x + 1 : x;
+      const a = (Lb[y1 + x2] - Lb[y1 + x0]) * 0.5, b = (Lb[y2 + x] - Lb[y0 + x]) * 0.5;
+      gx[y1 + x] = a; gy[y1 + x] = b;
+      const m = Math.sqrt(a*a + b*b); sc[y1 + x] = m; if(m > maxM) maxM = m;
+    }
+  }
+  // Harris corner response from the structure tensor summed over 3x3
+  let maxH = 0;
+  for(let y = 1; y < ah - 1; y++){
+    for(let x = 1; x < aw - 1; x++){
+      let xx = 0, yy = 0, xy = 0;
+      for(let j = -1; j <= 1; j++){ const row = (y + j)*aw; for(let i = -1; i <= 1; i++){ const a = gx[row + x + i], b = gy[row + x + i]; xx += a*a; yy += b*b; xy += a*b; } }
+      const tr = xx + yy, h = xx*yy - xy*xy - 0.05*tr*tr;
+      const v = h > 0 ? h : 0; hr[y*aw + x] = v; if(v > maxH) maxH = v;
+    }
+  }
+  const iM = maxM > 1e-4 ? 1/maxM : 0, iH = maxH > 1e-9 ? 1/maxH : 0;
+  for(let i = 0; i < n; i++){ hr[i] = Math.sqrt(hr[i]*iH); sc[i] = sc[i]*iM + 0.9*hr[i]; }   // edge strength + corner boost
+  FL.maxM = maxM;
+  FL.claim.fill(0);
+}
+// The line colours come from the current palette with the near-white entries left out (a colour whose darkest
+// channel is still very bright reads as white). If a palette is all pale, its least-pale colour is deepened.
+function fluxPalette(){
+  const pl = PALETTES[state.palette];
+  if(FL.palSig === pl) return FL.pal;
+  const rgbs = pl.colors.map(hex2rgb);
+  let out = rgbs.filter(c => Math.min(c[0], c[1], c[2]) < 185);
+  if(!out.length){
+    const c = rgbs.reduce((m, v) => Math.min(v[0], v[1], v[2]) < Math.min(m[0], m[1], m[2]) ? v : m);
+    const lo = Math.min(c[0], c[1], c[2]), k = 0.75;
+    out = [[c[0] - (lo * k), c[1] - (lo * k), c[2] - (lo * k)].map(v => Math.max(0, v | 0))];
+  }
+  FL.pal = out; FL.palSig = pl;
+  return out;
+}
+function fluxLinesPass(t, a){
+  if(!FL.sites || FL.seed !== state.seed) fluxSites();
+  fluxAnalyse();
+  const dt = FL.live ? clamp(t - FL.lastT, 0, 0.1) : 0.016; FL.lastT = t; FL.live = true;
+  const aw = FL.aw, ah = FL.ah, sc = FL.sc, hr = FL.hr, gx = FL.gx, gy = FL.gy, claim = FL.claim;
+  const flat = FL.maxM < 0.012;                                   // nothing to grow from (flat / empty frame)
+  const count = Math.round(FL_MAX * (0.15 + 0.85*a) * 0.5);   // halved line count
+  const kAct = 1 - Math.exp(-dt * 2.5), kPos = 1 - Math.exp(-dt * 5), kDir = 1 - Math.exp(-dt * 3), kLen = 1 - Math.exp(-dt * 2.2);
+  const kCol = 1 - Math.exp(-dt * 2), pals = fluxPalette(), np_ = pals.length;
+  const sx = bw / aw, sy = bh / ah, mn = Math.min(bw, bh);
+  const wS = Math.max(0.55, bw / 700), ds = Math.max(0.8, bw / 420);
+  const maxLen = mn * (0.10 + 0.34*a), R0 = mn * 0.13, kf = 4.8 / (0.95 * mn), ta = t * 0.07;
+  const baseA = Math.min(1, 0.45 + 0.55*a);
+  // bilinear sample of the gradient field at buffer coords
+  const grad = (x, y, out) => {
+    let fx = x / sx - 0.5, fy = y / sy - 0.5;
+    fx = fx < 0 ? 0 : fx > aw - 1.001 ? aw - 1.001 : fx; fy = fy < 0 ? 0 : fy > ah - 1.001 ? ah - 1.001 : fy;
+    const ix = fx | 0, iy = fy | 0, u = fx - ix, v = fy - iy, i0 = iy*aw + ix, i1 = i0 + aw;
+    out[0] = (gx[i0]*(1-u) + gx[i0+1]*u)*(1-v) + (gx[i1]*(1-u) + gx[i1+1]*u)*v;
+    out[1] = (gy[i0]*(1-u) + gy[i0+1]*u)*(1-v) + (gy[i1]*(1-u) + gy[i1+1]*u)*v;
+  };
+  const g = [0, 0], iM = FL.maxM > 1e-4 ? 1 / FL.maxM : 0;
+  const P = FL.px;
+  bctx.save();
+  bctx.globalCompositeOperation = 'source-over';
+  bctx.lineCap = 'round'; bctx.lineJoin = 'miter'; bctx.miterLimit = 6;
+  for(let si = 0; si < count; si++){
+    const s = FL.sites[si];
+    // ---- snap to the strongest edge / corner within reach of the site's home cell
+    let want = 0;
+    if(!flat){
+      // an active site keeps searching around where it already is (and prefers to stay put), so it rides its own
+      // edge smoothly instead of hopping between competing ones; an idle site looks around its home cell
+      const home = s.act < 0.06 || s.ax < 0;
+      const hxH = Math.min(aw - 1, (s.x * aw) | 0), hyH = Math.min(ah - 1, (s.y * ah) | 0);
+      const hx = home ? hxH : clamp((s.ax / sx) | 0, 0, aw - 1), hy = home ? hyH : clamp((s.ay / sy) | 0, 0, ah - 1);
+      const rad = home ? 7 : 4, pen = home ? 0.003 : 0.012;
+      let best = home ? 0.36 : 0.3, bi = -1;
+      for(let j = -rad; j <= rad; j++){
+        const yy = hy + j; if(yy < 1 || yy >= ah - 1) continue;
+        for(let i = -rad; i <= rad; i++){
+          const xx = hx + i; if(xx < 1 || xx >= aw - 1) continue;
+          const k = yy*aw + xx, v = sc[k] - (i*i + j*j)*pen;
+          if(v > best && claim[k] < 3){ best = v; bi = k; }
+        }
+      }
+      if(bi >= 0){
+        claim[bi]++;
+        const tx = ((bi % aw) + 0.5 + s.jit*0.8) * sx, ty = (((bi / aw) | 0) + 0.5 - s.jit*0.8) * sy;
+        if(s.act < 0.06 || s.ax < 0){ s.ax = tx; s.ay = ty; s.dx = 0; s.dy = 0; s.lenS = 0; want = 1; }
+        else if(Math.abs(tx - s.ax) + Math.abs(ty - s.ay) > 7*sx || Math.abs(hx - hxH) + Math.abs(hy - hyH) > 22) want = 0;   // edge left (or site wandered far from home): fade, then re-seed
+        else { s.ax += (tx - s.ax)*kPos; s.ay += (ty - s.ay)*kPos; want = 1; }
+        s.corner += (hr[bi] - s.corner) * kPos;
+        s.str += (clamp((best - 0.3) / 0.45, 0, 1) - s.str) * kPos;   // faint edges grow faint, short lines
+      }
+    }
+    s.act += (want - s.act) * kAct;
+    if(s.act < 0.02 || s.ax < 0) continue;
+
+    // ---- a bundle of 1..3 strands from neighbouring points along the edge
+    grad(s.ax, s.ay, g);
+    let ex = -g[0]*s.side, ey = -g[1]*s.side, em = Math.hypot(ex, ey);
+    if(em > 1e-6){
+      ex /= em; ey /= em;
+      if(s.dx === 0 && s.dy === 0){ s.dx = ex; s.dy = ey; }
+      else { s.dx += (ex - s.dx) * kDir; s.dy += (ey - s.dy) * kDir; }                 // the root direction turns slowly
+    }
+    em = Math.hypot(s.dx, s.dy); if(em < 1e-6) continue;
+    ex = s.dx / em; ey = s.dy / em;
+    const lenT = maxLen * s.len * (1 + 0.8*s.corner) * (0.25 + 0.75*s.act) * (0.6 + 0.4*s.str);
+    s.lenS += (lenT - s.lenS) * kLen;                                                  // lengths grow and shrink smoothly
+    const len0 = s.lenS;
+    const pc = pals[Math.min(np_ - 1, (s.ci * np_) | 0)];
+    if(s.cr < 0){ s.cr = pc[0]; s.cg = pc[1]; s.cb = pc[2]; }
+    else { s.cr += (pc[0] - s.cr) * kCol; s.cg += (pc[1] - s.cg) * kCol; s.cb += (pc[2] - s.cb) * kCol; }   // palette changes blend over
+    const w0 = 0.5 * s.w * wS * (1 + 0.25*s.corner), al0 = baseA * s.act * (0.55 + 0.45*s.str);
+    for(let b = 0; b < s.bundle; b++){
+      const h1 = (s.bseed * 17.13 + b * 0.618) % 1, h2 = (s.bseed * 29.7 + b * 0.414) % 1;
+      const off = (b - (s.bundle - 1) * 0.5) * s.spread * wS;          // step along the edge (perpendicular to the flow)
+      const lenB = len0 * (b === 0 ? 1 : 0.45 + 0.75*h1), wB = w0 * (b === 0 ? 1 : 0.45 + 0.7*h2);
+      const styleB = b === 0 ? s.style : (h1 < 0.3 ? 1 : h1 < 0.45 ? 2 : 0);
+      fluxStrand(s.ax - ey*off, s.ay + ex*off, ex, ey, lenB, wB, al0, styleB, s.curl + (h2 - 0.5)*0.35, s, b);
+    }
+  }
+  bctx.restore();
+
+  // trace one streamline from (x, y) along (dx, dy) and draw it: solid (tapered, optional halo + beads), dotted,
+  // or solid with a dotted tail
+  function fluxStrand(x, y, dx, dy, len, w, al, style, curl, s, b){
+    const steps = Math.min(511, Math.max(2, (len / ds) | 0));
+    let np = 0;
+    P[np++] = x; P[np++] = y;
+    const rootSteps = Math.max(3, steps * 0.22);
+    const swF = ds / (mn * 0.18), swT = t * 0.9 + s.sway + b * 0.7;              // sway wavelength / phase
+    let sw = 0;
+    for(let k = 0; k < steps; k++){
+      // near the root the strand is steered by the edge it grew from; further out it flows freely with the swirl,
+      // so it sails across whatever it passes over instead of being turned back by other edges
+      const rootW = k < rootSteps ? 1 - k / rootSteps : 0;
+      let gm = 0;
+      if(rootW > 0){ grad(x, y, g); gm = Math.hypot(g[0], g[1]); }
+      if(gm > 1e-6){ const pull = Math.min(1, gm * iM) * 0.3 * s.side * rootW; dx -= g[0] / gm * pull; dy -= g[1] / gm * pull; }
+      if((k & 3) === 0) sw = n2(x*kf, y*kf, ta);                                 // the swirl field is smooth: sample it every 4th step
+      const ang = (sw + curl * 0.45 + 0.12 * Math.sin(k * swF - swT)) * ds / R0;   // swirl + own curl + a slow wave running out along it
+      const c = 1 - ang*ang*0.5, sn = ang, nx = dx*c - dy*sn, ny = dx*sn + dy*c;  // small-angle rotation (renormalised below)
+      const m = Math.hypot(nx, ny) || 1; dx = nx / m; dy = ny / m;
+      x += dx * ds; y += dy * ds;
+      if(x < -2 || y < -2 || x > bw + 2 || y > bh + 2) break;
+      P[np++] = x; P[np++] = y;
+    }
+    let pts = np >> 1; if(pts < 3) return;
+
+    // ---- STATIC: throw a jagged zigzag around the smooth backbone. Vertices sit a few steps apart along it and
+    // jump sideways, mostly alternating sides, with extra small kinks between them. The whole shape is re-struck
+    // at the site's own crackle rate (roughly 8-22 times a second), so it snaps between shapes instead of easing.
+    const sid = (s.bseed * 1e6) | 0, rate = 8 + 14 * ((s.bseed * 5.77) % 1);
+    const tick = Math.floor(t * rate + s.sway * 3 + b * 0.37);
+    const hh = (i, j) => flHash(sid + b * 7919, tick, i * 31 + j);
+    if(hh(-1, 1) < 0.07) return;                                              // this strike blinks out entirely
+    const flick = 0.55 + 0.45 * hh(-1, 2);                                    // per-strike brightness
+    const amp = 0.1 * Math.min(mn * 0.035, Math.max(2 * wS, len * 0.075)) * (0.7 + 0.6 * hh(-1, 3));   // zigzag width (cut to 10%)
+    const J = FL.jz; let nj = 0, sgn = hh(-1, 4) < 0.5 ? 1 : -1, px_ = 0, py_ = 0, have = false;
+    const push = (x_, y_) => { if(nj < 1198){ J[nj++] = x_; J[nj++] = y_; } };
+    for(let k = 0, v = 0; ; v++){
+      const a_ = k > 0 ? k - 1 : k, c_ = k < pts - 1 ? k + 1 : k;
+      let tx = P[c_*2] - P[a_*2], ty = P[c_*2+1] - P[a_*2+1]; const tm = Math.hypot(tx, ty) || 1; tx /= tm; ty /= tm;
+      const u = k / (pts - 1), env = k === 0 ? 0 : Math.min(1, u * 5) * (0.55 + 0.45 * (1 - u));
+      if(hh(v, 0) > 0.22) sgn = -sgn;                                         // mostly zig, then zag
+      const o = amp * env * (0.3 + 0.7 * hh(v, 1)) * sgn;
+      const qx = P[k*2] - ty * o, qy = P[k*2+1] + tx * o;
+      if(have && hh(v, 2) < 0.55){                                            // a small kink between the big jumps
+        const mo = amp * env * 0.4 * (hh(v, 3) * 2 - 1);
+        push((px_ + qx) * 0.5 - ty * mo, (py_ + qy) * 0.5 + tx * mo);
+      }
+      push(qx, qy); px_ = qx; py_ = qy; have = true;
+      if(k >= pts - 1) break;
+      k = Math.min(pts - 1, k + 2 + ((hh(v, 4) * 5) | 0));                   // uneven segment lengths
+    }
+    pts = Math.min(511, nj >> 1);
+    for(let i = 0; i < pts * 2; i++) P[i] = J[i];
+    if(pts < 3) return;
+    al *= flick;
+
+    const tone = s.tone * (b ? 0.9 : 1), cr = (s.cr*tone) | 0, cg = (s.cg*tone) | 0, cb = (s.cb*tone) | 0;
+    const col = (alpha) => `rgba(${cr},${cg},${cb},${alpha.toFixed(3)})`;
+    const dotsFrom = style === 1 ? 0 : style === 2 ? Math.floor(pts * 0.62) : pts - 1;
+    const wPeak = Math.max(0.35, w * 1.15);
+    if(dotsFrom > 1){
+      const end = dotsFrom;                                                     // solid part runs over points 0..end
+      if(w > 1.7*wS) fluxRibbon(0, end, wPeak * 3, col(al * 0.08));            // soft halo under the thicker strands
+      fluxRibbon(0, end, wPeak, col(al));
+      if(s.beads && b === 0){                                                   // small knots along the strand, sized to its swell
+        bctx.fillStyle = col(al * 0.9); bctx.beginPath();
+        for(let q = 0; q < s.beads; q++){
+          const u = ((s.bseed * 7.31 + q * 0.381) % 1) * 0.6 + 0.2, k = Math.min(end, (u * end) | 0);
+          const r = Math.max(0.6, wPeak * fluxSwell(u) * (0.9 + 0.6*((s.bseed * 13.7 + q) % 1)));
+          bctx.moveTo(P[k*2] + r, P[k*2+1]); bctx.arc(P[k*2], P[k*2+1], r, 0, TAU);
+        }
+        bctx.fill();
+      }
+      // forked side-sparks: short, thin jagged branches that split off the solid part and re-strike with it
+      const nf = b === 0 ? (hh(-2, 0) < 0.6 ? 1 : 0) + (hh(-2, 1) < 0.3 ? 1 : 0) : (hh(-2, 2) < 0.2 ? 1 : 0);
+      if(nf){
+        bctx.strokeStyle = col(al * 0.8); bctx.lineWidth = Math.max(0.25, wPeak * 0.45); bctx.beginPath();
+        for(let f = 0; f < nf; f++){
+          const k = Math.max(1, Math.min(end - 1, ((0.2 + 0.6 * hh(-3, f)) * end) | 0));
+          let fx = P[k*2], fy = P[k*2+1], tx = P[(k+1)*2] - P[(k-1)*2], ty = P[(k+1)*2+1] - P[(k-1)*2+1];
+          const tm = Math.hypot(tx, ty) || 1, rot = (0.45 + 0.6 * hh(-4, f)) * (hh(-5, f) < 0.5 ? 1 : -1);
+          const c = Math.cos(rot), sn = Math.sin(rot); let dx_ = (tx*c - ty*sn) / tm, dy_ = (tx*sn + ty*c) / tm;
+          const segs = 3 + ((hh(-6, f) * 3) | 0), segL = len * (0.12 + 0.2 * hh(-7, f)) / segs;
+          bctx.moveTo(fx, fy);
+          for(let q = 0; q < segs; q++){
+            const j = (hh(-8 - q, f) - 0.5) * 1.3, c2 = Math.cos(j), s2 = Math.sin(j);
+            const ddx = dx_*c2 - dy_*s2, ddy = dx_*s2 + dy_*c2;
+            fx += ddx * segL; fy += ddy * segL; bctx.lineTo(fx, fy);
+          }
+        }
+        bctx.stroke();
+      }
+    }
+    if(dotsFrom < pts - 1){                                                     // a trail of dots: tiny, swelling, tiny again
+      const k0 = dotsFrom === 0 ? 0 : dotsFrom + 1, span = Math.max(1, pts - 1 - k0);
+      const gapPx = Math.max(1.6, w * s.gap + 1.2*wS), every = Math.max(1, Math.round(gapPx / ds));
+      bctx.fillStyle = col(al * 0.95); bctx.beginPath();
+      for(let k = k0 + every, j = 0; k < pts - 1; k += every, j++){
+        const u = (k - k0) / span, wob = 0.8 + 0.4*(((j * 0.618 + s.bseed) % 1));
+        const r = Math.max(0.3, wPeak * 0.62 * wob * fluxSwell(u));
+        if(hh(j, 9) < 0.25) continue;                                          // some specks miss this strike
+        const scx = (hh(j, 10) - 0.5) * amp * 0.6, scy = (hh(j, 11) - 0.5) * amp * 0.6;   // scattered off the path
+        bctx.moveTo(P[k*2] + scx + r, P[k*2+1] + scy); bctx.arc(P[k*2] + scx, P[k*2+1] + scy, r, 0, TAU);
+      }
+      bctx.fill();
+    }
+  }
+  // Width profile along a strand, 0 at both ends and 1 at the middle: a fibre that starts and ends at a point.
+  function fluxSwell(u){ return u <= 0 || u >= 1 ? 0 : Math.pow(Math.sin(Math.PI * u), 0.8); }
+  // Fill points k0..k1 of P as one tapered ribbon (left edge out, right edge back), so the width follows
+  // fluxSwell exactly with a single fill instead of stepped stroke widths.
+  function fluxRibbon(k0, k1, wMax, fill){
+    const n = k1 - k0; if(n < 2) return;
+    const R = FL.rib || (FL.rib = new Float32Array(2048));
+    for(let k = k0; k <= k1; k++){
+      const a = k > k0 ? k - 1 : k, c = k < k1 ? k + 1 : k;
+      let tx = P[c*2] - P[a*2], ty = P[c*2+1] - P[a*2+1];
+      const tm = Math.hypot(tx, ty) || 1; tx /= tm; ty /= tm;
+      const hw = 0.5 * wMax * fluxSwell((k - k0) / n), i = (k - k0) * 2;
+      R[i] = -ty * hw; R[i+1] = tx * hw;                                        // normal offset at this point
+    }
+    bctx.beginPath();
+    bctx.moveTo(P[k0*2], P[k0*2+1]);
+    for(let k = k0 + 1; k <= k1; k++){ const i = (k - k0) * 2; bctx.lineTo(P[k*2] + R[i], P[k*2+1] + R[i+1]); }
+    for(let k = k1 - 1; k > k0; k--){ const i = (k - k0) * 2; bctx.lineTo(P[k*2] - R[i], P[k*2+1] - R[i+1]); }
+    bctx.closePath();
+    bctx.fillStyle = fill; bctx.fill();
+  }
 }
 
 // COMIC INK (first stage of the effects chain): Sobel edge detection lays down black ink outlines, colours are
@@ -7039,7 +7289,7 @@ let lastScanOpacity = -1;
 // Shapes built from many overlapping strokes/discs would show their internal structure when drawn at partial
 // opacity during a crossfade. For those we draw at full opacity, then blend the previous buffer back over the
 // result, which fades the shape as one solid layer.
-const SOLID_MIX = new Set(['rings', 'spiro', 'helix', 'supernova', 'blackhole', 'memory', 'tunnel', 'modsynth', 'stickdancer', 'orbs', 'polylock', 'vmsolid', 'triangulation', 'rising', 'mosaic', 'waves', 'dotgrid', 'playfield', 'paddles']);
+const SOLID_MIX = new Set(['rings', 'spiro', 'helix', 'supernova', 'blackhole', 'memory', 'tunnel', 'modsynth', 'orbs', 'polylock', 'vmsolid', 'triangulation', 'rising', 'mosaic', 'waves', 'dotgrid', 'playfield', 'paddles', 'planet']);
 const mixSnap = document.createElement('canvas'), mixSnapCtx = mixSnap.getContext('2d');
 const drawErrLogged = new Set();
 // A shape that throws mid-frame must never stall the output: log it once and carry on with the rest of the frame.
@@ -7068,12 +7318,12 @@ function drawMixed(id, alpha, t){
 // ---------------------------------------------------------------------------------------------
 // SLOT B INSTANCE: Shape A and Shape B may be the same shape, but B must never be a pixel-identical copy of A.
 // Every shape keeps its persistent state either on its own draw function (drawOrbs.cfg, drawJellyfish.list ...)
-// or on a module-level object (ALT, MZ, SYN, DANCE, CITY). While slot B renders we swap those containers for a
+// or on a module-level object (ALT, MZ, SYN, CITY). While slot B renders we swap those containers for a
 // second, independent copy, derive a different seed (so seeded layouts, colours and noise phases differ) and
 // offset time (so even purely time-driven shapes are at a different phase). Everything is restored afterwards.
 // ---------------------------------------------------------------------------------------------
 const SLOT_B_SEED_SALT = 0x3a9f, SLOT_B_TIME_OFFSET = 41.37;
-const SHARED_SHAPE_STATE = { altitude:[ALT], liminal:[MZ], modsynth:[SYN], stickdancer:[DANCE], cityflyover:[CITY] };
+const SHARED_SHAPE_STATE = { altitude:[ALT], liminal:[MZ], modsynth:[SYN], cityflyover:[CITY] };
 const slotBStore = new WeakMap();   // container -> the state of whichever slot is NOT currently loaded into it
 // Module-level containers assume their initial keys exist, so slot B's copy starts from the same initial template
 // (captured now, before the first frame). Draw-function containers start empty and lazily build their own state.
@@ -7107,7 +7357,7 @@ function drawSlotB(id, alpha, tt){
 
 // ---------------------------------------------------------------------------------------------
 // Main loop: audio -> LFOs/eff -> base background (palette or BLACK/WHITE/GREEN override) -> shapes (with crossfade,
-// per-shape BACKGROUND OFF) -> invert -> COMIC INK -> FIDELITY posterise/grain -> downscale for FIDELITY ->
+// per-shape BACKGROUND OFF) -> FLUX LINES -> invert -> COMIC INK -> FIDELITY posterise/grain -> downscale for FIDELITY ->
 // blit to view -> text overlay -> RGB SPLIT -> glitch -> POINTS -> PAINT BRUSH -> blur -> trails -> FEEDBACK ->
 // DISPLAY FILTER (weave / row wobble / chroma / soften / tint / block noise / static / grain / dust / vignette) ->
 // OUTPUT GRADE -> scanlines
@@ -7131,6 +7381,7 @@ function frame(now){
   lfoPhases.glitch      += dt * TAU * state.lfoRateGlitch;
   lfoPhases.points      += dt * TAU * state.lfoRatePoints;
   lfoPhases.paint       += dt * TAU * state.lfoRatePaint;
+  lfoPhases.flux        += dt * TAU * state.lfoRateFlux;
   lfoPhases.comic       += dt * TAU * state.lfoRateComic;
   lfoPhases.split       += dt * TAU * state.lfoRateSplit;
   lfoPhases.feedback    += dt * TAU * state.lfoRateFeedback;
@@ -7149,6 +7400,7 @@ function frame(now){
   eff.glitch  = clamp(state.glitch  + Math.sin(lfoPhases.glitch) * state.modGlitch + A[2] * state.audModGlitch, 0, 1);
   eff.points  = clamp(state.points  + Math.sin(lfoPhases.points) * state.modPoints + A[0] * state.audModPoints, 0, 1);
   eff.paint   = clamp(state.paint   + Math.sin(lfoPhases.paint)  * state.modPaint  + A[1] * state.audModPaint,  0, 1);
+  eff.flux    = clamp(state.flux    + Math.sin(lfoPhases.flux)   * state.modFlux   + A[0] * state.audModFlux,   0, 1);
   eff.comic   = clamp(state.comic   + Math.sin(lfoPhases.comic)  * state.modComic  + A[2] * state.audModComic,  0, 1);
   eff.split   = clamp(state.split   + Math.sin(lfoPhases.split)  * state.modSplit  + A[0] * state.audModSplit,  0, 1);
   eff.feedback= clamp(state.feedback+ Math.sin(lfoPhases.feedback)* state.modFeedback + A[0] * state.audModFeedback, 0, 2);
@@ -7203,6 +7455,8 @@ function frame(now){
   bctx.globalAlpha = 1.0;
   bctx.globalCompositeOperation = 'source-over';
 
+  if(eff.flux > 0.01) fluxLinesPass(tw, eff.flux);   // FLUX LINES: drawn into the buffer just ahead of COMIC INK
+  else FL.live = false;
   pixelStage();                        // INVERT -> COMIC INK (effects chain stage 1) -> FIDELITY posterise/grain, one readback
 
   const targetScale = lerp(0.12, 1.0, Math.pow(eff.fidelity, 1.25));
@@ -7459,7 +7713,7 @@ function frame(now){
     lastScanOpacity = curScan;
     if(DOM.scan) DOM.scan.style.opacity = (curScan * 0.01).toFixed(2);
   }
-  if(OUT.stream) drawOutFrame();   // feed the fixed-resolution export canvas (recording / virtual camera)
+  if(OUT.stream) outTick(now);   // feed the fixed-resolution export canvas (recording / virtual camera)
   if(REC.rec) recLevelTick();
 }
 
@@ -7612,6 +7866,7 @@ function syncFx(){
   update('vGl', glStr);
   update('vPt', Math.round(state.points * 100) + '%');
   update('vPa', Math.round(state.paint * 100) + '%');
+  update('vFlux', Math.round(state.flux * 100) + '%');
   update('vCo', Math.round(state.comic * 100) + '%');
   update('vSp', Math.round(state.split * 100) + '%');
   update('vFb', Math.round(state.feedback * 100) + '%');
@@ -7773,7 +8028,8 @@ function takeScreenshot(){
 }
 // Live output: the view is copied every frame (cover-fit, CSS scan lines composited in) into a canvas of exactly the
 // chosen export resolution, and one captureStream of that canvas feeds both the recorder and the virtual camera.
-const OUT = { stream:null, win:null, pipVideo:null };
+const OUT = { stream:null, win:null, pipVideo:null, manual:false, acc:0, lastT:0 };
+const OUT_FPS = 60;   // export frame rate (recording + virtual camera), independent of the display's refresh rate
 const OUTRES = { w:1920, h:1080 };
 const outCanvas = document.createElement('canvas');
 const outctx = outCanvas.getContext('2d', { alpha:false });
@@ -7781,8 +8037,28 @@ function outSize(){
   if(outCanvas.width !== OUTRES.w || outCanvas.height !== OUTRES.h){ outCanvas.width = OUTRES.w; outCanvas.height = OUTRES.h; }
 }
 function outputStream(){
-  if(!OUT.stream){ outSize(); drawOutFrame(); OUT.stream = outCanvas.captureStream(60); }
+  if(!OUT.stream){
+    outSize(); drawOutFrame();
+    // Manual capture: a frame goes to the recorder only when outTick() has drawn a finished one and asks for it,
+    // so every recorded frame is a complete, freshly rendered frame and none are silently skipped by the browser's
+    // own capture timer. Browsers without requestFrame fall back to automatic capture.
+    let st = outCanvas.captureStream(0), tr = st.getVideoTracks()[0];
+    if(tr && typeof tr.requestFrame === 'function'){ OUT.manual = true; tr.requestFrame(); }
+    else { OUT.manual = false; st = outCanvas.captureStream(OUT_FPS); }
+    OUT.stream = st; OUT.acc = 0; OUT.lastT = 0;
+  }
   return OUT.stream;
+}
+// Called from the render loop: draws the export frame at OUT_FPS (every frame on a 60 Hz screen, every other frame
+// on 120 Hz ProMotion) and hands it to the capture track.
+function outTick(now){
+  const period = 1000 / OUT_FPS;
+  const dt = OUT.lastT ? Math.min(now - OUT.lastT, 250) : period;
+  OUT.lastT = now; OUT.acc += dt;
+  if(OUT.acc < period - 2) return;             // 2 ms of slack so a 60 Hz display never skips on vsync jitter
+  OUT.acc = Math.min(OUT.acc - period, period);
+  drawOutFrame();
+  if(OUT.manual){ const tr = OUT.stream.getVideoTracks()[0]; if(tr && tr.readyState === 'live') tr.requestFrame(); }
 }
 function scanLineAlpha(){
   if(!state.scan || !DOM.scan || document.body.classList.contains('chroma')) return 0;
@@ -7803,10 +8079,14 @@ function drawOutFrame(){
 }
 // RECORD: MediaRecorder on the view stream (+ the mic track when the audio input is on). MP4 (H.264, else AV1/VP9
 // in an MP4 container) wherever the browser can mux it; WebM only as a last resort (Firefox has no MP4 muxer).
-const REC = { rec:null, chunks:[], start:0, timer:null, max:60, mime:undefined, starting:false, hasAudio:false, target:0.70,
-              gain:null, comp:null, ana:null, anaBuf:null };
+const REC = { rec:null, chunks:[], start:0, timer:null, max:60, mime:undefined, starting:false, hasAudio:false, target:Math.pow(10, -0.1 / 20),   // fixed -0.1 dBFS peak
+              gain:null, comp:null, ceil:null, ana:null, anaBuf:null };
 const REC_GAIN_MIN = 0.25, REC_GAIN_MAX = 40;   // -12 dB .. +32 dB of make-up
 const REC_MIMES = [
+  // H.264 High / Main at level 5.2 (4K60 capable) first: the old avc1.42E01E is Baseline level 3.0, which is rated
+  // for standard definition and makes some encoders throttle / drop frames at 1080p and up.
+  'video/mp4;codecs=avc1.640034,mp4a.40.2', 'video/mp4;codecs=avc1.640034', 'video/mp4;codecs=avc1.64002A',
+  'video/mp4;codecs=avc1.4D0034,mp4a.40.2', 'video/mp4;codecs=avc1.4D0034',
   'video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4;codecs=h264',
   'video/mp4;codecs=av01', 'video/mp4;codecs=vp9', 'video/mp4',
   'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'
@@ -7828,7 +8108,9 @@ function syncRecLabel(){
   const push = (doc) => { const b = doc && doc.getElementById('bRec'); if(b) b.title = tip; };
   push(document); if(popoutWin && !popoutWin.closed) push(popoutWin.document);
 }
-// Recording audio chain: mic -> make-up gain (auto-levelled toward REC AUDIO LEVEL) -> limiter -> recorder.
+// Recording audio chain: mic -> make-up gain (auto-levelled to a -0.1 dBFS peak) -> limiter -> ceiling -> recorder.
+// The leveler measures the limiter's OUTPUT (the compressor adds its own make-up gain), and a soft-knee waveshaper
+// holds anything the limiter's attack lets through at the -0.1 dBFS ceiling.
 // The live analysis path is untouched, so the visuals keep reacting to the raw input.
 function recAudioChain(){
   if(REC.gain) return;
@@ -7838,9 +8120,17 @@ function recAudioChain(){
   REC.comp = actx.createDynamicsCompressor();
   REC.comp.threshold.value = -8; REC.comp.knee.value = 6; REC.comp.ratio.value = 16;
   REC.comp.attack.value = 0.002; REC.comp.release.value = 0.2;
-  REC.gain.connect(REC.ana);
+  const ceil = REC.target, knee = ceil * 0.9, n = 4096, curve = new Float32Array(n);
+  for(let i = 0; i < n; i++){
+    const x = (i / (n - 1)) * 2 - 1, ax = Math.abs(x);
+    const y = ax <= knee ? ax : knee + (ceil - knee) * Math.tanh((ax - knee) / (ceil - knee));
+    curve[i] = Math.sign(x) * y;
+  }
+  REC.ceil = actx.createWaveShaper(); REC.ceil.curve = curve; REC.ceil.oversample = '4x';
   REC.gain.connect(REC.comp);
-  REC.comp.connect(recDest);
+  REC.comp.connect(REC.ana);
+  REC.comp.connect(REC.ceil);
+  REC.ceil.connect(recDest);
 }
 // Called every frame while recording: measure the post-gain peak, duck instantly when it is over the target and
 // creep the gain up (~+8 dB/s) when it is under, ignoring near-silence so pauses don't wind the gain to maximum.
@@ -7855,13 +8145,6 @@ function recLevelTick(){
   else if(peak > 0.03) ng = g * 1.016;
   ng = clamp(ng, REC_GAIN_MIN, REC_GAIN_MAX);
   if(ng !== g) REC.gain.gain.setTargetAtTime(ng, actx.currentTime, ng < g ? 0.005 : 0.05);
-}
-function setRecLevel(pct){
-  REC.target = clamp(pct * 0.01, 0.2, 1);
-  const db = 20 * Math.log10(REC.target);
-  syncButton('vRecLvl', (db >= -0.05 ? '0' : db.toFixed(1)) + ' dB', null);
-  const push = (doc) => { const s = doc && doc.getElementById('cRecLvl'); if(s && doc.activeElement !== s) s.value = Math.round(REC.target * 100); };
-  push(document); if(popoutWin && !popoutWin.closed) push(popoutWin.document);
 }
 async function recStart(){
   if(REC.rec || REC.starting) return;
@@ -7879,7 +8162,8 @@ async function recStart(){
     recDest.stream.getAudioTracks().forEach(tr => stream.addTrack(tr));
   }
   const hasAudio = stream.getAudioTracks().length > 0;
-  const opts = { videoBitsPerSecond: 12e6, audioBitsPerSecond: 192e3 }; if(mime) opts.mimeType = mime;
+  const vbr = clamp(Math.round(OUTRES.w * OUTRES.h * OUT_FPS * 0.15), 8e6, 80e6);   // ~19 Mb/s at 1080p60
+  const opts = { videoBitsPerSecond: vbr, audioBitsPerSecond: 192e3 }; if(mime) opts.mimeType = mime;
   let rec;
   try{ rec = new MediaRecorder(stream, opts); }
   catch(e){ console.warn('recorder failed:', e); syncButton('bRec', 'REC ERR', false); setTimeout(syncRecLabel, 1500); return; }
@@ -8003,7 +8287,7 @@ function presetApply(p){
   const sg = p.seg || {};
   if(sg.fontStyle) setFontStyle(sg.fontStyle);
   // presets saved before PLASMA / WOBBLE / LATTICE / ECHO were replaced load the shape that took each slot
-  const SHAPE_ALIAS = { plasma:'memory', wobble:'odyssey', lattice:'supernova', echo:'blackhole', halo:'rings' };   // removed shapes -> nearest surviving one, so old presets still load
+  const SHAPE_ALIAS = { plasma:'memory', wobble:'odyssey', lattice:'supernova', echo:'blackhole', halo:'rings', sequencer:'modsynth', stickdancer:'orbs' };   // removed shapes -> nearest surviving one, so old presets still load
   if(sg.shape) setShape(SHAPE_ALIAS[sg.shape] || sg.shape);
   if(sg.shapeB) setShapeB(SHAPE_ALIAS[sg.shapeB] || sg.shapeB);
   if(sg.filter) setFilter(sg.filter);
@@ -8260,8 +8544,6 @@ function wireControls(targetDoc = document){
   if(bRec) bRec.addEventListener('click', ()=>{ if(REC.rec) recStop(); else recStart(); });
   const cRecMax = targetDoc.getElementById('cRecMax');
   if(cRecMax) cRecMax.addEventListener('change', ()=>setRecMax(cRecMax.value));
-  const cRecLvl = targetDoc.getElementById('cRecLvl');
-  if(cRecLvl) cRecLvl.addEventListener('input', ()=>setRecLevel(+cRecLvl.value));
   const bVCam = targetDoc.getElementById('bVCam');
   if(bVCam) bVCam.addEventListener('click', toggleVirtualCam);
   const cVCamRes = targetDoc.getElementById('cVCamRes');
@@ -8410,6 +8692,8 @@ function wireControls(targetDoc = document){
   if(cGlitch) cGlitch.addEventListener('input', ()=>{ state.glitch = cGlitch.value * 0.01; syncFx(); });
   if(cPoints) cPoints.addEventListener('input', ()=>{ state.points = cPoints.value * 0.01; syncFx(); });
   if(cPaint)  cPaint.addEventListener('input',  ()=>{ state.paint = cPaint.value * 0.01; syncFx(); });
+  const cFlux = targetDoc.getElementById('cFlux');
+  if(cFlux) cFlux.addEventListener('input', ()=>{ state.flux = cFlux.value * 0.01; syncFx(); });
   if(cComic)  cComic.addEventListener('input',  ()=>{ state.comic = cComic.value * 0.01; syncFx(); });
   if(cSplit)  cSplit.addEventListener('input',  ()=>{ state.split = cSplit.value * 0.01; syncFx(); });
   const cFeedback = targetDoc.getElementById('cFeedback');
@@ -8453,6 +8737,7 @@ function wireControls(targetDoc = document){
   bindDepth('cModGlitch', 'vModGlitch', 'modGlitch');
   bindDepth('cModPoints', 'vModPoints', 'modPoints');
   bindDepth('cModPaint', 'vModPaint', 'modPaint');
+  bindDepth('cModFlux', 'vModFlux', 'modFlux');
   bindDepth('cModComic', 'vModComic', 'modComic');
   bindDepth('cModSplit', 'vModSplit', 'modSplit');
   bindDepth('cModFeedback', 'vModFeedback', 'modFeedback');
@@ -8473,6 +8758,7 @@ function wireControls(targetDoc = document){
   bindLfo('cLfoRateGlitch', 'vLfoRateGlitch', 'lfoRateGlitch');
   bindLfo('cLfoRatePoints', 'vLfoRatePoints', 'lfoRatePoints');
   bindLfo('cLfoRatePaint', 'vLfoRatePaint', 'lfoRatePaint');
+  bindLfo('cLfoRateFlux', 'vLfoRateFlux', 'lfoRateFlux');
   bindLfo('cLfoRateComic', 'vLfoRateComic', 'lfoRateComic');
   bindLfo('cLfoRateSplit', 'vLfoRateSplit', 'lfoRateSplit');
   bindLfo('cLfoRateFeedback', 'vLfoRateFeedback', 'lfoRateFeedback');
@@ -8493,6 +8779,7 @@ function wireControls(targetDoc = document){
   bindDepth('cAudModGlitch', 'vAudModGlitch', 'audModGlitch');
   bindDepth('cAudModPoints', 'vAudModPoints', 'audModPoints');
   bindDepth('cAudModPaint', 'vAudModPaint', 'audModPaint');
+  bindDepth('cAudModFlux', 'vAudModFlux', 'audModFlux');
   bindDepth('cAudModComic', 'vAudModComic', 'audModComic');
   bindDepth('cAudModSplit', 'vAudModSplit', 'audModSplit');
   bindDepth('cAudModFeedback', 'vAudModFeedback', 'audModFeedback');
@@ -8622,7 +8909,6 @@ function openPopoutWindow(){
   syncButton('bPalAudio', state.palAudio ? 'AUDIO PALETTE ON' : 'AUDIO PALETTE OFF', state.palAudio);
   if(REC.rec) syncButton('bRec', REC.hasAudio ? '■ STOP REC' : '■ STOP (NO AUDIO)', true); else syncRecLabel();
   setRecMax(REC.max);
-  setRecLevel(REC.target * 100);
   { const ms = document.getElementById('cPresetSlot'), ps = popoutWin.document.getElementById('cPresetSlot'); if(ms && ps) ps.value = ms.value; }
   refreshPresetSlots();
   syncVCamButton();
@@ -8690,7 +8976,6 @@ setVideoLoop(false);
 setSrcMix(0);
 syncCamGrade();
 syncOutGrade();
-setRecLevel(70);
 syncReadouts();
 syncFx();
 resize();
