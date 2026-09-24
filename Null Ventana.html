@@ -1463,90 +1463,84 @@ function glitchPass(ctx, W, H, tw){
 }
 
 
-// ---- POINTS: the frame is rebuilt as a grid of small square points, one per cell, coloured by the picture
-// beneath it. Dark cells drop out, so a shape reads as clusters of dots on black like an LED matrix or a dot
-// screen. The grid is alive: it drifts slowly across the frame, alternate rows slide against each other, and
-// the bass swells the dot size. The slider sets the pitch: low = a fine, dense screen; high = wide spacing and
-// big fat dots. The first ~15% of travel fades the dots in over the untouched picture.
-// Cost: no per-dot JavaScript. The picture is shrunk so one pixel = one cell (a few thousand pixels, processed
-// once for the drop-out / colour lift), scaled back up row by row with the row slide, then cut into dots with
-// a repeating pattern stencil - a couple of hundred GPU draws however many dots are on screen. ----
-const PT = { c:null, x:null, s:null, sx:null, m:null, mx:null, st:null, stx:null, pat:null, patKey:'' };
+// ---- POINTS: the picture is redrawn as a stippling - small points placed wherever a shape or the image has
+// something to show, and only there. The frame is analysed in small cells; each cell earns points in proportion
+// to how bright it is and, much more, to how strong an edge runs through it, so contours pick up a dense chain of
+// points while flat lit areas get a sparse fill and dark areas get nothing. Point positions are seeded per cell
+// and per point, so the stipple holds still while the picture moves through it instead of flickering; points
+// take the colour of the picture beneath them (dim cells get a mild lift), edge points are a little larger, and
+// the bass swells them all. The slider sets the scale: low = fine, dense stippling; high = coarser, sparser points.
+// The first ~15% of travel fades the points in over the untouched picture.
+// Cost: one shrunken read-back of the frame (a few thousand cells), then the points are stamped as discs into a
+// pixel buffer at up to 960 px wide and drawn up once - tens of thousands of points in a couple of ms. ----
+const PT = { c:null, x:null, s:null, sx:null, img:null, buf:null, cov:null, discs:[] };
 function pointsPass(ctx, W, H, tw, a){
   if(!PT.c){
     PT.c = document.createElement('canvas'); PT.x = PT.c.getContext('2d', { willReadFrequently: true });
     PT.s = document.createElement('canvas'); PT.sx = PT.s.getContext('2d');
-    PT.m = document.createElement('canvas'); PT.mx = PT.m.getContext('2d');
-    PT.st = document.createElement('canvas'); PT.stx = PT.st.getContext('2d');
   }
   const mix = Math.min(1, a/0.15);                                        // fade-in over the first part of the slider
-  const pitch = Math.max(3, Math.round(lerp(0.006, 0.032, a) * Math.max(W, H)));   // integer cell size so the stencil tiles exactly
-  const gw = Math.ceil(W/pitch) + 2, gh = Math.ceil(H/pitch) + 2;         // one cell of margin each side for the drift
+  const scale = Math.min(1, 960/W), SW = Math.round(W*scale), SH = Math.round(H*scale);   // stipple buffer resolution
+  const cell = Math.max(2, lerp(0.0035, 0.016, a)*Math.max(SW, SH));    // analysis cell size in stipple pixels
+  const gw = Math.ceil(SW/cell) + 1, gh = Math.ceil(SH/cell) + 1;
   if(PT.c.width !== gw || PT.c.height !== gh){ PT.c.width = gw; PT.c.height = gh; }
-  if(PT.s.width !== W || PT.s.height !== H){ PT.s.width = W; PT.s.height = H; PT.m.width = W; PT.m.height = H; }
-  const ox = (tw*0.07*pitch) % pitch, oy = (tw*0.045*pitch) % pitch;      // slow diagonal drift of the whole lattice
+  if(PT.s.width !== SW || PT.s.height !== SH){ PT.s.width = SW; PT.s.height = SH; PT.img = PT.sx.createImageData(SW, SH); PT.buf = new Uint32Array(PT.img.data.buffer); }
 
-  // 1. sample: shrink the frame so one analysis pixel = one cell, offset by the drift
+  // 1. sample: shrink the frame so one analysis pixel = one cell
   const cx = PT.x;
-  cx.setTransform(1/pitch, 0, 0, 1/pitch, 0, 0);
+  cx.setTransform(gw/W, 0, 0, gh/H, 0, 0);
   cx.globalCompositeOperation = 'copy'; cx.globalAlpha = 1; cx.imageSmoothingEnabled = true;
-  cx.drawImage(view, pitch - ox, pitch - oy, W, H);
+  cx.drawImage(view, 0, 0, W, H);
   cx.setTransform(1, 0, 0, 1, 0, 0);
-  const img = cx.getImageData(0, 0, gw, gh), px = img.data;
-  // 2. per cell: dark cells drop out (alpha 0), dim cells are lifted so they still read as lit points
-  for(let q = 0, n = gw*gh*4; q < n; q += 4){
-    const r = px[q], g = px[q+1], b = px[q+2], lum = (r*0.299 + g*0.587 + b*0.114)*(1/255);
-    if(lum < 0.06){ px[q+3] = 0; continue; }
-    if(lum < 0.5){ const k = 0.5/lum; px[q] = r*k; px[q+1] = g*k; px[q+2] = b*k; }   // store clamps to 255
-    px[q+3] = 255;
-  }
-  cx.putImageData(img, 0, 0);
+  const px = cx.getImageData(0, 0, gw, gh).data, n = gw*gh;
+  // luminance per cell, then edge strength from the neighbours
+  const lum = PT.lum && PT.lum.length === n ? PT.lum : (PT.lum = new Float32Array(n));
+  for(let q = 0, c = 0; c < n; c++, q += 4) lum[c] = (px[q]*0.299 + px[q+1]*0.587 + px[q+2]*0.114)*(1/255);
 
-  // 3. scale the cells back up row by row, alternate rows sliding against each other on a slow phase
-  const sx = PT.sx;
-  sx.setTransform(1, 0, 0, 1, 0, 0);
-  sx.globalCompositeOperation = 'copy'; sx.globalAlpha = 1; sx.filter = 'none'; sx.imageSmoothingEnabled = false;
-  sx.clearRect(0, 0, W, H);
-  sx.globalCompositeOperation = 'source-over';
-  const x0 = ox - pitch, y0 = oy - pitch, gwp = gw*pitch;
-  const shiftAmp = pitch*0.35;
-  for(let j = 0; j < gh; j++){
-    const y = y0 + j*pitch;
-    if(y + pitch < 0 || y > H) continue;
-    const rowShift = Math.round(Math.sin(tw*0.9 + j*0.7) * shiftAmp) * (j & 1 ? 1 : -1);
-    sx.drawImage(PT.c, 0, j, gw, 1, x0 + rowShift, y, gwp, pitch);
+  // 2. stamp points: discs into a cleared pixel buffer
+  const buf = PT.buf; buf.fill(0);
+  const bass = A[0] || 0, black = 0.12, maxPer = 3, big = (0.32 + 0.10*bass)*cell;   // point radius ~ a third of the cell, so density comes from count, not size
+  const discs = PT.discs;                                                 // cached anti-aliased disc stamps per quarter-pixel radius: [dx, dy, coverage 0..255]
+  const disc = (ri) => {
+    let o = discs[ri]; if(o) return o;
+    const k = ri*0.25, R = Math.ceil(k + 0.5); o = [];
+    for(let y = -R; y <= R; y++) for(let x = -R; x <= R; x++){
+      let cov = 0;                                                        // 4x4 supersampled coverage of the circle in this pixel
+      for(let sy = 0; sy < 4; sy++) for(let sx = 0; sx < 4; sx++){ const px = x - 0.375 + sx*0.25, py = y - 0.375 + sy*0.25; if(px*px + py*py <= k*k) cov++; }
+      if(cov) o.push(x, y, Math.round(cov*255/16));
+    }
+    return discs[ri] = o;
+  };
+  const cov = PT.cov && PT.cov.length === SW*SH ? PT.cov : (PT.cov = new Uint8Array(SW*SH)); cov.fill(0);   // per-pixel coverage so overlapping points keep their round edges
+  for(let j = 0, c = 0; j < gh; j++){
+    for(let i = 0; i < gw; i++, c++){
+      const L = lum[c];
+      const Lr = i < gw - 1 ? lum[c + 1] : L, Ld = j < gh - 1 ? lum[c + gw] : L, Ll = i > 0 ? lum[c - 1] : L, Lu = j > 0 ? lum[c - gw] : L;
+      const E = Math.max(Math.abs(L - Lr), Math.abs(L - Ld), Math.abs(L - Ll), Math.abs(L - Lu));   // contour strength
+      const lit = L > black ? (L - black)/(1 - black) : 0;
+      if(lit <= 0 && E < 0.08) continue;                                  // nothing to show here: no points
+      const w = lit*lit*1.2 + E*5;                                         // edges earn far more points than flat areas
+      const hc = ihash(i, j, 911);
+      const cnt = Math.min(maxPer, Math.floor(w*maxPer*0.5 + hc));        // stochastic rounding with a fixed per-cell hash: stable, not flickering
+      if(cnt <= 0) continue;
+      const q = c*4; let r = px[q], g = px[q+1], b = px[q+2];
+      if(L < 0.45 && L > 0){ const k = Math.min(1.5, 0.45/L); r = Math.min(255, r*k); g = Math.min(255, g*k); b = Math.min(255, b*k); }   // mild lift for dim points
+      const col = (b << 16) | (g << 8) | r;                                  // little-endian BGR, alpha added per pixel from the disc coverage
+      const o = disc(Math.round(Math.max(1.6, big*(0.7 + Math.min(1, E*2.5)*0.6))*4)), no = o.length;   // edge points a little larger; never smaller than a visibly round dot
+      const rgb = col & 0x00ffffff;
+      for(let k = 0; k < cnt; k++){
+        const X0 = Math.round((i + ihash(i, j, k*3 + 1))*cell), Y0 = Math.round((j + ihash(i, j, k*3 + 2))*cell);
+        for(let m = 0; m < no; m += 3){
+          const X = X0 + o[m], Y = Y0 + o[m+1]; if(X < 0 || X >= SW || Y < 0 || Y >= SH) continue;
+          const p = Y*SW + X, cv = o[m+2];
+          if(cv >= cov[p]){ cov[p] = cv; buf[p] = (cv << 24) | rgb; }        // the point with the most coverage owns the pixel; edge pixels stay partly transparent
+        }
+      }
+    }
   }
+  PT.sx.putImageData(PT.img, 0, 0);
 
-  // 4. cut the cells into dots with a repeating stencil (one square per cell), rows shifted to match
-  const bass = A[0] || 0;
-  const sz = Math.max(1, Math.round(pitch * (0.42 + 0.22*bass)));       // dot size: leaves a gap between neighbours; bass swells it
-  const key = pitch + ':' + sz;
-  if(PT.patKey !== key){
-    PT.st.width = PT.st.height = pitch;
-    const stx = PT.stx; stx.clearRect(0, 0, pitch, pitch); stx.fillStyle = '#fff';
-    const o = (pitch - sz) >> 1; stx.fillRect(o, o, sz, sz);
-    PT.pat = sx.createPattern(PT.st, 'repeat'); PT.patKey = key;
-  }
-  // the stencil is assembled row by row on its own canvas first: destination-in acts on the whole canvas, so
-  // masking row by row in place would wipe every row but the last
-  const mx = PT.mx;
-  mx.setTransform(1, 0, 0, 1, 0, 0);
-  mx.globalCompositeOperation = 'source-over'; mx.globalAlpha = 1;
-  mx.clearRect(0, 0, W, H);
-  mx.fillStyle = PT.pat;
-  for(let j = 0; j < gh; j++){
-    const y = y0 + j*pitch;
-    if(y + pitch < 0 || y > H) continue;
-    const rowShift = Math.round(Math.sin(tw*0.9 + j*0.7) * shiftAmp) * (j & 1 ? 1 : -1);
-    mx.setTransform(1, 0, 0, 1, x0 + rowShift, y);                          // pattern origin follows the transform, so the dots land on the shifted cells
-    mx.fillRect(0, 0, gwp, pitch);
-  }
-  mx.setTransform(1, 0, 0, 1, 0, 0);
-  sx.globalCompositeOperation = 'destination-in';
-  sx.drawImage(PT.m, 0, 0);
-  sx.globalCompositeOperation = 'source-over';
-
-  // 5. composite: dots over black, faded in over the untouched picture
+  // 3. composite: points over black, faded in over the untouched picture
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = 'source-over';
@@ -1554,7 +1548,8 @@ function pointsPass(ctx, W, H, tw, a){
   ctx.globalAlpha = mix;
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
-  ctx.drawImage(PT.s, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(PT.s, 0, 0, W, H);
   ctx.restore();
 }
 
@@ -1911,7 +1906,7 @@ function m3Mesh(verts, faces, D, f, colorOf, opts = {}){
     const fc = faces[i], a = verts[fc[0]], b = verts[fc[1]], c = verts[fc[2]];
     const ux = b[0]-a[0], uy = b[1]-a[1], uz = b[2]-a[2], vx = c[0]-a[0], vy = c[1]-a[1], vz = c[2]-a[2];
     let nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx;
-    const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+    const nl = Math.sqrt(nx*nx + ny*ny + nz*nz) || 1; nx /= nl; ny /= nl; nz /= nl;
     // view vector from face centre to camera
     let zc = 0, cxx = 0, cyy = 0; for(const k of fc){ zc += verts[k][2]; cxx += verts[k][0]; cyy += verts[k][1]; }
     zc /= fc.length; cxx /= fc.length; cyy /= fc.length;
@@ -2343,7 +2338,7 @@ function drawWaves(t){
     for(let i = 0; i < cols - 1; i++){
       const a = near[i].p, b = near[i+1].p, c = far[i+1].p, d = far[i].p;
       const ux = b[0]-a[0], uy = b[1]-a[1], uz = b[2]-a[2], vx = d[0]-a[0], vy = d[1]-a[1], vz = d[2]-a[2];
-      let nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx; const nl = Math.hypot(nx, ny, nz) || 1;
+      let nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx; const nl = Math.sqrt(nx*nx + ny*ny + nz*nz) || 1;
       const lit = 0.3 + 0.7*Math.abs((nx*light[0] + ny*light[1] + nz*light[2]) / nl);
       const h = (near[i].h + near[i+1].h)*0.5;
       const cv = clamp((h + 0.7)/1.4, 0, 0.999) * (pal.rgb.length - 1), ci = cv|0, cf = cv - ci, c0 = pal.rgb[ci], c1 = pal.rgb[ci + 1];
@@ -3371,7 +3366,7 @@ function drawTriangulation(t){
   bctx.globalCompositeOperation = 'source-over';
   const D = 3.6, f = minD*1.3;
   if(!drawTriangulation.mesh){                      // icosphere (1 subdivision) built once
-    const phi = (1 + Math.sqrt(5))/2, nrm = (p) => { const l = Math.hypot(p[0], p[1], p[2]); return [p[0]/l, p[1]/l, p[2]/l]; };
+    const phi = (1 + Math.sqrt(5))/2, nrm = (p) => { const l = Math.sqrt(p[0]*p[0] + p[1]*p[1] + p[2]*p[2]); return [p[0]/l, p[1]/l, p[2]/l]; };
     let v = [[-1,phi,0],[1,phi,0],[-1,-phi,0],[1,-phi,0],[0,-1,phi],[0,1,phi],[0,-1,-phi],[0,1,-phi],[phi,0,-1],[phi,0,1],[-phi,0,-1],[-phi,0,1]].map(nrm);
     let fcs = [[0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],[1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],[3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],[4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]];
     const cache = {}, mid = (a, b) => { const k = a < b ? a + '_' + b : b + '_' + a; if(cache[k] === undefined){ cache[k] = v.length; v.push(nrm([(v[a][0]+v[b][0])/2, (v[a][1]+v[b][1])/2, (v[a][2]+v[b][2])/2])); } return cache[k]; };
@@ -3908,115 +3903,6 @@ function drawModularSynth(t){
     path(); bctx.strokeStyle = rgb(cc, 1.25); bctx.lineWidth = lw*0.35; bctx.stroke();
   }
   bctx.lineCap = 'butt'; bctx.lineJoin = 'miter';
-}
-
-// WEB: polygon tunnel web.
-function drawWeb(t){
-  const pal = PALETTES[state.palette], minD = Math.min(bw, bh);
-  const gain = 0.25 + state.audio * 1.25;
-  const sides = 8;
-  const numRings = 12 + Math.round(eff.density * 18);
-  const baseSpeed = 0.45 + eff.rate * 0.65;
-  const tunnelProgress = t * baseSpeed + (A[0] * gain * 0.4);
-
-  const cx = bw * 0.5 + Math.sin(t * 0.65) * (bw * 0.08) + (A[1] - A[2]) * gain * (bw * 0.1);
-  const cy = bh * 0.5 + Math.cos(t * 0.55) * (bh * 0.08) + Math.sin(t * 1.2) * (A[0] * gain * bh * 0.08);
-
-  const roll = t * 0.25 + (A[1] * gain * 0.5);
-  const cBeam = pal.rgb[Math.floor(t * 0.3) % pal.rgb.length];
-  const maxRadius = minD * (0.85 + A[0] * gain * 0.3);
-
-  const getPolyPoint = (ringRadius, sideIndex, totalSides, curRoll, twistZ = 0) => {
-    const ang = curRoll + (sideIndex / totalSides) * TAU + twistZ;
-    return {
-      x: cx + Math.cos(ang) * ringRadius,
-      y: cy + Math.sin(ang) * ringRadius
-    };
-  };
-
-  bctx.save();
-  const cCenter = pal.rgb[(Math.floor(t * 0.2) + 2) % pal.rgb.length];
-  const centerGlow = bctx.createRadialGradient(cx, cy, 0, cx, cy, minD * (0.2 + A[0] * gain * 0.35));
-  centerGlow.addColorStop(0, `rgba(${cCenter[0]},${cCenter[1]},${cCenter[2]},${clamp(0.75 + A[0] * gain * 0.25, 0, 1)})`);
-  centerGlow.addColorStop(0.35, `rgba(${cCenter[0]},${cCenter[1]},${cCenter[2]},${clamp(0.35 + A[2] * gain * 0.3, 0, 0.8)})`);
-  centerGlow.addColorStop(1, 'rgba(0,0,0,0)');
-  bctx.fillStyle = centerGlow;
-  bctx.beginPath();
-  bctx.arc(cx, cy, minD * 0.35, 0, TAU);
-  bctx.fill();
-
-  for(let i = 0; i < sides; i++){
-    const edgeOuter = getPolyPoint(maxRadius, i, sides, roll, Math.sin(t + i) * 0.15);
-    const col = pal.rgb[(i + Math.floor(t * 0.15)) % pal.rgb.length];
-    bctx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},${clamp(0.45 + A[i % 4] * gain * 0.55, 0, 1)})`;
-    bctx.lineWidth = Math.max(1, minD * 0.0035 + A[0] * gain * 2);
-    bctx.beginPath();
-    bctx.moveTo(cx, cy);
-    bctx.lineTo(edgeOuter.x, edgeOuter.y);
-    bctx.stroke();
-
-    const beamCol = pal.rgb[(i + 1) % pal.rgb.length];
-    bctx.strokeStyle = `rgba(${beamCol[0]},${beamCol[1]},${beamCol[2]},${clamp(0.25 + A[2] * gain * 0.45, 0, 0.8)})`;
-    bctx.lineWidth = Math.max(1, minD * 0.0015);
-    const midPoint = getPolyPoint(maxRadius, i + 0.5, sides, roll, Math.sin(t + i) * 0.15);
-    bctx.beginPath();
-    bctx.moveTo(cx, cy);
-    bctx.lineTo(midPoint.x, midPoint.y);
-    bctx.stroke();
-  }
-
-  for(let r = 0; r < numRings; r++){
-    const rawPos = (r / numRings + tunnelProgress) % 1;
-    const depth = Math.pow(rawPos, 2.4);
-    if(depth < 0.008) continue;
-
-    const ringRad = depth * maxRadius;
-    const twist = Math.sin(t * 0.8 + depth * 5.0) * (0.35 + A[1] * gain * 0.5);
-    const alpha = clamp(Math.pow(depth, 0.65) * 0.95 + A[r % 4] * gain * 0.4, 0, 1);
-    const col = pal.rgb[(r + Math.floor(t * 0.25)) % pal.rgb.length];
-
-    bctx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
-    bctx.lineWidth = Math.max(1, (1.0 + depth * 3.5) * (minD * 0.003) + (r % 3 === 0 ? A[0] * gain * 3.5 : 0));
-
-    bctx.beginPath();
-    for(let s = 0; s <= sides; s++){
-      const pt = getPolyPoint(ringRad, s % sides, sides, roll, twist);
-      if(s === 0) bctx.moveTo(pt.x, pt.y);
-      else bctx.lineTo(pt.x, pt.y);
-    }
-    bctx.stroke();
-
-    if(r % 2 === 0 && depth > 0.1){
-      for(let s = 0; s < sides; s++){
-        const node = getPolyPoint(ringRad, s, sides, roll, twist);
-        const nodeR = Math.max(1.2, depth * (minD * 0.016) * (1 + A[s % 4] * gain * 0.8));
-        bctx.fillStyle = `rgba(255,255,255,${clamp(alpha * 0.9, 0, 1)})`;
-        bctx.beginPath();
-        bctx.arc(node.x, node.y, nodeR, 0, TAU);
-        bctx.fill();
-      }
-    }
-
-    if(A[0] > 0.25 && r % 4 === 0 && depth > 0.2){
-      bctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${clamp(0.08 + A[0] * gain * 0.18, 0, 0.35)})`;
-      bctx.beginPath();
-      for(let s = 0; s <= sides; s++){
-        const pt = getPolyPoint(ringRad, s % sides, sides, roll, twist);
-        if(s === 0) bctx.moveTo(pt.x, pt.y);
-        else bctx.lineTo(pt.x, pt.y);
-      }
-      bctx.closePath();
-      bctx.fill();
-    }
-  }
-
-  const coreR = Math.max(2, minD * (0.015 + A[0] * gain * 0.04));
-  bctx.fillStyle = `rgba(${cBeam[0]},${cBeam[1]},${cBeam[2]},0.95)`;
-  bctx.beginPath();
-  bctx.arc(cx, cy, coreR, 0, TAU);
-  bctx.fill();
-
-  bctx.restore();
 }
 
 // GROVE: a quiet painted forest in the hand of a hand-drawn animation background - tall mossy trunks receding
@@ -4899,12 +4785,12 @@ function drawPlanet(t){
         r = cWater[0]*shade; g = cWater[1]*shade; b = cWater[2]*shade;
         let hxv = Lx - dx, hyv = Ly - dz, hzv = Lz - dy; const hl = 1/Math.sqrt(hxv*hxv + hyv*hyv + hzv*hzv);
         const ndh = (dn*0.06*hxv + dn*0.05*hyv + hzv)*hl;
-        const spec = ndh > 0 ? Math.pow(ndh, 90)*1.4 : 0;
+        const spec = ndh > 0.88 ? Math.pow(ndh, 90)*1.4 : 0;                       // below 0.88 the highlight is under 1e-5: skip the pow
         r += cSun[0]*spec + 20*spec; g += cSun[1]*spec + 20*spec; b += cSun[2]*spec + 20*spec;
         if(wm < 1){ r = lr_ + (r - lr_)*wm; g = lg_ + (g - lg_)*wm; b = lb_ + (b - lb_)*wm; }
       } else { r = lr_; g = lg_; b = lb_; }
       // haze with distance, and the atmosphere lighting up where the ground grazes the limb
-      const fog = 1 - Math.exp(-th*fogK), gr = Math.exp(-disc*260)*1.1;
+      const fog = 1 - Math.exp(-th*fogK), gr = disc < 0.035 ? Math.exp(-disc*260)*1.1 : 0;   // rim glow is gone past the limb band: skip the exp
       r = r*(1 - fog) + hazeR*fog + cRim[0]*gr; g = g*(1 - fog) + hazeG*fog + cRim[1]*gr; b = b*(1 - fog) + hazeB*fog + cRim[2]*gr;
       px[p] = r > 255 ? 255 : r; px[p+1] = g > 255 ? 255 : g; px[p+2] = b > 255 ? 255 : b; px[p+3] = 255;
     }
@@ -5245,9 +5131,9 @@ function drawJellyfish(t){
     for(const fc of faces){
       const a = verts[fc[0]], b = verts[fc[1]], cc = verts[fc[2]];
       let nx = (b[1]-a[1])*(cc[2]-a[2]) - (b[2]-a[2])*(cc[1]-a[1]), ny = (b[2]-a[2])*(cc[0]-a[0]) - (b[0]-a[0])*(cc[2]-a[2]), nz = (b[0]-a[0])*(cc[1]-a[1]) - (b[1]-a[1])*(cc[0]-a[0]);
-      const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+      const nl = Math.sqrt(nx*nx + ny*ny + nz*nz) || 1; nx /= nl; ny /= nl; nz /= nl;
       const zc = (a[2] + b[2] + cc[2] + verts[fc[3]][2])*0.25;
-      const vx = -a[0], vy = -a[1], vz = -D - a[2], vl = Math.hypot(vx, vy, vz) || 1;
+      const vx = -a[0], vy = -a[1], vz = -D - a[2], vl = Math.sqrt(vx*vx + vy*vy + vz*vz) || 1;
       const facing = (nx*vx + ny*vy + nz*vz)/vl;                                  // + toward camera
       const fres = 1 - Math.abs(facing);
       const lit = 0.45 + 0.55*Math.max(0, ny*0.8 + nx*0.3 - nz*0.2);
@@ -5882,164 +5768,6 @@ function drawAmoebas(t){
   bctx.lineCap = 'butt';
 }
 
-// PIXEL WORLD: auto-scrolling side-view platformer landscape in bright 8-bit colours - parallax hills, puffy
-// clouds, tiled ground with plateaus and pits, floating blocks, bobbing gems, bushes, flowers and sparkles.
-// Seeded biome (meadow / desert / snow / candy / jungle / lava / night); the world is infinite via ihash on the
-// tile column, so scrolling never repeats. Bass speeds the scroll and bounces the gems, treble adds sparkles.
-function drawPixelWorld(t){
-  const pal = PALETTES[state.palette], gain = 0.25 + state.audio * 1.25;
-  bctx.globalCompositeOperation = 'source-over';
-  const PW = drawPixelWorld;
-  if(!PW.oc){ PW.oc = document.createElement('canvas'); PW.octx = PW.oc.getContext('2d'); PW.x = 0; PW.lastT = t; PW.sm = new Float32Array(4); PW.camY = 0; PW.sparks = []; }
-  const T = 8, W = 256, H = Math.max(64, Math.round(W*bh/bw));
-  if(PW.oc.width !== W || PW.oc.height !== H){ PW.oc.width = W; PW.oc.height = H; }
-  if(PW.seed !== state.seed){
-    const r = mulberry32((state.seed|0) ^ 0x8b17);
-    const biome = ['meadow', 'desert', 'snow', 'candy', 'jungle', 'lava', 'night'][Math.floor(r()*7)];
-    PW.cfg = { biome, k: Math.floor(r()*9999), baseH: 2 + Math.floor(r()*2), hillF: 0.6 + r()*0.8, sunX: 0.15 + r()*0.7, plat: 0.25 + r()*0.4, gemD: 0.4 + r()*0.5, pitP: 0.08 + r()*0.12 };
-    PW.seed = state.seed;
-  }
-  const C = PW.cfg, c = PW.octx, k = C.k, dens = eff.density;      // DENSITY: stars, clouds, decorations, platforms, gems, sparkles
-  let dt = t - PW.lastT; PW.lastT = t; if(dt < 0 || dt > 0.25) dt = 0;
-  for(let b = 0; b < 4; b++) PW.sm[b] += (clamp(A[b]*gain*1.3, 0, 1) - PW.sm[b]) * Math.min(1, dt*8);
-  PW.x += dt*(28 + PW.sm[0]*50);                                 // scroll speed in px/s, faster with bass
-  const rgb = (col, m = 1) => `rgb(${clamp(col[0]*m,0,255)|0},${clamp(col[1]*m,0,255)|0},${clamp(col[2]*m,0,255)|0})`;
-  const mix = (a, b, q) => [lerp(a[0], b[0], q), lerp(a[1], b[1], q), lerp(a[2], b[2], q)];
-  // ---- biome colour scripts, tinted a little by the palette so it re-colours the world ----
-  const tk = 0.15, P0 = pal.rgb[0], P1 = pal.rgb[1 % pal.rgb.length];
-  const B = {
-    meadow: { skyT: [80, 160, 255], skyB: [160, 224, 255], hillF: [110, 200, 120], hillN: [60, 170, 90], grass: [80, 210, 70], grassL: [150, 240, 110], dirt: [180, 110, 60], dirtD: [140, 80, 40], bush: [40, 150, 60], bushL: [90, 210, 100], water: [50, 130, 240], block: [230, 160, 50], blockL: [255, 220, 120], cloud: [255, 255, 255] },
-    desert: { skyT: [90, 190, 250], skyB: [255, 220, 150], hillF: [230, 170, 90], hillN: [200, 130, 70], grass: [240, 200, 100], grassL: [255, 235, 160], dirt: [200, 140, 70], dirtD: [160, 100, 50], bush: [60, 160, 80], bushL: [120, 210, 110], water: [70, 200, 230], block: [200, 120, 80], blockL: [250, 190, 140], cloud: [255, 250, 235] },
-    snow:   { skyT: [120, 180, 240], skyB: [210, 235, 255], hillF: [220, 235, 255], hillN: [170, 200, 240], grass: [235, 245, 255], grassL: [255, 255, 255], dirt: [110, 130, 180], dirtD: [70, 90, 140], bush: [40, 120, 90], bushL: [90, 170, 130], water: [90, 170, 240], block: [120, 170, 230], blockL: [200, 230, 255], cloud: [255, 255, 255] },
-    candy:  { skyT: [255, 150, 210], skyB: [255, 220, 240], hillF: [180, 240, 250], hillN: [140, 220, 200], grass: [255, 120, 180], grassL: [255, 190, 230], dirt: [150, 70, 130], dirtD: [110, 40, 100], bush: [120, 220, 240], bushL: [200, 250, 255], water: [255, 240, 120], block: [255, 210, 60], blockL: [255, 245, 170], cloud: [255, 240, 250] },
-    jungle: { skyT: [40, 120, 200], skyB: [120, 220, 200], hillF: [40, 140, 120], hillN: [20, 110, 80], grass: [40, 180, 60], grassL: [120, 240, 90], dirt: [120, 80, 50], dirtD: [80, 50, 30], bush: [20, 120, 50], bushL: [70, 190, 80], water: [40, 180, 200], block: [190, 130, 60], blockL: [240, 200, 120], cloud: [240, 255, 245] },
-    lava:   { skyT: [90, 20, 40], skyB: [230, 90, 40], hillF: [120, 40, 60], hillN: [70, 20, 40], grass: [90, 60, 70], grassL: [150, 110, 120], dirt: [60, 30, 40], dirtD: [35, 15, 25], bush: [40, 20, 30], bushL: [90, 50, 60], water: [255, 120, 20], block: [90, 80, 90], blockL: [170, 160, 170], cloud: [100, 60, 70] },
-    night:  { skyT: [10, 15, 60], skyB: [60, 40, 120], hillF: [40, 50, 110], hillN: [25, 30, 80], grass: [60, 110, 90], grassL: [110, 180, 140], dirt: [60, 50, 90], dirtD: [35, 30, 60], bush: [30, 70, 70], bushL: [70, 130, 120], water: [40, 90, 200], block: [110, 100, 170], blockL: [180, 170, 240], cloud: [150, 150, 200] }
-  }[C.biome];
-  const col = {}; for(const key in B) col[key] = mix(B[key], key.startsWith('sky') || key === 'water' || key === 'cloud' ? P0 : P1, tk);
-  const outline = rgb(mix(col.dirtD, [0, 0, 0], 0.5));
-  // ---- infinite terrain: plateaus of 4-9 columns, pits, floating blocks, gems ----
-  const segOf = (i) => Math.floor(i/6);
-  const segH = (s) => { const g = ihash(s + k, 11, 1); return C.baseH + Math.floor(g*4); };
-  const colH = (i) => { const s = segOf(i); if(ihash(s + k, 12, 1) < C.pitP && (i % 6) >= 2 && (i % 6) <= 3) return 0; return segH(s); };   // tiles above bottom, 0 = pit
-  const baseY = H - T;                                          // screen y of the top of the lowest tile row
-  const scrollCol = Math.floor(PW.x/T), colOff = PW.x % T;
-  const camTarget = clamp((colH(scrollCol + 10) - C.baseH - 1)*T*0.6, 0, H*0.3);   // camera rises a little over high ground
-  PW.camY = lerp(PW.camY, camTarget, Math.min(1, dt*2));
-  const gy = (h) => Math.round(baseY - h*T + PW.camY);           // ground-top screen y for h tiles
-  // ---- sky ----
-  const sky = c.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, rgb(col.skyT)); sky.addColorStop(1, rgb(col.skyB));
-  c.fillStyle = sky; c.fillRect(0, 0, W, H);
-  if(C.biome === 'night'){                                       // stars
-    for(let i = 0; i < Math.round(10 + dens*60); i++){ const sx = ((ihash(i, k, 21)*W*2 - PW.x*0.05) % W + W) % W, sy = ihash(i, k, 22)*H*0.6, tw = Math.sin(t*3 + i) > 0.6 ? 2 : 1; c.fillStyle = tw === 2 ? '#ffffff' : 'rgb(200,200,255)'; c.fillRect(Math.round(sx), Math.round(sy), tw, tw); }
-  }
-  // sun / moon: chunky pixel disc with a highlight
-  const sunX = Math.round(((C.sunX*W - PW.x*0.02) % W + W) % W), sunY = Math.round(H*0.16), sunC = C.biome === 'night' ? [235, 235, 255] : C.biome === 'lava' ? [255, 90, 40] : [255, 240, 120];
-  c.fillStyle = rgb(sunC); c.fillRect(sunX - 6, sunY - 10, 12, 20); c.fillRect(sunX - 10, sunY - 6, 20, 12); c.fillRect(sunX - 8, sunY - 8, 16, 16);
-  c.fillStyle = rgb(mix(sunC, [255, 255, 255], 0.6)); c.fillRect(sunX - 6, sunY - 6, 5, 3); c.fillRect(sunX - 6, sunY - 3, 2, 3);
-  // ---- clouds: rounded pixel puffs on two parallax layers ----
-  for(let L = 0; L < 2; L++){
-    const par = L ? 0.22 : 0.12, n = Math.round(2 + dens*8);
-    for(let i = 0; i < n; i++){
-      const cw = 22 + ihash(i, k, 30 + L)*30, cx = Math.round(((ihash(i, k, 31 + L)*W*2 - PW.x*par - t*(3 + L*2)) % (W + cw*2) + W + cw*2) % (W + cw*2) - cw), cy = Math.round(6 + ihash(i, k, 32 + L)*H*0.32), ch = 8 + (cw*0.2|0);
-      const cc = L ? col.cloud : mix(col.cloud, col.skyB, 0.4);
-      c.fillStyle = outline; c.fillRect(cx - 1, cy + 3, cw + 2, ch - 4); c.fillRect(cx + 3, cy - 1, cw - 6, ch);   // dark rim
-      c.fillStyle = rgb(cc); c.fillRect(cx, cy + 3, cw, ch - 5); c.fillRect(cx + 4, cy, cw - 8, ch - 2); c.fillRect(cx + cw*0.3, cy - 3, cw*0.35, 4);
-      c.fillStyle = rgb(mix(cc, col.skyB, 0.4)); c.fillRect(cx + 2, cy + ch - 3, cw - 4, 2);                           // shaded underside
-    }
-  }
-  // ---- parallax hills: far (rounded lumps) and near (bigger lumps) ----
-  const hillLayers = [[0.15, col.hillF, 0.55, 0.28], [0.32, col.hillN, 0.72, 0.36]];   // parallax, colour, baseline (frac of H), amplitude
-  for(const [par, hc, base, amp] of hillLayers){
-    const hy = H*base + PW.camY*0.5;
-    for(let x = 0; x < W; x += 2){
-      const wx = (x + PW.x*par)*0.012*C.hillF;
-      const h = (Math.abs(Math.sin(wx*1.1 + k)) *0.65 + Math.abs(Math.sin(wx*2.9 + k*0.3))*0.25 + Math.abs(Math.sin(wx*0.4))*0.1)*H*amp;
-      const top = Math.round(hy - h);
-      c.fillStyle = outline; c.fillRect(x, top - 1, 2, 1);
-      c.fillStyle = rgb(hc); c.fillRect(x, top, 2, H - top);
-      c.fillStyle = rgb(mix(hc, [255, 255, 255], 0.35)); c.fillRect(x, top, 2, 2);                                       // lit ridge
-      if(((x + (PW.x*par|0)) & 15) === 0 && h > 6){ c.fillStyle = rgb(hc, 0.85); c.fillRect(x, top + 6, 2, H - top); }  // faint vertical shading stripes
-    }
-  }
-  // ---- ground columns (drawn per tile column, with pits, water in pits, bushes/flowers on top) ----
-  const cols = Math.ceil(W/T) + 2;
-  const waterY = gy(0) + T*0.5;
-  for(let ci = -1; ci < cols; ci++){
-    const i = scrollCol + ci, h = colH(i), x = Math.round(ci*T - colOff);
-    if(h === 0){                                                 // pit: water / lava with animated surface
-      c.fillStyle = rgb(col.water); c.fillRect(x, waterY, T, H - waterY);
-      c.fillStyle = rgb(mix(col.water, [255, 255, 255], 0.5)); if(((i + Math.floor(t*4)) & 1) === 0) c.fillRect(x + 2, waterY, 4, 2);
-      continue;
-    }
-    const top = gy(h), hl = colH(i - 1), hr = colH(i + 1);
-    // dirt body: checker of two browns, dark outline at edges
-    for(let y = top + T; y < H; y += T){ c.fillStyle = rgb(((i + ((y/T)|0)) & 1) ? col.dirt : col.dirtD); c.fillRect(x, y, T, T); c.fillStyle = rgb(col.dirtD, 0.8); c.fillRect(x + (i & 1 ? 1 : 4), y + 3, 3, 2); }
-    // grass cap: light top, main, dark underline
-    c.fillStyle = rgb(col.grass); c.fillRect(x, top, T, T);
-    c.fillStyle = rgb(col.grassL); c.fillRect(x, top, T, 2); c.fillRect(x + (i % 3)*2, top + 3, 2, 1);
-    c.fillStyle = outline; c.fillRect(x, top - 1, T, 1); c.fillRect(x, top + T - 1, T, 1);
-    if(hl < h) c.fillRect(x, top, 1, (hl === 0 ? H : gy(hl)) - top);                 // left cliff edge
-    if(hr < h) c.fillRect(x + T - 1, top, 1, (hr === 0 ? H : gy(hr)) - top);         // right cliff edge
-    // top decorations
-    const d = ihash(i + k, 41, 1)/(0.35 + dens*0.9);                 // more decoration as DENSITY rises
-    if(d < 0.12){                                                // bush
-      c.fillStyle = outline; c.fillRect(x - 3, top - 6, T + 6, 6); c.fillRect(x - 1, top - 8, T + 2, 2);
-      c.fillStyle = rgb(col.bush); c.fillRect(x - 2, top - 5, T + 4, 5); c.fillRect(x, top - 7, T, 2);
-      c.fillStyle = rgb(col.bushL); c.fillRect(x, top - 6, 3, 2); c.fillRect(x + 5, top - 4, 2, 1);
-    } else if(d < 0.30){                                         // flower in a palette colour
-      const fc = pal.rgb[Math.floor(ihash(i + k, 42, 1)*pal.rgb.length) % pal.rgb.length], sw = Math.round(Math.sin(t*2 + i)*0.6);
-      c.fillStyle = rgb(col.grass, 0.7); c.fillRect(x + 3 + sw, top - 4, 1, 4);
-      c.fillStyle = rgb(fc); c.fillRect(x + 2 + sw, top - 6, 3, 3); c.fillStyle = '#ffffff'; c.fillRect(x + 3 + sw, top - 5, 1, 1);
-    } else if(d < 0.36){                                         // spotted toadstool
-      c.fillStyle = 'rgb(240,230,210)'; c.fillRect(x + 3, top - 4, 2, 4);
-      c.fillStyle = rgb(P0); c.fillRect(x + 1, top - 7, 6, 3); c.fillRect(x + 2, top - 8, 4, 1);
-      c.fillStyle = '#ffffff'; c.fillRect(x + 2, top - 7, 1, 1); c.fillRect(x + 5, top - 6, 1, 1);
-    } else if(d > 0.94 && C.biome !== 'lava'){                   // tall tree: trunk + stacked round canopy
-      const th = 3 + Math.floor(ihash(i + k, 43, 1)*3);
-      c.fillStyle = rgb(col.dirtD); c.fillRect(x + 3, top - th*T, 2, th*T);
-      c.fillStyle = outline; c.fillRect(x - 4, top - th*T - 8, T + 8, 10);
-      c.fillStyle = rgb(col.bush); c.fillRect(x - 3, top - th*T - 7, T + 6, 8); c.fillRect(x - 1, top - th*T - 9, T + 2, 2);
-      c.fillStyle = rgb(col.bushL); c.fillRect(x - 1, top - th*T - 7, 4, 3);
-    }
-    // floating block platforms: 2-4 tiles wide, 3-5 tiles up, at the start of some segments
-    const s = segOf(i);
-    if((i % 6) === 1 && ihash(s + k, 51, 1) < C.plat*(0.3 + dens*1.3)){
-      const len = 2 + Math.floor(ihash(s + k, 52, 1)*3), up = 3 + Math.floor(ihash(s + k, 53, 1)*3), py = gy(segH(s) + up);
-      for(let b = 0; b < len; b++){
-        const bx = x + b*T; const gem = ihash(s + k, 60 + b, 1) < 0.25;
-        c.fillStyle = outline; c.fillRect(bx, py, T, T);
-        c.fillStyle = rgb(col.block); c.fillRect(bx + 1, py + 1, T - 2, T - 2);
-        c.fillStyle = rgb(col.blockL); c.fillRect(bx + 1, py + 1, T - 2, 1); c.fillRect(bx + 1, py + 1, 1, T - 2);
-        c.fillStyle = rgb(col.block, 0.7); c.fillRect(bx + 1, py + T - 2, T - 2, 1); c.fillRect(bx + T - 2, py + 1, 1, T - 2);
-        if(gem){ c.fillStyle = '#ffffff'; c.fillRect(bx + 3, py + 3, 2, 2); }                                       // rivet
-      }
-    }
-    // gems: bob up and down, bounce higher with bass; arcs over pits
-    const gemHere = h > 0 ? ihash(i + k, 71, 1) < C.gemD*0.22*(0.3 + dens*1.6) : ((i % 6) === 2 || (i % 6) === 3);
-    if(gemHere){
-      const gemC = pal.rgb[(i + k) % pal.rgb.length];
-      const bob = Math.sin(t*4 + i*0.9)*2 - PW.sm[0]*5, lift = h > 0 ? 2 + Math.floor(ihash(i + k, 72, 1)*3) : 3;
-      const gyy = Math.round((h > 0 ? gy(h) : gy(colH(i - 2) || colH(i + 2) || C.baseH)) - lift*T + bob), spin = Math.abs(Math.sin(t*3 + i)), gw = Math.max(1, Math.round(6*spin));
-      const gx = x + 4 - (gw >> 1);
-      c.fillStyle = outline; c.fillRect(gx - 1, gyy - 4, gw + 2, 8);
-      c.fillStyle = rgb(gemC); c.fillRect(gx, gyy - 3, gw, 6);
-      c.fillStyle = rgb(mix(gemC, [255, 255, 255], 0.6)); c.fillRect(gx, gyy - 3, Math.max(1, gw >> 1), 2);
-    }
-  }
-  // ---- sparkles: little plus-shaped glints, more with treble ----
-  const want = Math.round((3 + PW.sm[3]*18)*(0.4 + eff.density));
-  while(PW.sparks.length < want) PW.sparks.push({ x: Math.random()*W, y: Math.random()*H*0.85, age: 0, life: 0.3 + Math.random()*0.5, c: pal.rgb[Math.floor(Math.random()*pal.rgb.length)] });
-  for(let i = PW.sparks.length - 1; i >= 0; i--){
-    const s = PW.sparks[i]; s.age += dt; s.x -= dt*(28 + PW.sm[0]*50)*0.5; if(s.age > s.life || s.x < -4){ PW.sparks.splice(i, 1); continue; }
-    const big = s.age/s.life < 0.5, x = Math.round(s.x), y = Math.round(s.y);
-    c.fillStyle = rgb(s.c); c.fillRect(x, y, 1, 1); if(big){ c.fillRect(x - 1, y, 1, 1); c.fillRect(x + 1, y, 1, 1); c.fillRect(x, y - 1, 1, 1); c.fillRect(x, y + 1, 1, 1); }
-  }
-  bctx.imageSmoothingEnabled = false;
-  bctx.drawImage(PW.oc, 0, 0, bw, bh);
-  bctx.imageSmoothingEnabled = true;
-}
-
 // NEON CITY: a dense wireframe vector city in true 3D - the camera glides smoothly (no bob) down a boulevard
 // between deep blocks of towers, ziggurats, spired towers, wedges, drum towers and bridged slabs, every one drawn
 // purely with lines: all twelve edges of every box (hidden edges dimmer), floor lines, window mullions, cross
@@ -6588,6 +6316,267 @@ function drawQuilt(t){
   bctx.restore();
 }
 
+// LIQUID LIGHT: a 1960s liquid light show - coloured oil and water dyes squeezed between two clock glasses on an
+// overhead projector, filling the whole screen. Three translucent dye sheets (each a field of seeded droplets
+// stamped with soft kernels, sliding at slightly different speeds) filter the lamp multiplicatively, so overlaps
+// mix like gels on a light table. Every cell reads as a lens: a dark meniscus line, a bright refracted band just
+// inside it, a highlight on the lit side and a shadow on the far side, taken from the slope of the field. Clusters
+// of tiny bubbles and a few stray saturated drops sit on top and the whole plate ripples. Bass heats the plate
+// (droplets swell, merge and slosh sideways), low-mids push the flow, treble tightens the rims and swells the
+// bubbles. DENSITY sets droplets per sheet, bubble clusters and stray drops. The plate is translucent like AMOEBAS
+// but only slightly (oil cells about 92% opaque, water 87%), so video / the other slot show through faintly. BACKGROUND OFF drops the undyed
+// water so only the oil cells and bubbles remain.
+function drawLiquidLight(t){
+  const pal = PALETTES[state.palette], L = drawLiquidLight, den = clamp(eff.density, 0, 1);
+  const dt = smBands(L, t), sm = L.sm;
+  const W = bw >= 800 ? 352 : 288, H = Math.max(16, Math.round(W*bh/bw)), asp = bw/bh, NL = 3;   // plate resolution steps up with the FIDELITY buffer
+  if(!L.oc || L.ow !== W || L.oh !== H){
+    L.oc = document.createElement('canvas'); L.oc.width = W; L.oc.height = H; L.octx = L.oc.getContext('2d');
+    L.img = L.octx.createImageData(W, H); L.ow = W; L.oh = H;
+    L.F = []; L.HU = [];
+    for(let k = 0; k < NL; k++){ L.F.push(new Float32Array(W*H)); L.HU.push(new Float32Array(W*H)); }
+    L.lut = new Float32Array(256*3);
+    L.B = new Float32Array(W*H); L.BF = new Float32Array(W*H); L.BC = new Uint8Array(W*H);
+  }
+  // dye transmission colour: palette colour pushed to full saturation / brightness so the filters stay vivid
+  const dyeOf = (c) => { const m = Math.max(1, c[0], c[1], c[2]), mn = Math.min(c[0], c[1], c[2]); const s = 1.35; return [clamp((c[0] + (c[0] - mn)*s)/m*255, 30, 255), clamp((c[1] + (c[1] - mn)*s)/m*255, 30, 255), clamp((c[2] + (c[2] - mn)*s)/m*255, 30, 255)]; };
+  // dye lookup: palette position (0..1) -> transmission colour, rebuilt each frame so the dyes slowly cycle
+  const LUT = L.lut;
+  for(let j = 0; j < 256; j++){ const c = dyeOf(palRamp(pal, j/256 + t*0.004)); LUT[j*3] = c[0]/255; LUT[j*3 + 1] = c[1]/255; LUT[j*3 + 2] = c[2]/255; }
+  if(L.seed !== state.seed){
+    const r = mulberry32(state.seed ^ 0x0116);
+    L.layers = [];
+    for(let k = 0; k < NL; k++){
+      const drops = [], base = r();
+      for(let i = 0; i < 22; i++){
+        const big = r() < 0.3;
+        drops.push({ x:r()*asp, y:r(), R:big ? 0.13 + r()*0.14 : 0.04 + r()*0.08, w:0.9 + r()*0.3, spd:(0.04 + r()*0.09)*(big ? 0.6 : 1),
+          wf:0.25 + r()*0.8, wp:r()*TAU, band:Math.floor(r()*4), hue:base + (r() - 0.5)*0.22, ph:r()*TAU, ex:0.86 + r()*0.3, rot:r()*Math.PI, rv:(r() - 0.5)*0.3 });
+      }
+      L.layers.push({ drops, slide:0.5 + r()*0.9 });
+    }
+    L.clusters = [];
+    for(let i = 0; i < 9; i++) L.clusters.push({ x:r()*asp, y:r(), R:0.10 + r()*0.14, cs:0.045 + r()*0.04, hue:r(), ph:r()*TAU, spd:0.03 + r()*0.04, seed:Math.floor(r()*9999) });
+    L.stray = [];
+    for(let i = 0; i < 12; i++) L.stray.push({ x:r()*asp, y:r(), R:0.012 + r()*0.022, hue:r(), spd:0.03 + r()*0.06, ph:r()*TAU });
+    L.seed = state.seed; L.flow = 0; L.heat = 0; L.shim = 0; L.sx = 0; L.sy = 0; L.svx = 0; L.svy = 0; L.lastBass = 0;
+  }
+  // ---- plate dynamics ----
+  L.flow += dt*(0.18 + sm[1]*1.3);                                                   // low-mids push the flow
+  L.heat += (sm[0] - L.heat)*Math.min(1, dt*(sm[0] > L.heat ? 9 : 2.2));            // bass heats the oil
+  L.shim += dt*(0.5 + sm[3]*2.5);
+  const onset = Math.max(0, sm[0] - L.lastBass); L.lastBass = sm[0];                // a bass hit tilts the plate: everything sloshes
+  if(onset > 0.08){ const a = n1(t*0.7)*Math.PI*2; L.svx += Math.cos(a)*onset*0.9; L.svy += Math.sin(a)*onset*0.9; }
+  L.svx -= (L.sx*6 + L.svx*2.5)*dt; L.svy -= (L.sy*6 + L.svy*2.5)*dt; L.sx += L.svx*dt; L.sy += L.svy*dt;
+  const fl = L.flow, nD = clamp(5 + Math.round(den*14), 5, 19), nCl = clamp(2 + Math.round(den*7), 2, 9), nSt = clamp(3 + Math.round(den*9), 3, 12);
+  const wrap = (d, m) => { if(d.x < -m) d.x += asp + 2*m; else if(d.x > asp + m) d.x -= asp + 2*m; if(d.y < -m) d.y += 1 + 2*m; else if(d.y > 1 + m) d.y -= 1 + 2*m; };
+  const heat = 1 + L.heat*0.55;
+  // ---- dye sheets: move + stamp (each sheet slides at its own rate, so overlaps drift like separate plates) ----
+  for(let k = 0; k < NL; k++){
+    const Lk = L.layers[k], F = L.F[k], HU = L.HU[k]; F.fill(0); HU.fill(0);
+    const ox = L.sx*Lk.slide*0.25*H, oy = L.sy*Lk.slide*0.25*H;
+    for(let i = 0; i < nD; i++){
+      const d = Lk.drops[i], ang = n2(d.x*1.5 + k*3, d.y*1.5, fl*0.3)*Math.PI*1.7 + d.ph, v = d.spd*Lk.slide*(0.4 + sm[1]*1.6)*dt;
+      d.x += Math.cos(ang)*v; d.y += Math.sin(ang)*v*0.8; wrap(d, d.R*1.3);
+      const R = d.R*H*heat*(1 + 0.08*Math.sin(t*d.wf + d.wp) + sm[d.band]*0.15), Rx = R*d.ex, Ry = R/d.ex;
+      const hue = d.hue, cx = d.x*H + ox, cy = d.y*H + oy;
+      const Rm = Math.max(Rx, Ry), x0 = Math.max(0, Math.floor(cx - Rm)), x1 = Math.min(W - 1, Math.ceil(cx + Rm)), y0 = Math.max(0, Math.floor(cy - Rm)), y1 = Math.min(H - 1, Math.ceil(cy + Rm));
+      const ix2 = 1/(Rx*Rx), iy2 = 1/(Ry*Ry), w = d.w, ca = Math.cos(d.rot + t*d.rv), sa = Math.sin(d.rot + t*d.rv);   // slowly turning ellipse
+      for(let y = y0; y <= y1; y++){
+        const dy = y - cy;
+        let p = y*W + x0;
+        for(let x = x0; x <= x1; x++, p++){
+          const dx = x - cx, ex = dx*ca + dy*sa, ey = dy*ca - dx*sa, q = ex*ex*ix2 + ey*ey*iy2; if(q >= 1) continue;
+          const g = (1 - q)*(1 - q)*w;
+          F[p] += g; HU[p] += g*hue;
+        }
+      }
+    }
+  }
+  // ---- bubble clusters and stray drops: moved, then stamped into a bubble field (B = 1 - r^2 profile, BF = cluster
+  //      falloff, BC = which cluster / stray), so shading is one lookup per pixel ----
+  const B = L.B, BF = L.BF, BC = L.BC; B.fill(0);
+  const bubGain = 1 + sm[3]*0.25, sxq = L.sx*0.12, syq = L.sy*0.12;
+  const stampBubble = (bx, by, br, code, fall) => {
+    const x0 = Math.max(0, Math.floor(bx - br)), x1 = Math.min(W - 1, Math.ceil(bx + br)), y0 = Math.max(0, Math.floor(by - br)), y1 = Math.min(H - 1, Math.ceil(by + br)), ib = 1/(br*br);
+    for(let y = y0; y <= y1; y++){ const dy = y - by; let p = y*W + x0;
+      for(let x = x0; x <= x1; x++, p++){ const dx = x - bx, v = 1 - (dx*dx + dy*dy)*ib; if(v > 0 && v > B[p]){ B[p] = v; BF[p] = fall; BC[p] = code; } } }
+  };
+  for(let i = 0; i < nCl; i++){
+    const c = L.clusters[i], ang = n2(c.x*1.2 + 7, c.y*1.2, fl*0.25)*Math.PI*1.6 + c.ph; const v = c.spd*(0.4 + sm[1]*1.2)*dt; c.x += Math.cos(ang)*v; c.y += Math.sin(ang)*v; wrap(c, c.R);
+    const cs = c.cs, R2 = c.R*c.R, gy0 = Math.floor((c.y - c.R)/cs), gy1 = Math.ceil((c.y + c.R)/cs), gx0 = Math.floor((c.x - c.R)/cs) - 1, gx1 = Math.ceil((c.x + c.R)/cs);
+    for(let gy = gy0; gy <= gy1; gy++) for(let gx = gx0; gx <= gx1; gx++){
+      const h0 = ihash(gx, gy, c.seed); if(h0 < 0.18) continue;                       // some cells stay empty
+      const h1 = fract(h0*57.31), h2 = fract(h0*113.7);
+      const bx = (gx + (gy & 1)*0.5 + 0.22 + h1*0.56)*cs, by = (gy + 0.22 + h2*0.56)*cs, dx = bx - c.x, dy = by - c.y, q = dx*dx + dy*dy; if(q > R2) continue;
+      stampBubble((bx - sxq)*H, (by - syq)*H, cs*(0.18 + h0*0.3)*bubGain*H, i, 1 - q/R2);
+    }
+  }
+  for(let i = 0; i < nSt; i++){
+    const s = L.stray[i], ang = n2(s.x*2 + 11, s.y*2, fl*0.4)*Math.PI*1.8 + s.ph; const v = s.spd*(0.4 + sm[1]*1.6)*dt; s.x += Math.cos(ang)*v; s.y += Math.sin(ang)*v; wrap(s, 0.05);
+    stampBubble((s.x - sxq)*H, (s.y - syq)*H, s.R*(1 + sm[0]*0.3)*H, 100 + i, 1);
+  }
+  // ---- shade ----
+  const px = L.img.data, strip = bgStrip, lamp = [255, 246, 226], bg = pal.bgRgb || [10, 8, 20];
+  const OIL_A = 255*0.92, WATER_A = 255*0.87;                                          // oil cells ~92% opaque, water ~87%: a little of what's beneath still shows through
+  const base = [0.24 + bg[0]/500, 0.24 + bg[1]/500, 0.28 + bg[2]/500];                 // undyed water: a dim tinted glass
+  const thr = 0.28, e = 0.05, edgeW = 0.0035*(1.3 - sm[3]*0.6), edgeGain = 0.55 + sm[3]*0.3, glintGain = 0.22 + sm[3]*0.3;
+  const FS = L.F, HS = L.HU, thrLo = thr - e, ie = 1/(2*e), iEdge = 1/(edgeW*4), iGlint = 1/0.005;
+  const off = 2*W + 2, hlGain = 5.5*(W/208);                                          // lens shading samples the field up-left of the pixel
+  // ripple as separable row / column tables (one sin per row and per column instead of four per pixel)
+  const wamp = (1.2 + sm[0]*2.4)*(H/99), w1 = L.shim*0.5, w2 = t*0.3;
+  if(!L.rowX || L.rowX.length !== H || L.colX.length !== W){ L.rowX = new Float32Array(H); L.rowY = new Float32Array(H); L.colX = new Float32Array(W); L.colY = new Float32Array(W); }
+  const rowX = L.rowX, rowY = L.rowY, colX = L.colX, colY = L.colY;
+  for(let y = 0; y < H; y++){ const v = y/H; rowX[y] = wamp*Math.sin(v*8.7 + w2) + 0.5*Math.sin(v*29 + w1); rowY[y] = wamp*0.6*Math.sin(v*2.1 - w2*0.5); }
+  for(let x = 0; x < W; x++){ const u = x/W; colX[x] = wamp*0.6*Math.sin(u*3.3 + w2*0.7); colY[x] = wamp*Math.sin(u*7.1 - w2*0.8) + 0.5*Math.sin(u*25 - w1); }
+  const clusterCol = [], strayCol = [];
+  for(let i = 0; i < nCl; i++) clusterCol.push(dyeOf(palRamp(pal, L.clusters[i].hue + t*0.01)));
+  for(let i = 0; i < nSt; i++) strayCol.push(dyeOf(palRamp(pal, L.stray[i].hue)));
+  let i = 0;
+  for(let y = 0; y < H; y++){
+    const rX = rowX[y], rY = rowY[y];
+    for(let x = 0; x < W; x++, i += 4){
+      // plate ripple
+      const sx = x + rX + colX[x], sy = y + rY + colY[x];
+      const xi = sx < 0 ? 0 : sx >= W - 1 ? W - 1 : sx|0, yi = sy < 0 ? 0 : sy >= H - 1 ? H - 1 : sy|0, p = yi*W + xi, pu = p >= off ? p - off : p;
+      let r = lamp[0], g = lamp[1], b = lamp[2], cover = 0, light = 0;
+      for(let k = 0; k < NL; k++){
+        const F = FS[k], f = F[p]; if(f < thrLo) continue;
+        let m = (f - thrLo)*ie; m = m > 1 ? 1 : m; m = m*m*(3 - 2*m); cover += m;
+        const hu = HS[k][p]/f, j = ((((hu - (hu|0) + 1)*256)|0) & 255)*3;
+        const d = f - thr, thick = 1 - 0.12*(d > 0.6 ? 1 : d*1.6);                      // thick dye goes a little darker
+        let k1 = 1;
+        if(d < 0.16){                                                                  // near the rim: dark meniscus line and bright refracted band inside it
+          const ue = d*d*iEdge; if(ue < 1){ const bump = 1 - ue; k1 -= bump*bump*edgeGain; }                       // polynomial bumps stand in for gaussians (no exp per pixel)
+          const gd = d - 0.07, ug = gd*gd*iGlint; if(ug < 1){ const bump = 1 - ug; light += bump*bump*glintGain; }
+        }
+        const slope = (f - F[pu])*hlGain*m;                                           // lens: lit up-left, shadowed down-right
+        light += slope > 0 ? (slope > 1 ? 1 : slope)*0.32 : slope < -1 ? -0.3 : slope*0.3;
+        r *= (1 + (LUT[j]*thick - 1)*m)*k1; g *= (1 + (LUT[j + 1]*thick - 1)*m)*k1; b *= (1 + (LUT[j + 2]*thick - 1)*m)*k1;
+      }
+      if(cover < 1){ const kk = 1 - cover; r *= 1 + (base[0] - 1)*kk; g *= 1 + (base[1] - 1)*kk; b *= 1 + (base[2] - 1)*kk; }   // undyed water
+      if(light > 0){ const l = light > 0.7 ? 0.7 : light; r += (255 - r)*l; g += (255 - g)*l; b += (255 - b)*l; }
+      else if(light < 0){ const l = 1 + light; r *= l; g *= l; b *= l; }
+      // bubbles and stray drops from the bubble field
+      const bb = B[p];
+      if(bb > 0){
+        const code = BC[p];
+        if(code >= 100){                                                             // stray: an opaque saturated drop with a dark rim
+          const rim = bb < 0.39 ? 1 - bb/0.39 : 0, col = strayCol[code - 100], kq = 0.92*(1 - rim*0.8), hl = bb > 0.8 ? (bb - 0.8)*2 : 0;
+          r = col[0]*kq + 25 + (255 - col[0])*hl; g = col[1]*kq + 25 + (255 - col[1])*hl; b = col[2]*kq + 25 + (255 - col[2])*hl;
+          cover = 1;
+        } else {                                                                     // bubble: lighter cell with a dark meniscus ring
+          const rim = bb < 0.51 ? 1 - bb/0.51 : 0, fall = BF[p], col = clusterCol[code], lift = (1 - rim)*fall*0.7;
+          r += (col[0]*0.5 + 110 - r)*lift; g += (col[1]*0.5 + 110 - g)*lift; b += (col[2]*0.5 + 110 - b)*lift;
+          const dark = 1 - rim*0.75*fall; r *= dark; g *= dark; b *= dark;
+          cover += fall;
+        }
+      }
+      const cv = cover > 1 ? 1 : cover;
+      px[i] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = strip ? OIL_A*cv : WATER_A + (OIL_A - WATER_A)*cv;   // translucent, like AMOEBAS
+    }
+  }
+  L.octx.putImageData(L.img, 0, 0);
+  bctx.save(); bctx.globalCompositeOperation = 'source-over'; bctx.imageSmoothingEnabled = true;
+  bctx.drawImage(L.oc, 0, 0, bw, bh);
+  bctx.restore();
+}
+
+// MATRIX: after John Whitney's 'Matrix III' (1972). A troupe of identical polygon outlines (hexagons or triangles,
+// chosen by the seed) is spread along one harmonic path by 'differential' phasing: copy i sits at phase i*step
+// along a rose / Lissajous orbit, turns and breathes with that phase, and the step itself drifts slowly, so the
+// troupe keeps passing through moments of perfect symmetry (step near 2pi/n) and dissolving again. Each copy
+// carries nested, shrinking outlines that lag behind it. Bass swells the orbit and the nesting, low-mids drive
+// the phase, treble lights the lines. DENSITY sets the number of copies and nested rings.
+function drawMatrix(t){
+  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), M = drawMatrix, den = clamp(eff.density, 0, 1);
+  const dt = smBands(M, t), sm = M.sm;
+  if(M.seed !== state.seed){
+    const r = mulberry32(state.seed ^ 0x3a7c);
+    const lis = r() < 0.35;
+    M.cfg = { sides:r() < 0.6 ? 6 : r() < 0.7 ? 3 : 4, a:1, b:lis ? 2 : 1, orbit:0.16 + r()*0.12, size:0.17 + r()*0.08, harm:1 + Math.floor(r()*2),
+      twist:r() < 0.5 ? 0 : (r() < 0.5 ? 1 : -1), grade:0.25 + r()*0.35, lag:0.10 + r()*0.12, dual:r() < 0.35, col:Math.floor(r()*pal.rgb.length) };
+    M.seed = state.seed; M.ph = 0; M.stepPh = r()*TAU;
+  }
+  const C = M.cfg;
+  M.ph += dt*(0.25 + sm[1]*1.6);                                                     // low-mids drive the phase
+  M.stepPh += dt*0.11;
+  const N = clamp(5 + Math.round(den*13), 5, 18), rings = 2 + Math.round(den*2 + sm[0]*1.5);
+  // the differential step: N copies span C.harm turns of the orbit at symmetry; the drift pulls them out of step and back
+  const step = TAU/N*(C.harm + 0.5*Math.sin(M.stepPh) + 0.12*Math.sin(M.stepPh*2.7));
+  const cx = bw*0.5, cy = bh*0.5, orbit = minD*C.orbit*(1 + sm[0]*0.5), size = minD*C.size*(1 + sm[0]*0.25);
+  const white = [255, 235, 245], tint = pal.rgb[C.col], tint2 = pal.rgb[(C.col + 1) % pal.rgb.length];
+  bctx.save(); bctx.globalCompositeOperation = 'lighter'; bctx.lineJoin = 'round';
+  const lw = Math.max(1, minD*0.0032*(1 + sm[3]*0.5));
+  const poly = (x, y, R, rot) => {
+    bctx.beginPath();
+    for(let v = 0; v < C.sides; v++){ const a = rot + v/C.sides*TAU; if(v) bctx.lineTo(x + Math.cos(a)*R, y + Math.sin(a)*R); else bctx.moveTo(x + Math.cos(a)*R, y + Math.sin(a)*R); }
+    bctx.closePath(); bctx.stroke();
+  };
+  for(let pass = 0; pass < (C.dual ? 2 : 1); pass++){
+    const mirror = pass ? -1 : 1;
+    for(let i = 0; i < N; i++){
+      const ph = M.ph + i*step;
+      const px = cx + Math.cos(ph*C.a)*orbit*mirror, py = cy + Math.sin(ph*C.b)*orbit;
+      const k = i/N, rot = ph*C.twist + pass*Math.PI/C.sides, R = size*(1 - C.grade*k);          // copies are graded in size, like the film's nested sets
+      for(let q = 0; q < rings; q++){
+        // nested outlines lag the copy in phase and shrink toward its centre
+        const lag = q*C.lag, ph2 = ph - lag*3, sh = 1 - q/(rings + 0.5);
+        const lx = px + (Math.cos(ph2*C.a)*orbit*mirror - (px - cx))*0.15*q/rings, ly = py + (Math.sin(ph2*C.b)*orbit - (py - cy))*0.15*q/rings;
+        const c = q === 0 ? white : (q % 2 ? tint : tint2), bright = (q === 0 ? 0.95 : 0.7)*(0.7 + sm[3]*0.4)*(0.8 + 0.2*Math.sin(k*TAU + t));
+        bctx.strokeStyle = m3Rgba(c, 1, bright); bctx.lineWidth = q === 0 ? lw*1.3 : lw;
+        poly(lx, ly, R*sh, rot + q*0.05);
+      }
+    }
+  }
+  bctx.restore();
+}
+
+// HARMONIC: Whitney's line and dot fields. A row of vertical strokes is laid along a harmonic curve - stroke i's
+// position and length follow sines of i*step - and the step drifts, so the row folds into waves, crosses itself,
+// bunches and spreads. Strokes shrink to dots when the plate is quiet and stretch to a full-height curtain when
+// it is loud; a dense curtain takes a colour gradient like the film's coloured passages. Bass stretches the
+// strokes, low-mids drive the motion, the spectrum shapes stroke length across the row, treble whitens them.
+// DENSITY sets the number of strokes.
+function drawHarmonic(t){
+  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), Hm = drawHarmonic, den = clamp(eff.density, 0, 1);
+  const dt = smBands(Hm, t), sm = Hm.sm;
+  if(Hm.seed !== state.seed){
+    const r = mulberry32(state.seed ^ 0x77e1);
+    Hm.cfg = { fa:1, fb:1 + Math.floor(r()*2), spread:0.16 + r()*0.12, lift:0.08 + r()*0.14, len:0.12 + r()*0.16, drift:0.05 + r()*0.08,
+      curtain:r() < 0.5, col:Math.floor(r()*pal.rgb.length) };
+    Hm.seed = state.seed; Hm.ph = 0; Hm.stepPh = r()*TAU; Hm.loud = 0;
+  }
+  const C = Hm.cfg;
+  Hm.ph += dt*(0.2 + sm[1]*1.4);
+  Hm.stepPh += dt*C.drift;
+  Hm.loud += ((sm[0]*0.7 + sm[1]*0.3) - Hm.loud)*Math.min(1, dt*3);
+  const N = clamp(8 + Math.round(den*52), 8, 60), step = 0.22 + 0.16*Math.sin(Hm.stepPh) + 0.06*Math.sin(Hm.stepPh*2.3);
+  const cx = bw*0.5, cy = bh*0.5, spread = bw*C.spread, lift = bh*C.lift, base = bh*C.len;
+  const white = [235, 232, 255], tint = pal.rgb[C.col], tint2 = pal.rgb[(C.col + 2) % pal.rgb.length];
+  const curtain = C.curtain && den > 0.55;                                          // dense curtain: full-height coloured strokes
+  bctx.save(); bctx.globalCompositeOperation = 'lighter'; bctx.lineCap = 'butt';
+  const lw = Math.max(1, minD*(curtain ? 0.004 : 0.0028));
+  for(let i = 0; i < N; i++){
+    const k = i/(N - 1), ph = Hm.ph + i*step;
+    const x = cx + (k - 0.5)*bw*0.7 + Math.sin(ph*C.fa)*spread, y = cy + Math.sin(ph*C.fb + 1.3)*lift;   // an evenly spaced row, bent sideways and lifted by the harmonic
+    const lvl = specAt(k);
+    let L = base*(0.3 + 0.7*Math.abs(Math.sin(ph*0.7 + 0.4)))*(0.4 + Hm.loud*1.2 + lvl*0.8);
+    if(curtain) L = bh*(0.5 + 0.5*Math.abs(Math.sin(ph + k*3)))*(0.7 + Hm.loud*0.4);
+    const dot = Hm.loud < 0.12 && !curtain;
+    const c = curtain ? (i % 3 === 0 ? tint : i % 3 === 1 ? tint2 : white) : (sm[3] > 0.35 ? white : tint);
+    const a = curtain ? 0.55 : 0.85;
+    if(dot){ bctx.fillStyle = m3Rgba(white, 1, 0.9); bctx.beginPath(); bctx.arc(x, y, lw*0.9 + lvl*lw*1.5, 0, TAU); bctx.fill(); continue; }
+    if(curtain){
+      const g = bctx.createLinearGradient(0, y - L*0.5, 0, y + L*0.5); g.addColorStop(0, m3Rgba(c, 1.2, a)); g.addColorStop(0.5, m3Rgba(white, 1, a*0.8)); g.addColorStop(1, m3Rgba(tint2, 1, a*0.6));
+      bctx.strokeStyle = g;
+    } else bctx.strokeStyle = m3Rgba(c, 1 + lvl*0.4, a);
+    bctx.lineWidth = lw*(1 + lvl*0.8);
+    bctx.beginPath(); bctx.moveTo(x, y - L*0.5); bctx.lineTo(x, y + L*0.5); bctx.stroke();
+  }
+  bctx.restore();
+}
+
 // ---------------------------------------------------------------------------------------------
 // Registry: SHAPES (UI order/labels) and DRAW (id -> render function). Ids are what presets store.
 // ---------------------------------------------------------------------------------------------
@@ -6607,14 +6596,15 @@ const SHAPES = [
   { id:'rain', label:'RAIN' }, { id:'triangulation', label:'TRIANGLES' },
   { id:'rising', label:'RISING' }, { id:'vmsolid', label:'DIAMONDS' }, { id:'vmhollow', label:'HOLLOW' },
   { id:'solar', label:'SOLAR' }, { id:'liminal', label:'LIMINAL' },
-  { id:'modsynth', label:'SYNTH' }, { id:'web', label:'WEB' }, { id:'grove', label:'GROVE' },
+  { id:'modsynth', label:'SYNTH' }, { id:'grove', label:'GROVE' },
   { id:'vaporland', label:'VAPORWAVE' }, { id:'asteroids', label:'ASTEROIDS' },
   { id:'cityflyover', label:'CITY' }, { id:'planet', label:'PLANET' }, { id:'jellyfish', label:'JELLYFISH' },
-  { id:'oilscape', label:'OIL PAINT' }, { id:'pixelworld', label:'PIXEL WORLD' },
+  { id:'oilscape', label:'OIL PAINT' },
   { id:'neoncity', label:'NEON CITY' }, { id:'scratch', label:'SCRATCH' },
   { id:'skyline', label:'SKYLINE' }, { id:'amoebas', label:'AMOEBAS' },
   { id:'playfield', label:'PLAYFIELD' }, { id:'sprites', label:'SPRITES' }, { id:'munch', label:'MUNCH' },
-  { id:'paddles', label:'PADDLES' }, { id:'quilt', label:'QUILT' }
+  { id:'paddles', label:'PADDLES' }, { id:'quilt', label:'QUILT' }, { id:'liquidlight', label:'LIQUID LIGHT' },
+  { id:'matrix', label:'MATRIX' }, { id:'harmonic', label:'HARMONIC' }
 ];
 
 const DRAW = {
@@ -6629,11 +6619,12 @@ const DRAW = {
   rain:drawRain, triangulation:drawTriangulation, rising:drawRising,
   vmsolid:drawVMSolid, vmhollow:drawVMHollow, solar:drawSolarSystem,
   liminal:drawLiminalMaze, modsynth:drawModularSynth,
-  web:drawWeb, grove:drawGrove, vaporland:drawVaporLandscape,
+  grove:drawGrove, vaporland:drawVaporLandscape,
   asteroids:drawAsteroids, cityflyover:drawPixelCity, planet:drawPlanet,
-  jellyfish:drawJellyfish, oilscape:drawOilscape, pixelworld:drawPixelWorld,
+  jellyfish:drawJellyfish, oilscape:drawOilscape,
   neoncity:drawNeonCity, scratch:drawScratch, skyline:drawSkylinePaint, amoebas:drawAmoebas,
-  playfield:drawPlayfield, sprites:drawSprites, munch:drawMunch, paddles:drawPaddles, quilt:drawQuilt
+  playfield:drawPlayfield, sprites:drawSprites, munch:drawMunch, paddles:drawPaddles, quilt:drawQuilt, liquidlight:drawLiquidLight,
+  matrix:drawMatrix, harmonic:drawHarmonic
 };
 
 // Film/video filters. FX holds each filter's parameters, read by displayFilterPass() and filmOverlays().
@@ -6647,7 +6638,7 @@ const FX = {
   photo: { grain:16, flick:0.03, weaveX:1.2, weaveY:0.9, dust:[4,12], dustDark:[8,20], stains:true, tint:[1.07,1.01,0.88], sat:0.72, blur:0.5 },
   mm16:  { grain:24, weaveX:1.1, weaveY:0.9, dust:[2,8], tint:[1.06,1.0,0.90] },
   mm35:  { grain:9,  weaveX:0.4, weaveY:0.3, dust:[1,4], tint:[1.02,1.0,0.97] },
-  vhs:   { staticP:0.06, rowWob:3.5, caAdd:2, sat:0.8, flick:0.025, tint:[1.03,1.0,0.97] },
+  vhs:   { rowWob:3.5, caAdd:2, sat:0.8, flick:0.025, tint:[1.03,1.0,0.97] },            // no static: row wobble, chroma offset, desaturation and flicker only
   cable: { staticP:0.035, blocks:8, soft:0.4, caAdd:1, flick:0.03 }
 };
 
@@ -6845,13 +6836,13 @@ function fluxLinesPass(t, a){
 
     // ---- a bundle of 1..3 strands from neighbouring points along the edge
     grad(s.ax, s.ay, g);
-    let ex = -g[0]*s.side, ey = -g[1]*s.side, em = Math.hypot(ex, ey);
+    let ex = -g[0]*s.side, ey = -g[1]*s.side, em = hyp(ex, ey);
     if(em > 1e-6){
       ex /= em; ey /= em;
       if(s.dx === 0 && s.dy === 0){ s.dx = ex; s.dy = ey; }
       else { s.dx += (ex - s.dx) * kDir; s.dy += (ey - s.dy) * kDir; }                 // the root direction turns slowly
     }
-    em = Math.hypot(s.dx, s.dy); if(em < 1e-6) continue;
+    em = hyp(s.dx, s.dy); if(em < 1e-6) continue;
     ex = s.dx / em; ey = s.dy / em;
     const lenT = maxLen * s.len * (1 + 0.8*s.corner) * (0.25 + 0.75*s.act) * (0.6 + 0.4*s.str);
     s.lenS += (lenT - s.lenS) * kLen;                                                  // lengths grow and shrink smoothly
@@ -6884,12 +6875,12 @@ function fluxLinesPass(t, a){
       // so it sails across whatever it passes over instead of being turned back by other edges
       const rootW = k < rootSteps ? 1 - k / rootSteps : 0;
       let gm = 0;
-      if(rootW > 0){ grad(x, y, g); gm = Math.hypot(g[0], g[1]); }
+      if(rootW > 0){ grad(x, y, g); gm = hyp(g[0], g[1]); }
       if(gm > 1e-6){ const pull = Math.min(1, gm * iM) * 0.3 * s.side * rootW; dx -= g[0] / gm * pull; dy -= g[1] / gm * pull; }
       if((k & 3) === 0) sw = n2(x*kf, y*kf, ta);                                 // the swirl field is smooth: sample it every 4th step
       const ang = (sw + curl * 0.45 + 0.12 * Math.sin(k * swF - swT)) * ds / R0;   // swirl + own curl + a slow wave running out along it
       const c = 1 - ang*ang*0.5, sn = ang, nx = dx*c - dy*sn, ny = dx*sn + dy*c;  // small-angle rotation (renormalised below)
-      const m = Math.hypot(nx, ny) || 1; dx = nx / m; dy = ny / m;
+      const m = hyp(nx, ny) || 1; dx = nx / m; dy = ny / m;
       x += dx * ds; y += dy * ds;
       if(x < -2 || y < -2 || x > bw + 2 || y > bh + 2) break;
       P[np++] = x; P[np++] = y;
@@ -6909,7 +6900,7 @@ function fluxLinesPass(t, a){
     const push = (x_, y_) => { if(nj < 1198){ J[nj++] = x_; J[nj++] = y_; } };
     for(let k = 0, v = 0; ; v++){
       const a_ = k > 0 ? k - 1 : k, c_ = k < pts - 1 ? k + 1 : k;
-      let tx = P[c_*2] - P[a_*2], ty = P[c_*2+1] - P[a_*2+1]; const tm = Math.hypot(tx, ty) || 1; tx /= tm; ty /= tm;
+      let tx = P[c_*2] - P[a_*2], ty = P[c_*2+1] - P[a_*2+1]; const tm = hyp(tx, ty) || 1; tx /= tm; ty /= tm;
       const u = k / (pts - 1), env = k === 0 ? 0 : Math.min(1, u * 5) * (0.55 + 0.45 * (1 - u));
       if(hh(v, 0) > 0.22) sgn = -sgn;                                         // mostly zig, then zag
       const o = amp * env * (0.3 + 0.7 * hh(v, 1)) * sgn;
@@ -6951,7 +6942,7 @@ function fluxLinesPass(t, a){
         for(let f = 0; f < nf; f++){
           const k = Math.max(1, Math.min(end - 1, ((0.2 + 0.6 * hh(-3, f)) * end) | 0));
           let fx = P[k*2], fy = P[k*2+1], tx = P[(k+1)*2] - P[(k-1)*2], ty = P[(k+1)*2+1] - P[(k-1)*2+1];
-          const tm = Math.hypot(tx, ty) || 1, rot = (0.45 + 0.6 * hh(-4, f)) * (hh(-5, f) < 0.5 ? 1 : -1);
+          const tm = hyp(tx, ty) || 1, rot = (0.45 + 0.6 * hh(-4, f)) * (hh(-5, f) < 0.5 ? 1 : -1);
           const c = Math.cos(rot), sn = Math.sin(rot); let dx_ = (tx*c - ty*sn) / tm, dy_ = (tx*sn + ty*c) / tm;
           const segs = 3 + ((hh(-6, f) * 3) | 0), segL = len * (0.12 + 0.2 * hh(-7, f)) / segs;
           bctx.moveTo(fx, fy);
@@ -6988,7 +6979,7 @@ function fluxLinesPass(t, a){
     for(let k = k0; k <= k1; k++){
       const a = k > k0 ? k - 1 : k, c = k < k1 ? k + 1 : k;
       let tx = P[c*2] - P[a*2], ty = P[c*2+1] - P[a*2+1];
-      const tm = Math.hypot(tx, ty) || 1; tx /= tm; ty /= tm;
+      const tm = hyp(tx, ty) || 1; tx /= tm; ty /= tm;
       const hw = 0.5 * wMax * fluxSwell((k - k0) / n), i = (k - k0) * 2;
       R[i] = -ty * hw; R[i+1] = tx * hw;                                        // normal offset at this point
     }
@@ -8325,7 +8316,7 @@ function presetApply(p){
   const sg = p.seg || {};
   if(sg.fontStyle) setFontStyle(sg.fontStyle);
   // presets saved before PLASMA / WOBBLE / LATTICE / ECHO were replaced load the shape that took each slot
-  const SHAPE_ALIAS = { plasma:'memory', wobble:'odyssey', lattice:'supernova', echo:'blackhole', halo:'rings', sequencer:'modsynth', stickdancer:'orbs' };   // removed shapes -> nearest surviving one, so old presets still load
+  const SHAPE_ALIAS = { plasma:'memory', wobble:'odyssey', lattice:'supernova', echo:'blackhole', halo:'rings', sequencer:'modsynth', stickdancer:'orbs', web:'tunnel', pixelworld:'vaporland' };   // removed shapes -> nearest surviving one, so old presets still load
   if(sg.shape) setShape(SHAPE_ALIAS[sg.shape] || sg.shape);
   if(sg.shapeB) setShapeB(SHAPE_ALIAS[sg.shapeB] || sg.shapeB);
   if(sg.filter) setFilter(sg.filter);
