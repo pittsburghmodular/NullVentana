@@ -8130,7 +8130,7 @@ function recMime(){
 function recIsMp4(){ const m = recMime(); return Boolean(m) && m.startsWith('video/mp4'); }
 // Label the record button with the container the browser will actually write.
 function syncRecLabel(){
-  if(REC.rec) return;
+  if(REC.rec){ syncButton('bRec', (REC.hasAudio ? '■ STOP REC' : '■ STOP (NO AUDIO)') + (recIsMp4() ? '' : ' (WEBM)'), true); return; }
   const m = recMime();
   syncButton('bRec', m === null ? 'NO RECORDER' : (recIsMp4() ? '● START REC' : '● REC (WEBM)'), false);
   const tip = m === null ? 'this browser has no MediaRecorder' : (recIsMp4() ? 'records the display, with the audio input, to an MP4 file' : 'this browser cannot write MP4; recordings will be saved as WebM (use Chrome, Edge or Safari for MP4)');
@@ -8175,10 +8175,15 @@ function recLevelTick(){
   ng = clamp(ng, REC_GAIN_MIN, REC_GAIN_MAX);
   if(ng !== g) REC.gain.gain.setTargetAtTime(ng, actx.currentTime, ng < g ? 0.005 : 0.05);
 }
+// Every MIME the browser claims to support, in preference order. Codec strings that name an audio codec are only
+// offered when the stream actually carries audio (Chrome refuses / errors on an audio codec with no audio track).
+function recCandidates(hasAudio){
+  if(!window.MediaRecorder) return [];
+  return REC_MIMES.filter(m => (hasAudio || !/,\s*(mp4a|opus)/.test(m)) && MediaRecorder.isTypeSupported(m)).concat(['']);
+}
 async function recStart(){
   if(REC.rec || REC.starting) return;
-  const mime = recMime();
-  if(mime === null){ syncRecLabel(); return; }
+  if(recMime() === null){ syncRecLabel(); return; }
   // audio: the recording always carries the audio input, so turn it on if it isn't running yet
   REC.starting = true;
   syncButton('bRec', 'STARTING…', true);
@@ -8191,24 +8196,56 @@ async function recStart(){
     recDest.stream.getAudioTracks().forEach(tr => stream.addTrack(tr));
   }
   const hasAudio = stream.getAudioTracks().length > 0;
+  REC.start = performance.now(); REC.hasAudio = hasAudio;
+  if(!recTry(stream, recCandidates(hasAudio), 0)) return;
+  syncButton('bRec', hasAudio ? '■ STOP REC' : '■ STOP (NO AUDIO)', true);
+  clearInterval(REC.timer); REC.timer = setInterval(recTick, 250); recTick();
+}
+// Start a MediaRecorder with candidates[idx]. isTypeSupported() only says the browser can parse the string: the
+// encoder itself may still fail (a profile the platform encoder can't do, no AAC on this OS, ...), which shows up as
+// an 'error' event or simply as no data ever arriving. Both cases fall through to the next candidate so a recording
+// never runs on a dead encoder, and a stop that yields no data says so instead of silently downloading nothing.
+function recTry(stream, candidates, idx){
+  const mime = candidates[idx];
+  if(mime === undefined){
+    console.warn('recorder: no working encoder');
+    syncButton('bRec', 'REC ERR', false); syncButton('vRecTime', '', null);
+    REC.rec = null; clearInterval(REC.timer); REC.timer = null;
+    setTimeout(syncRecLabel, 2000); return false;
+  }
   const vbr = clamp(Math.round(OUTRES.w * OUTRES.h * OUT_FPS * 0.15), 8e6, 80e6);   // ~19 Mb/s at 1080p60
   const opts = { videoBitsPerSecond: vbr, audioBitsPerSecond: 192e3 }; if(mime) opts.mimeType = mime;
   let rec;
   try{ rec = new MediaRecorder(stream, opts); }
-  catch(e){ console.warn('recorder failed:', e); syncButton('bRec', 'REC ERR', false); setTimeout(syncRecLabel, 1500); return; }
-  REC.chunks = [];
-  rec.ondataavailable = e => { if(e.data && e.data.size) REC.chunks.push(e.data); };
+  catch(e){ console.warn('recorder: cannot construct with', mime || '(default)', e); return recTry(stream, candidates, idx + 1); }
+  REC.chunks = []; REC.mime = mime;
+  let gotData = false, watchdog = 0;
+  const abandon = (why) => {                 // give up on this encoder and move to the next candidate
+    if(rec.abandoned) return; rec.abandoned = true; clearTimeout(watchdog);
+    console.warn('recorder:', mime || '(default)', why, '— trying next codec');
+    try{ if(rec.state !== 'inactive') rec.stop(); }catch(e){}
+    REC.chunks = [];
+    if(REC.rec === rec){ REC.rec = null; if(!recTry(stream, candidates, idx + 1)) return; REC.start = performance.now(); }
+  };
+  rec.ondataavailable = e => {
+    if(rec.abandoned) return;
+    if(e.data && e.data.size){ if(!gotData){ gotData = true; clearTimeout(watchdog); syncRecLabel(); } REC.chunks.push(e.data); }
+  };
+  rec.onerror = e => abandon('error: ' + ((e && e.error && e.error.message) || (e && e.error && e.error.name) || 'unknown'));
   rec.onstop = ()=>{
+    if(rec.abandoned) return;
     const type = (rec.mimeType || mime || 'video/webm').split(';')[0];
     const blob = new Blob(REC.chunks, { type });
     REC.chunks = [];
-    if(blob.size) downloadBlob(blob, `null-ventana-${stamp()}.${type.includes('mp4') ? 'mp4' : 'webm'}`);
-    syncRecLabel();
+    if(blob.size){ downloadBlob(blob, `null-ventana-${stamp()}.${type.includes('mp4') ? 'mp4' : 'webm'}`); syncRecLabel(); }
+    else { console.warn('recorder: stopped with no data'); syncButton('bRec', 'NO DATA', false); setTimeout(syncRecLabel, 2000); }
   };
-  rec.start(1000);
-  REC.rec = rec; REC.start = performance.now(); REC.hasAudio = hasAudio;
-  syncButton('bRec', hasAudio ? '■ STOP REC' : '■ STOP (NO AUDIO)', true);
-  clearInterval(REC.timer); REC.timer = setInterval(recTick, 250); recTick();
+  try{ rec.start(1000); }
+  catch(e){ console.warn('recorder: start failed with', mime || '(default)', e); return recTry(stream, candidates, idx + 1); }
+  REC.rec = rec;
+  // the first 1 s chunk should land within ~1.3 s; an encoder that stays silent for 3 s is not going to deliver
+  watchdog = setTimeout(()=>{ if(!gotData && REC.rec === rec) abandon('produced no data'); }, 3000);
+  return true;
 }
 function recTick(){
   if(!REC.rec) return;
@@ -8220,8 +8257,8 @@ function recStop(){
   if(!REC.rec) return;
   const rec = REC.rec; REC.rec = null;
   clearInterval(REC.timer); REC.timer = null;
-  try{ if(rec.state !== 'inactive') rec.stop(); }catch(e){}
-  syncRecLabel();
+  syncButton('bRec', 'SAVING…', true);
+  try{ if(rec.state !== 'inactive') rec.stop(); else rec.onstop && rec.onstop(); }catch(e){ console.warn('recorder stop:', e); syncRecLabel(); }
   syncButton('vRecTime', '', null);
 }
 function setRecMax(sec){
