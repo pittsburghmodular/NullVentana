@@ -112,6 +112,7 @@
   body.chroma #scan, body.chroma #vig { display:none; }
   #bgModes { grid-template-columns:repeat(2,1fr); margin-top:6px; }
   .toggle-full { width:100%; padding:5px 0; }
+  button.mute.on { background:#ff6b6b; border-color:#ff6b6b; color:#0a0d12; }
   select.sel { width:100%; background:#0b0b10; color:#cfd6e6; border:1px solid rgba(255,255,255,0.15); font:inherit; font-size:9px; letter-spacing:.08em; padding:4px 2px; border-radius:2px; }
   .box-title .tag { font-weight:500; opacity:.5; font-size:8px; letter-spacing:.14em; }
   body.idle #side { opacity:0; pointer-events:none; }
@@ -169,6 +170,16 @@
     </feComponentTransfer>
     <feColorMatrix id="sgBSat" type="saturate" values="1"/>
   </filter>
+  <!-- SOURCE GRADE (image): same shape as #outGrade, tables set by gradeBuildLUT() -->
+  <filter id="srcGradeImg" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feColorMatrix id="sgImgKey" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/>
+    <feComponentTransfer>
+      <feFuncR id="sgImgR" type="table" tableValues="0 1"/>
+      <feFuncG id="sgImgG" type="table" tableValues="0 1"/>
+      <feFuncB id="sgImgB" type="table" tableValues="0 1"/>
+    </feComponentTransfer>
+    <feColorMatrix id="sgImgSat" type="saturate" values="1"/>
+  </filter>
   <!-- FEEDBACK KEY: alpha is computed from colour (chroma) or brightness (luma); the matrix is set by fbKeyBuild() -->
   <filter id="fbKey" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
     <feColorMatrix id="fbKeyM" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/>
@@ -189,6 +200,7 @@
 
   <div class="feature-box compact collapsed">
     <div class="box-title">CAMERA <b class="tag">LAYER 1</b></div>
+    <button id="bMuteCam" class="toggle-full mute" title="silence this source: while muted it stays running but nothing from it reaches the mix">MUTE OFF</button>
     <button id="bCam" class="toggle-full" title="enable the camera as a live source">CAMERA OFF</button>
     <select id="cCamDev" class="sel" title="camera device"><option value="">DEFAULT CAMERA</option></select>
     <div class="mod-group" style="border-left-color:rgba(159,216,255,0.5);" title="grade for the camera">
@@ -204,6 +216,10 @@
       <input type="range" id="cCamMid" min="-100" max="100" value="0" title="camera: raise or lower the mids"/>
       <span class="sub-lbl">HIGHLIGHTS <b id="vCamHi">0</b></span>
       <input type="range" id="cCamHi" min="-100" max="100" value="0" title="camera: boost or roll off the brights"/>
+      <span class="sub-lbl">TINT COLOR <b id="vCamTintHue">0°</b></span>
+      <input type="range" id="cCamTintHue" min="0" max="360" value="0" title="camera: hue of the colour tint - red, yellow, green, cyan, blue, magenta, back to red" style="background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);border-radius:4px;"/>
+      <span class="sub-lbl">TINT AMOUNT <b id="vCamTintAmt">0%</b></span>
+      <input type="range" id="cCamTintAmt" min="0" max="100" value="0" title="camera: how strongly this layer is pushed toward the tint colour"/>
     </div>
     <span class="sub-lbl" style="display:block;margin-top:4px;" title="cuts the chosen colour (or brightness) out of this layer so the layers beneath show through the hole">KEY</span>
     <div class="seg" id="keysCam"></div>
@@ -233,11 +249,13 @@
   <div class="feature-box compact collapsed">
     <div class="box-title"><span>VIDEO FILE A <b id="vVidNameA" class="tag">LAYER 2</b></span></div>
     <input type="file" id="cVideoFileA" accept="video/*" style="display:none"/>
+    <button id="bMuteVA" class="toggle-full mute" title="silence this source: while muted it stays running but nothing from it reaches the mix">MUTE OFF</button>
     <button id="bVideoLoadA" class="toggle-full" title="choose a local video file for this layer">LOAD VIDEO</button>
     <div class="seg" style="grid-template-columns:repeat(2,1fr);">
       <button id="bVideoPlayA" title="start / stop">START</button>
       <button id="bVideoLoopA" title="loop playback between LOOP START and LOOP END">LOOP OFF</button>
     </div>
+    <button id="bVideoFillA" class="toggle-full" title="zoom in past any black bars baked into the file (letterbox / pillarbox) so the picture fills the screen">FILL SCREEN OFF</button>
     <span class="sub-lbl">PLAY HEAD <b id="vVidPosA">0:00</b></span>
     <input type="range" id="cVidPosA" min="0" max="1000" value="0" title="drag to scrub the playback point"/>
     <div class="mod-group" style="border-left-color:rgba(159,216,255,0.5);">
@@ -264,6 +282,10 @@
       <input type="range" id="cVAMid" min="-100" max="100" value="0" title="video file A: raise or lower the mids"/>
       <span class="sub-lbl">HIGHLIGHTS <b id="vVAHi">0</b></span>
       <input type="range" id="cVAHi" min="-100" max="100" value="0" title="video file A: boost or roll off the brights"/>
+      <span class="sub-lbl">TINT COLOR <b id="vVATintHue">0°</b></span>
+      <input type="range" id="cVATintHue" min="0" max="360" value="0" title="video file A: hue of the colour tint - red, yellow, green, cyan, blue, magenta, back to red" style="background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);border-radius:4px;"/>
+      <span class="sub-lbl">TINT AMOUNT <b id="vVATintAmt">0%</b></span>
+      <input type="range" id="cVATintAmt" min="0" max="100" value="0" title="video file A: how strongly this layer is pushed toward the tint colour"/>
     </div>
     <span class="sub-lbl" style="display:block;margin-top:4px;" title="cuts the chosen colour (or brightness) out of this layer so the layers beneath show through the hole">KEY</span>
     <div class="seg" id="keysVA"></div>
@@ -288,11 +310,13 @@
   <div class="feature-box compact collapsed">
     <div class="box-title"><span>VIDEO FILE B <b id="vVidNameB" class="tag">LAYER 3</b></span></div>
     <input type="file" id="cVideoFileB" accept="video/*" style="display:none"/>
+    <button id="bMuteVB" class="toggle-full mute" title="silence this source: while muted it stays running but nothing from it reaches the mix">MUTE OFF</button>
     <button id="bVideoLoadB" class="toggle-full" title="choose a local video file for this layer">LOAD VIDEO</button>
     <div class="seg" style="grid-template-columns:repeat(2,1fr);">
       <button id="bVideoPlayB" title="start / stop">START</button>
       <button id="bVideoLoopB" title="loop playback between LOOP START and LOOP END">LOOP OFF</button>
     </div>
+    <button id="bVideoFillB" class="toggle-full" title="zoom in past any black bars baked into the file (letterbox / pillarbox) so the picture fills the screen">FILL SCREEN OFF</button>
     <span class="sub-lbl">PLAY HEAD <b id="vVidPosB">0:00</b></span>
     <input type="range" id="cVidPosB" min="0" max="1000" value="0" title="drag to scrub the playback point"/>
     <div class="mod-group" style="border-left-color:rgba(159,216,255,0.5);">
@@ -319,6 +343,10 @@
       <input type="range" id="cVBMid" min="-100" max="100" value="0" title="video file B: raise or lower the mids"/>
       <span class="sub-lbl">HIGHLIGHTS <b id="vVBHi">0</b></span>
       <input type="range" id="cVBHi" min="-100" max="100" value="0" title="video file B: boost or roll off the brights"/>
+      <span class="sub-lbl">TINT COLOR <b id="vVBTintHue">0°</b></span>
+      <input type="range" id="cVBTintHue" min="0" max="360" value="0" title="video file B: hue of the colour tint - red, yellow, green, cyan, blue, magenta, back to red" style="background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);border-radius:4px;"/>
+      <span class="sub-lbl">TINT AMOUNT <b id="vVBTintAmt">0%</b></span>
+      <input type="range" id="cVBTintAmt" min="0" max="100" value="0" title="video file B: how strongly this layer is pushed toward the tint colour"/>
     </div>
     <span class="sub-lbl" style="display:block;margin-top:4px;" title="cuts the chosen colour (or brightness) out of this layer so the layers beneath show through the hole">KEY</span>
     <div class="seg" id="keysVB"></div>
@@ -340,10 +368,68 @@
       <input type="range" class="aud-mod-slider" id="cAudModMixVB" min="-100" max="100" value="0"/>
     </div>
   </div>
-  <div class="feature-box compact">
-    <div class="box-title">SHAPE A <b class="tag">LAYER 4</b></div>
+  <div class="feature-box compact collapsed">
+    <div class="box-title"><span>IMAGE <b id="vImgName" class="tag">LAYER 4</b></span></div>
+    <input type="file" id="cImageFile" accept="image/*" style="display:none"/>
+    <button id="bMuteImg" class="toggle-full mute" title="silence this source: while muted it stays running but nothing from it reaches the mix">MUTE OFF</button>
+    <button id="bImageLoad" class="toggle-full" title="choose a local image file for this layer">LOAD IMAGE</button>
+    <span class="lbl">SIZE <b id="vSizeImg">100%</b></span>
+    <input type="range" id="cSizeImg" min="10" max="300" value="100" title="size of the image on the display, always centred: 100% fills the screen, smaller sizes leave the layers beneath showing around it, larger sizes zoom in"/>
+    <div class="mod-group">
+      <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModSizeImg">0%</b></span>
+      <input type="range" class="mod-slider" id="cModSizeImg" min="-100" max="100" value="0"/>
+      <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateSizeImg">0.25 Hz</b></span>
+      <input type="range" class="lfo-rate-slider" id="cLfoRateSizeImg" min="1" max="100" value="35"/>
+      <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModSizeImg">0%</b></span>
+      <input type="range" class="aud-mod-slider" id="cAudModSizeImg" min="-100" max="100" value="0"/>
+    </div>
+    <div class="mod-group" style="border-left-color:rgba(159,216,255,0.5);" title="grade for the image">
+      <span class="sub-lbl">EXPOSURE <b id="vImgExp">0.0 EV</b></span>
+      <input type="range" id="cImgExp" min="-200" max="200" value="0" title="image exposure, ±2 EV"/>
+      <span class="sub-lbl">TEMPERATURE <b id="vImgTemp">0</b></span>
+      <input type="range" id="cImgTemp" min="-100" max="100" value="0" title="image: cool (blue) to warm (amber)"/>
+      <span class="sub-lbl">SATURATION <b id="vImgSat">100%</b></span>
+      <input type="range" id="cImgSat" min="0" max="200" value="100" title="image colour saturation"/>
+      <span class="sub-lbl">SHADOWS <b id="vImgSh">0</b></span>
+      <input type="range" id="cImgSh" min="-100" max="100" value="0" title="image: lift or crush the darks"/>
+      <span class="sub-lbl">MIDTONES <b id="vImgMid">0</b></span>
+      <input type="range" id="cImgMid" min="-100" max="100" value="0" title="image: raise or lower the mids"/>
+      <span class="sub-lbl">HIGHLIGHTS <b id="vImgHi">0</b></span>
+      <input type="range" id="cImgHi" min="-100" max="100" value="0" title="image: boost or roll off the brights"/>
+      <span class="sub-lbl">TINT COLOR <b id="vImgTintHue">0°</b></span>
+      <input type="range" id="cImgTintHue" min="0" max="360" value="0" title="image: hue of the colour tint" style="background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);border-radius:4px;"/>
+      <span class="sub-lbl">TINT AMOUNT <b id="vImgTintAmt">0%</b></span>
+      <input type="range" id="cImgTintAmt" min="0" max="100" value="0" title="image: how strongly this layer is pushed toward the tint colour"/>
+    </div>
+    <span class="sub-lbl" style="display:block;margin-top:4px;" title="cuts the chosen colour (or brightness) out of this layer so the layers beneath show through the hole">KEY</span>
+    <div class="seg" id="keysImg"></div>
+    <button id="bKeyInvImg" class="toggle-full" title="swap what the key keeps and what it cuts">INVERT KEY OFF</button>
+    <div class="mod-group" style="border-left-color:rgba(120,255,160,0.5);">
+      <span class="sub-lbl">KEY LEVEL <b id="vImgKeyLevel">50%</b></span>
+      <input type="range" id="cImgKeyLevel" min="0" max="100" value="50" title="how much of the picture is keyed out"/>
+      <span class="sub-lbl">KEY GAIN <b id="vImgKeyGain">50%</b></span>
+      <input type="range" id="cImgKeyGain" min="0" max="100" value="50" title="edge of the key: low = soft, high = hard cut"/>
+    </div>
+    <span class="lbl" style="margin-top:4px;">MIX <b id="vMixImg">100%</b></span>
+    <input type="range" id="cMixImg" min="0" max="100" value="100" title="how much of the image goes into the output, over the layers below it"/>
+    <div class="mod-group">
+      <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModMixImg">0%</b></span>
+      <input type="range" class="mod-slider" id="cModMixImg" min="-100" max="100" value="0"/>
+      <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateMixImg">0.25 Hz</b></span>
+      <input type="range" class="lfo-rate-slider" id="cLfoRateMixImg" min="1" max="100" value="35"/>
+      <span class="sub-lbl">AUDIO MOD (LOW-MID) <b class="b-aud" id="vAudModMixImg">0%</b></span>
+      <input type="range" class="aud-mod-slider" id="cAudModMixImg" min="-100" max="100" value="0"/>
+    </div>
+  </div>
+  <div class="feature-box compact collapsed">
+    <div class="box-title">SHAPE A <b class="tag">LAYER 5</b></div>
+    <button id="bMuteA" class="toggle-full mute" title="silence this source: while muted it stays running but nothing from it reaches the mix">MUTE OFF</button>
     <select id="cShapeA" class="sel" title="shape drawn on this layer"></select>
     <button id="bNoBgA" class="toggle-full" title="skip this shape's own backdrop fills so only the main shape is drawn">BACKGROUND OFF</button>
+    <span class="sub-lbl" style="display:block;margin-top:2px;">AUDIO BAND</span>
+    <select id="cAudBandA" class="sel" title="which part of the spectrum drives this shape: ALL keeps the shape's own band mapping, a single band makes every reaction follow that band"><option value="all">ALL BANDS (SHAPE DEFAULT)</option><option value="0">BASS</option><option value="1">LOW-MID</option><option value="2">HIGH-MID</option><option value="3">AIR</option></select>
+    <span class="lbl">AUDIO EFFECT <b id="vAudLvlA">100%</b></span>
+    <input type="range" id="cAudLvlA" min="0" max="200" value="100" title="how strongly the audio drives this shape: 0 = still, 100 = normal, 200 = double"/>
     <span class="lbl">DENSITY <b id="vDenA"></b></span>
     <input type="range" id="cDenA" min="0" max="100" value="50"/>
     <div class="mod-group">
@@ -375,10 +461,15 @@
       <input type="range" class="aud-mod-slider" id="cAudModMixA" min="-100" max="100" value="0"/>
     </div>
   </div>
-  <div class="feature-box compact">
-    <div class="box-title">SHAPE B <b class="tag">LAYER 5</b></div>
+  <div class="feature-box compact collapsed">
+    <div class="box-title">SHAPE B <b class="tag">LAYER 6</b></div>
+    <button id="bMuteB" class="toggle-full mute" title="silence this source: while muted it stays running but nothing from it reaches the mix">MUTE OFF</button>
     <select id="cShapeB" class="sel" title="shape drawn on this layer"></select>
     <button id="bNoBgB" class="toggle-full" title="skip this shape's own backdrop fills so only the main shape is drawn">BACKGROUND OFF</button>
+    <span class="sub-lbl" style="display:block;margin-top:2px;">AUDIO BAND</span>
+    <select id="cAudBandB" class="sel" title="which part of the spectrum drives this shape: ALL keeps the shape's own band mapping, a single band makes every reaction follow that band"><option value="all">ALL BANDS (SHAPE DEFAULT)</option><option value="0">BASS</option><option value="1">LOW-MID</option><option value="2">HIGH-MID</option><option value="3">AIR</option></select>
+    <span class="lbl">AUDIO EFFECT <b id="vAudLvlB">100%</b></span>
+    <input type="range" id="cAudLvlB" min="0" max="200" value="100" title="how strongly the audio drives this shape: 0 = still, 100 = normal, 200 = double"/>
     <span class="lbl">DENSITY <b id="vDenB"></b></span>
     <input type="range" id="cDenB" min="0" max="100" value="50"/>
     <div class="mod-group">
@@ -410,10 +501,15 @@
       <input type="range" class="aud-mod-slider" id="cAudModMixB" min="-100" max="100" value="0"/>
     </div>
   </div>
-  <div class="feature-box compact">
-    <div class="box-title">SHAPE C <b class="tag">LAYER 6</b></div>
+  <div class="feature-box compact collapsed">
+    <div class="box-title">SHAPE C <b class="tag">LAYER 7</b></div>
+    <button id="bMuteC" class="toggle-full mute" title="silence this source: while muted it stays running but nothing from it reaches the mix">MUTE OFF</button>
     <select id="cShapeC" class="sel" title="shape drawn on this layer"></select>
     <button id="bNoBgC" class="toggle-full" title="skip this shape's own backdrop fills so only the main shape is drawn">BACKGROUND OFF</button>
+    <span class="sub-lbl" style="display:block;margin-top:2px;">AUDIO BAND</span>
+    <select id="cAudBandC" class="sel" title="which part of the spectrum drives this shape: ALL keeps the shape's own band mapping, a single band makes every reaction follow that band"><option value="all">ALL BANDS (SHAPE DEFAULT)</option><option value="0">BASS</option><option value="1">LOW-MID</option><option value="2">HIGH-MID</option><option value="3">AIR</option></select>
+    <span class="lbl">AUDIO EFFECT <b id="vAudLvlC">100%</b></span>
+    <input type="range" id="cAudLvlC" min="0" max="200" value="100" title="how strongly the audio drives this shape: 0 = still, 100 = normal, 200 = double"/>
     <span class="lbl">DENSITY <b id="vDenC"></b></span>
     <input type="range" id="cDenC" min="0" max="100" value="50"/>
     <div class="mod-group">
@@ -446,7 +542,7 @@
     </div>
   </div>
   <div class="feature-box collapsed">
-    <div class="box-title">TEXT OVERLAY <b class="tag">LAYER 7</b></div>
+    <div class="box-title">TEXT OVERLAY <b class="tag">LAYER 8</b></div>
     <textarea id="cTextInput" class="textin" rows="1" placeholder="" title="Enter for a new line"></textarea>
     <div class="fxrow">
       <span class="lbl">FONT STYLE</span>
@@ -518,7 +614,7 @@
     </div>
   </div>
 
-  <div class="feature-box">
+  <div class="feature-box collapsed">
     <div class="box-title">GLOBAL EFFECTS</div>
     <div class="fxrow">
       <span class="lbl">RESOLUTION <b id="vFid"></b></span>
@@ -649,7 +745,7 @@
       </div>
     </div>
   </div>
-  <div class="feature-box">
+  <div class="feature-box collapsed">
     <div class="box-title">DISPLAY FILTER</div>
     <div class="seg" id="filters"></div>
     <span class="lbl" style="margin-top:6px;">FILTER LEVEL <b id="vFxLvl">70%</b></span>
@@ -663,13 +759,13 @@
       <input type="range" class="aud-mod-slider" id="cAudModFxLvl" min="-100" max="100" value="0"/>
     </div>
   </div>
-  <div class="feature-box compact">
+  <div class="feature-box compact collapsed">
     <div class="box-title">COLOR PALETTE</div>
     <div class="swatches" id="pals"></div>
     <button id="bPalAudio" class="toggle-full" style="margin-top:6px;" title="on each detected beat the audio input picks a new random colour set">AUDIO PALETTE OFF</button>
     <button id="bInvert" class="toggle-full" style="margin-top:6px;" title="invert all rendered colours">INVERT OFF</button>
   </div>
-  <div class="feature-box compact">
+  <div class="feature-box compact collapsed">
     <div class="box-title">OUTPUT GRADE</div>
     <div class="mod-group" style="border-left-color:rgba(255,204,128,0.5);">
       <span class="sub-lbl">EXPOSURE <b id="vOutExp">0.0 EV</b></span>
@@ -691,11 +787,11 @@
     </div>
     <button id="bOutReset" class="toggle-full" style="margin-top:4px;" title="return all output grade controls to neutral">RESET GRADE</button>
   </div>
-  <div class="feature-box compact">
+  <div class="feature-box compact collapsed">
     <div class="box-title">BACKGROUND</div>
     <div class="seg" id="bgModes"></div>
   </div>
-  <div class="feature-box compact">
+  <div class="feature-box compact collapsed">
     <div class="box-title">TRANSPORT</div>
     <div class="actions" style="margin-top:0;padding-top:0;">
       <button id="bPause" title="space">PAUSE</button>
@@ -706,10 +802,10 @@
       <button id="bSeed" title="r — new seed">RESEED</button>
       <button id="bBeatReseed" title="reseed on detected kick drums">BEAT RESEED OFF</button>
     </div>
-    <button id="bMic" class="toggle-full" title="enable microphone reactivity">MIC OFF</button>
   </div>
-  <div class="feature-box compact">
+  <div class="feature-box compact collapsed">
     <div class="box-title">AUDIO INPUT <b id="vAud"></b></div>
+    <button id="bMic" class="toggle-full" title="enable microphone reactivity">MIC OFF</button>
     <input type="range" id="cAudio" min="0" max="100" value="50"/>
     <select id="cAudioDev" title="audio input device" style="width:100%;margin:4px 0 6px;background:#0b0b10;color:#cfd6e6;border:1px solid rgba(255,255,255,0.15);font:inherit;font-size:9px;letter-spacing:.08em;padding:3px 2px;border-radius:2px;"><option value="">DEFAULT INPUT</option></select>
     <div class="bands-meter">
@@ -719,7 +815,7 @@
       <div class="band-col" title="High/Air"><div class="band-fill b3" id="mB3"></div></div>
     </div>
   </div>
-  <div class="feature-box compact">
+  <div class="feature-box compact collapsed">
     <div class="box-title">EXPORT <b id="vRecTime"></b></div>
     <button id="bShot" class="toggle-full" title="save the current frame as a PNG">SCREENSHOT</button>
     <div class="seg" style="grid-template-columns:2fr 1fr; margin-top:4px;">
@@ -736,7 +832,7 @@
       </select>
     </div>
   </div>
-  <div class="feature-box compact">
+  <div class="feature-box compact collapsed">
     <div class="box-title">PRESETS</div>
     <div class="seg" style="grid-template-columns:1fr 1fr 1fr;">
       <select id="cPresetSlot" title="preset slot (stored in this browser)" style="background:#0b0b10;color:#cfd6e6;border:1px solid rgba(255,255,255,0.15);font:inherit;font-size:9px;letter-spacing:.08em;padding:3px 2px;border-radius:2px;">
@@ -861,10 +957,12 @@ const SRC_MODS = [
   ['DenA','denA',1,0.5], ['RateA','rateA',0,0.45], ['MixA','mixA',1,1],
   ['DenB','denB',1,0.5], ['RateB','rateB',0,0.45], ['MixB','mixB',1,0],
   ['DenC','denC',1,0.5], ['RateC','rateC',0,0.45], ['MixC','mixC',1,0],
-  ['MixCam','mixCam',1,1], ['MixVA','mixVA',1,1], ['MixVB','mixVB',1,1]
+  ['MixCam','mixCam',1,1], ['MixVA','mixVA',1,1], ['MixVB','mixVB',1,1], ['MixImg','mixImg',1,1],
+  ['SizeImg','sizeImg',0,1,3]                         // image SIZE: 5th entry is the upper clamp (300%)
 ];
 const state = {
   shapeA:'orbs', shapeB:'rings', shapeC:'off', noBgC:true,
+  audBandA:'all', audBandB:'all', audBandC:'all', audLvlA:1, audLvlB:1, audLvlC:1,
   fidelity:0.80, palette:0, filter:'none', fxLevel:0.7, audio:0.5, scan:true,
   trails:0, blur:0, glitch:0, seed:(Math.random()*0xffff)|0, beatReseed: false,
   comic:0, split:0, modComic:0.0, modSplit:0.0, lfoRateComic:0.25, lfoRateSplit:0.25, audModComic:0.0, audModSplit:0.0,
@@ -873,13 +971,16 @@ const state = {
   points:0, modPoints:0.0, lfoRatePoints:0.25, audModPoints:0.0,
   feedback:0, fbZoom:0.12, fbRot:5.7, fbHue:0, fbKey:'off', fbKeyLevel:0.5, fbKeyGain:0.5, modFeedback:0.0, lfoRateFeedback:0.25, audModFeedback:0.0,
   invert:false, bgMode:'palette', noBgA:true, noBgB:true, palAudio:false,
+  muteCam:false, muteVA:false, muteVB:false, muteImg:false, muteA:false, muteB:false, muteC:false,
+  imgKey:'off', imgKeyLevel:0.5, imgKeyGain:0.5, imgKeyInv:false, 
+  imgExp:0, imgTemp:0, imgSat:1, imgSh:0, imgMid:0, imgHi:0, imgTintHue:0, imgTintAmt:0,
   camGranular:false, camGrainMax:2.0, camGrainFade:0.15,
-  vALoop:false, vAGranular:false, vAGrainMax:2.0, vAGrainFade:0.15, vAIn:0, vAOut:1,
+  vALoop:false, vAFill:false, vBFill:false, vAGranular:false, vAGrainMax:2.0, vAGrainFade:0.15, vAIn:0, vAOut:1,
   vBLoop:false, vBGranular:false, vBGrainMax:2.0, vBGrainFade:0.15, vBIn:0, vBOut:1,
   camKey:'off', camKeyLevel:0.5, camKeyGain:0.5, camKeyInv:false, vAKey:'off', vAKeyLevel:0.5, vAKeyGain:0.5, vAKeyInv:false, vBKey:'off', vBKeyLevel:0.5, vBKeyGain:0.5, vBKeyInv:false,
-  camExp:0, camTemp:0, camSat:1, camSh:0, camMid:0, camHi:0,
-  vAExp:0, vATemp:0, vASat:1, vASh:0, vAMid:0, vAHi:0,
-  vBExp:0, vBTemp:0, vBSat:1, vBSh:0, vBMid:0, vBHi:0,
+  camExp:0, camTemp:0, camSat:1, camSh:0, camMid:0, camHi:0, camTintHue:0, camTintAmt:0,
+  vAExp:0, vATemp:0, vASat:1, vASh:0, vAMid:0, vAHi:0, vATintHue:0, vATintAmt:0,
+  vBExp:0, vBTemp:0, vBSat:1, vBSh:0, vBMid:0, vBHi:0, vBTintHue:0, vBTintAmt:0,
   outExp:0, outTemp:0, outSat:1, outSh:0, outMid:0, outHi:0, outTintHue:0, outTintAmt:0,
   modFid: 0.0, modFxLvl: 0.0, modTrails: 0.0, modBlur: 0.0, modGlitch: 0.0,
   lfoRateFid: 0.25, lfoRateFxLvl: 0.25, lfoRateTrails: 0.25, lfoRateBlur: 0.25, lfoRateGlitch: 0.25,
@@ -1183,6 +1284,32 @@ class Deck {
     state[this.p + 'Loop'] = on; this.el.loop = false;   // looping is handled by loopTick so LOOP START / END are honoured
     syncButton('bVideoLoop' + this.K, on ? 'LOOP ON' : 'LOOP OFF', on);
   }
+  // FILL SCREEN: when a file carries black bars (letterbox / pillarbox baked into the frame), the bars are measured
+  // from a small copy of the picture about once a second and the region inside them is zoomed to cover the screen.
+  setFill(on){
+    state[this.p + 'Fill'] = on; this.crop = null; this.fillAt = 0;
+    syncButton('bVideoFill' + this.K, on ? 'FILL SCREEN ON' : 'FILL SCREEN OFF', on);
+  }
+  fillTick(now){
+    if(!state[this.p + 'Fill'] || !this.ready || this.el.readyState < 2 || !this.el.videoWidth) return;
+    if(now - (this.fillAt || 0) < 900) return;
+    this.fillAt = now;
+    if(!this.fillC){ this.fillC = document.createElement('canvas'); this.fillC.width = 96; this.fillC.height = 54; this.fillX = this.fillC.getContext('2d', { willReadFrequently:true }); }
+    const W = 96, H = 54, x = this.fillX;
+    x.drawImage(this.el, 0, 0, W, H);
+    const d = x.getImageData(0, 0, W, H).data, TH = 26;
+    const rowLit = (r) => { let m = 0; for(let c = 0; c < W; c++){ const i = (r*W + c)*4; m = Math.max(m, d[i]*0.299 + d[i + 1]*0.587 + d[i + 2]*0.114); } return m > TH; };
+    const colLit = (c) => { let m = 0; for(let r = 0; r < H; r++){ const i = (r*W + c)*4; m = Math.max(m, d[i]*0.299 + d[i + 1]*0.587 + d[i + 2]*0.114); } return m > TH; };
+    let t = 0, b = H - 1, l = 0, r = W - 1;
+    while(t < H*0.4 && !rowLit(t)) t++;
+    while(b > H*0.6 && !rowLit(b)) b--;
+    while(l < W*0.4 && !colLit(l)) l++;
+    while(r > W*0.6 && !colLit(r)) r--;
+    // a mostly-black frame (fade to black) measures as all bars: keep the previous crop in that case
+    if(t > H*0.35 && b < H*0.65) return;
+    const crop = { x:l/W, y:t/H, w:(r - l + 1)/W, h:(b - t + 1)/H };
+    this.crop = (crop.x > 0.005 || crop.y > 0.005 || crop.w < 0.995 || crop.h < 0.995) ? crop : null;
+  }
   // PLAY HEAD: seek to a fraction of the duration (slider input).
   seekFrac(f){
     const d = this.duration();
@@ -1252,9 +1379,11 @@ class Deck {
   }
   // The source as seen by the mixer this frame: the file at the layer's mix, plus the held frame while a cut fades.
   draw(now, alpha){
-    if(!this.playing || !this.ready || alpha <= 0.004) return;
-    drawGraded(this.el, alpha, this.grade, this.p);
-    const ha = this.holdAlpha(now); if(ha > 0) drawGraded(this.hold, alpha * ha, this.grade, this.p);
+    if(!this.playing || !this.ready || alpha <= 0.004 || state['muteV' + this.K]) return;
+    this.fillTick(now);
+    const crop = state[this.p + 'Fill'] ? this.crop : null;
+    drawGraded(this.el, alpha, this.grade, this.p, crop);
+    const ha = this.holdAlpha(now); if(ha > 0) drawGraded(this.hold, alpha * ha, this.grade, this.p, crop);
   }
 }
 const DECK = { A:new Deck('A'), B:new Deck('B') };
@@ -1369,15 +1498,22 @@ function makeGradeCache(sv, filterId){
   return { r:new Uint8ClampedArray(256), g:new Uint8ClampedArray(256), b:new Uint8ClampedArray(256), key:'', satSet:-1, keySig:'', keyRow:null, sv, filterId, scratch:null, sctx:null };
 }
 function gradeActive(p){
-  return state[p + 'Exp'] !== 0 || state[p + 'Temp'] !== 0 || state[p + 'Sat'] !== 1 || state[p + 'Sh'] !== 0 || state[p + 'Mid'] !== 0 || state[p + 'Hi'] !== 0;
+  return state[p + 'Exp'] !== 0 || state[p + 'Temp'] !== 0 || state[p + 'Sat'] !== 1 || state[p + 'Sh'] !== 0 || state[p + 'Mid'] !== 0 || state[p + 'Hi'] !== 0 || state[p + 'TintAmt'] > 0;
 }
 function gradeBuildLUT(G, p){
   const exp = state[p + 'Exp'], tmp = state[p + 'Temp'], shv = state[p + 'Sh'], midv = state[p + 'Mid'], hiv = state[p + 'Hi'];
-  const key = [exp, tmp, shv, midv, hiv].join('|');
+  const tHue = state[p + 'TintHue'], tAmt = state[p + 'TintAmt'];
+  const key = [exp, tmp, shv, midv, hiv, tHue, tAmt].join('|');
   if(G.key === key) return;
   G.key = key;
   const gainE = Math.pow(2, exp);
-  const mulR = 1 + 0.28*tmp, mulG = 1 + 0.06*tmp, mulB = 1 - 0.28*tmp;   // warm = more red, less blue
+  let mulR = 1 + 0.28*tmp, mulG = 1 + 0.06*tmp, mulB = 1 - 0.28*tmp;   // warm = more red, less blue
+  // TINT: a gel of the chosen hue over this source (same maths as the output tint): each channel is scaled toward
+  // the tint colour by TINT AMOUNT, luma-normalised (capped) so moderate amounts recolour without darkening.
+  if(tAmt > 0){
+    const tc = tintRgb(tHue), k = Math.min(2.2, 1/Math.max(0.05, tc[0]*0.299 + tc[1]*0.587 + tc[2]*0.114));
+    mulR *= (1 - tAmt) + tAmt*tc[0]*k; mulG *= (1 - tAmt) + tAmt*tc[1]*k; mulB *= (1 - tAmt) + tAmt*tc[2]*k;
+  }
   const sh = shv*0.4, mid = midv*0.4, hi = hiv*0.4;
   const tone = (x) => {
     x = clamp(x, 0, 1);
@@ -1417,11 +1553,12 @@ function srcKeyBuild(G, p){
   if(state[p + 'KeyInv']) G.keyRow = [g*m.w[0], g*m.w[1], g*m.w[2], g*m.o - g*thr];   // INVERT KEY: alpha' = 1 - alpha
   if(el) el.setAttribute('values', '1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  ' + G.keyRow.slice(0, 3).map(v => v.toFixed(4)).join(' ') + ' 0 ' + G.keyRow[3].toFixed(4));
 }
-const SRC_KEY_GRADES = { cam:()=>CAMG, vA:()=>DECK.A.grade, vB:()=>DECK.B.grade };
+const SRC_KEY_GRADES = { cam:()=>CAMG, vA:()=>DECK.A.grade, vB:()=>DECK.B.grade, img:()=>IMG.grade };
+const SRC_IDS = { cam:'Cam', vA:'VA', vB:'VB', img:'Img' };   // state prefix -> element id infix
 function setSrcKey(p, id){
   if(!FB_KEYS.some(k => k.id === id)) id = 'off';
   state[p + 'Key'] = id;
-  const I = p === 'cam' ? 'Cam' : 'V' + p.slice(1);
+  const I = SRC_IDS[p];
   [document, popoutWin && !popoutWin.closed ? popoutWin.document : null].forEach(doc => {
     const el = doc && doc.getElementById('keys' + I); if(!el) return;
     for(let i = 0; i < el.children.length; i++) el.children[i].classList.toggle('on', FB_KEYS[i].id === id);
@@ -1429,11 +1566,11 @@ function setSrcKey(p, id){
 }
 function setSrcKeyInv(p, on){
   state[p + 'KeyInv'] = on;
-  const I = p === 'cam' ? 'Cam' : 'V' + p.slice(1);
+  const I = SRC_IDS[p];
   syncButton('bKeyInv' + I, on ? 'INVERT KEY ON' : 'INVERT KEY OFF', on);
 }
 function syncSrcKeys(){
-  [['Cam','cam'], ['VA','vA'], ['VB','vB']].forEach(([I, p]) => {
+  [['Cam','cam'], ['VA','vA'], ['VB','vB'], ['Img','img']].forEach(([I, p]) => {
     setSrcKeyInv(p, state[p + 'KeyInv']);
     syncButton('v' + I + 'KeyLevel', Math.round(state[p + 'KeyLevel']*100) + '%', null);
     syncButton('v' + I + 'KeyGain', Math.round(state[p + 'KeyGain']*100) + '%', null);
@@ -1441,29 +1578,31 @@ function syncSrcKeys(){
   });
 }
 function buildSrcKeyButtons(targetDoc){
-  [['Cam','cam'], ['VA','vA'], ['VB','vB']].forEach(([I, p]) => {
+  [['Cam','cam'], ['VA','vA'], ['VB','vB'], ['Img','img']].forEach(([I, p]) => {
     const el = targetDoc.getElementById('keys' + I); if(!el) return;
     el.innerHTML = '';
     FB_KEYS.forEach(m => { const b = targetDoc.createElement('button'); b.textContent = m.label; b.title = m.tip.replace('feedback loop', 'layers beneath'); b.addEventListener('click', ()=>setSrcKey(p, m.id)); el.appendChild(b); });
   });
 }
 // Draw a camera or video frame (or a held canvas) through its source key + grade into the buffer at the given opacity.
-function drawGraded(el, alpha, G, p){
+function drawGraded(el, alpha, G, p, crop){
   if(alpha <= 0.004) return;
   const keyOn = srcKeyOn(p);
-  if(!gradeActive(p) && !keyOn){ drawCover(el, alpha); return; }
+  if(!gradeActive(p) && !keyOn){ drawCover(el, alpha, crop); return; }
   gradeBuildLUT(G, p);
   srcKeyBuild(G, p);
   const isV = el.tagName === 'VIDEO';
   if(isV && (el.readyState < 2 || !el.videoWidth)) return;
-  const vw = isV ? el.videoWidth : el.width, vh = isV ? el.videoHeight : el.height, kk = Math.max(bw/vw, bh/vh);
+  const fw = isV ? el.videoWidth : el.width, fh = isV ? el.videoHeight : el.height;
+  // FILL SCREEN crop (fractions of the frame): only the region inside the bars is scaled to cover the buffer
+  const cx0 = crop ? crop.x*fw : 0, cy0 = crop ? crop.y*fh : 0, vw = crop ? crop.w*fw : fw, vh = crop ? crop.h*fh : fh, kk = Math.max(bw/vw, bh/vh);
   const sw2 = bw/kk, sh2 = bh/kk;
   if(FILTER_OK){
     // GPU path: the same per-channel tables + saturate matrix as an SVG filter, so graded video costs one drawImage
     // instead of a full-buffer readback and per-pixel loop (which mattered at the 768 / 1024-wide RESOLUTION tiers)
     gradeSetSat(G, p);
     bctx.globalCompositeOperation = 'source-over'; bctx.globalAlpha = alpha; bctx.filter = 'url(#' + G.filterId + ')';
-    bctx.drawImage(el, (vw - sw2)*0.5, (vh - sh2)*0.5, sw2, sh2, 0, 0, bw, bh);
+    bctx.drawImage(el, cx0 + (vw - sw2)*0.5, cy0 + (vh - sh2)*0.5, sw2, sh2, 0, 0, bw, bh);
     bctx.filter = 'none'; bctx.globalAlpha = 1;
     return;
   }
@@ -1471,7 +1610,7 @@ function drawGraded(el, alpha, G, p){
   const sc = G.scratch, sx = G.sctx;
   if(sc.width !== bw || sc.height !== bh){ sc.width = bw; sc.height = bh; }
   sx.globalCompositeOperation = 'copy'; sx.globalAlpha = 1;
-  sx.drawImage(el, (vw - sw2)*0.5, (vh - sh2)*0.5, sw2, sh2, 0, 0, bw, bh);
+  sx.drawImage(el, cx0 + (vw - sw2)*0.5, cy0 + (vh - sh2)*0.5, sw2, sh2, 0, 0, bw, bh);
   const img = sx.getImageData(0, 0, bw, bh), d = img.data, LR = G.r, LG = G.g, LB = G.b, sat = state[p + 'Sat'];
   if(keyOn && G.keyRow){
     const [kr, kg, kb, ko] = G.keyRow;
@@ -1513,7 +1652,7 @@ function camHoldAlpha(now){
   return a;
 }
 // Readouts for the three source grades (ids c/vCamExp, c/vVAExp, c/vVBExp ...).
-const SRC_GRADES = [['Cam','cam'], ['VA','vA'], ['VB','vB']];
+const SRC_GRADES = [['Cam','cam'], ['VA','vA'], ['VB','vB'], ['Img','img']];
 function syncSrcGrades(){
   const upd = (id, txt) => syncButton(id, txt, null);
   SRC_GRADES.forEach(([I, p]) => {
@@ -1523,6 +1662,10 @@ function syncSrcGrades(){
     upd('v' + I + 'Sh', (state[p + 'Sh'] > 0 ? '+' : '') + Math.round(state[p + 'Sh']*100));
     upd('v' + I + 'Mid', (state[p + 'Mid'] > 0 ? '+' : '') + Math.round(state[p + 'Mid']*100));
     upd('v' + I + 'Hi', (state[p + 'Hi'] > 0 ? '+' : '') + Math.round(state[p + 'Hi']*100));
+    upd('v' + I + 'TintHue', Math.round(state[p + 'TintHue']) + '°');
+    upd('v' + I + 'TintAmt', Math.round(state[p + 'TintAmt']*100) + '%');
+    const tc = tintRgb(state[p + 'TintHue']), css = `rgb(${tc.map(v => Math.round(v*255)).join(',')})`;
+    [document, popoutWin && !popoutWin.closed ? popoutWin.document : null].forEach(d => { const e = d && d.getElementById('v' + I + 'TintHue'); if(e) e.style.color = css; });
   });
 }
 // ---- OUTPUT GRADE: exposure / temperature / saturation / shadows / midtones / highlights on the finished frame.
@@ -1600,27 +1743,58 @@ function syncOutGrade(){
   [document, popoutWin && !popoutWin.closed ? popoutWin.document : null].forEach(d => { const e = d && d.getElementById('vOutTintHue'); if(e) e.style.color = css; });
 }
 // Cover-fit a <video> element into the buffer at the given opacity.
-function drawCover(el, alpha){
+function drawCover(el, alpha, crop){
   const isVideo = el.tagName === 'VIDEO';
   if(alpha <= 0.004 || (isVideo && (el.readyState < 2 || !el.videoWidth))) return;
-  const vw = isVideo ? el.videoWidth : el.width, vh = isVideo ? el.videoHeight : el.height, k = Math.max(bw/vw, bh/vh);
-  const sw = bw/k, sh = bh/k, sx = (vw - sw)*0.5, sy = (vh - sh)*0.5;
+  const fw = isVideo ? el.videoWidth : el.width, fh = isVideo ? el.videoHeight : el.height;
+  const cx0 = crop ? crop.x*fw : 0, cy0 = crop ? crop.y*fh : 0, vw = crop ? crop.w*fw : fw, vh = crop ? crop.h*fh : fh, k = Math.max(bw/vw, bh/vh);
+  const sw = bw/k, sh = bh/k, sx = cx0 + (vw - sw)*0.5, sy = cy0 + (vh - sh)*0.5;
   bctx.globalCompositeOperation = 'source-over'; bctx.globalAlpha = alpha;
   bctx.drawImage(el, sx, sy, sw, sh, 0, 0, bw, bh);
   bctx.globalAlpha = 1;
 }
-// SOURCE LAYERS 1-3: camera (bottom), then video file A, then video file B, each at its own MIX. A source that
+// ---- IMAGE LAYER (layer 4): a still picture, always centred, drawn at SIZE (100% covers the screen, smaller sizes
+// leave transparent margins, larger sizes zoom into the middle) and then graded / keyed / tinted like the video
+// sources. SIZE has its own LFO and bass modulation, so the picture can breathe with the music. The scaled copy is
+// only redrawn when the size or the buffer resolution changes.
+const IMG = { el:null, name:'', url:null, grade:makeGradeCache('sgImg', 'srcGradeImg'), out:null, octx:null, bw:0, bh:0, size:NaN };
+function imgLoad(file){
+  if(!file) return;
+  if(IMG.url) URL.revokeObjectURL(IMG.url);
+  IMG.url = URL.createObjectURL(file); IMG.name = file.name;
+  const im = new Image();
+  im.onload = ()=>{ IMG.el = im; IMG.size = NaN; };
+  im.onerror = ()=>{ console.warn('image failed to load'); syncButton('vImgName', 'LOAD ERR', null); };
+  im.src = IMG.url;
+  const nm = file.name.length > 18 ? file.name.slice(0, 16) + '…' : file.name;
+  syncButton('vImgName', nm.toUpperCase(), null);
+}
+function imgFrame(){
+  if(!IMG.el) return null;
+  const size = Math.round(eff.sizeImg*400)/400;                                    // quantised so tiny LFO wobble doesn't redraw every frame
+  if(!IMG.out || IMG.bw !== bw || IMG.bh !== bh || IMG.size !== size){
+    if(!IMG.out){ IMG.out = document.createElement('canvas'); IMG.octx = IMG.out.getContext('2d'); }
+    if(IMG.out.width !== bw || IMG.out.height !== bh){ IMG.out.width = bw; IMG.out.height = bh; }
+    const iw = IMG.el.naturalWidth, ih = IMG.el.naturalHeight, k = Math.max(bw/iw, bh/ih)*size, dw = iw*k, dh = ih*k;
+    IMG.octx.clearRect(0, 0, bw, bh);
+    IMG.octx.drawImage(IMG.el, (bw - dw)*0.5, (bh - dh)*0.5, dw, dh);
+    IMG.bw = bw; IMG.bh = bh; IMG.size = size;
+  }
+  return IMG.out;
+}
+// SOURCE LAYERS 1-4: camera (bottom), then video file A, video file B and the image, each at its own MIX. A source that
 // isn't running just drops out of the stack.
 function drawVideoLayer(){
   const now = performance.now();
   if(!paused){ DECKS.forEach(d => { d.granularTick(); d.loopTick(); if(d.playing) d.syncPos(false); }); camRingCapture(now); }
-  if(CAM.on && eff.mixCam > 0.004){
+  if(CAM.on && !state.muteCam && eff.mixCam > 0.004){
     const camEl = camSource(now);
     drawGraded(camEl, eff.mixCam, CAMG, 'cam');
     const ha = camHoldAlpha(now); if(ha > 0 && CAMR.fade) drawGraded(CAMR.fade.c, eff.mixCam * ha, CAMG, 'cam');
   }
   DECK.A.draw(now, eff.mixVA);
   DECK.B.draw(now, eff.mixVB);
+  if(IMG.el && !state.muteImg && eff.mixImg > 0.004){ const c = imgFrame(); if(c) drawGraded(c, eff.mixImg, IMG.grade, 'img'); }
 }
 const downBuf = document.createElement('canvas');
 const dctx    = downBuf.getContext('2d');
@@ -2941,10 +3115,29 @@ function specAt(u){
     if(T.binHz !== binHz || T.len !== aData.length){ T.binHz = binHz; T.len = aData.length; T.tab = new Float32Array(258);
       for(let q = 0; q < 258; q++) T.tab[q] = clamp(45*Math.pow(180, q/256)/binHz, 1, aData.length - 2); }
     const tu = u*256, ti = tu|0, fi = T.tab[ti] + (T.tab[ti + 1] - T.tab[ti])*(tu - ti), i = fi|0, k = fi - i;
-    return clamp(((aData[i]*(1 - k) + aData[i + 1]*k)*0.0039215686 - 0.05)*(0.8 + u*0.9)*(0.5 + state.audio*0.875), 0, 1);
+    return clamp(((aData[i]*(1 - k) + aData[i + 1]*k)*0.0039215686 - 0.05)*(0.8 + u*0.9)*(0.5 + state.audio*0.875)*specGain, 0, 1);
   }
   const f = u*3, i = f|0, k = f - i;
-  return clamp((A[i]*(1 - k) + A[Math.min(3, i + 1)]*k)*(0.25 + state.audio*1.25), 0, 1);
+  return clamp((A[i]*(1 - k) + A[Math.min(3, i + 1)]*k)*(0.25 + state.audio*1.25)*specGain, 0, 1);
+}
+// Per-slot audio routing (AUDIO BAND / AUDIO EFFECT on each shape): while a slot draws, the band array A is replaced
+// by the chosen band (or scaled) and specGain scales the spectrum, so every shape reacts through the slot's settings.
+let specGain = 1;
+const A_SAVE = new Float32Array(4);
+function slotAudioBegin(slot){
+  A_SAVE.set(A);
+  const band = state['audBand' + slot], lvl = state['audLvl' + slot];
+  if(band !== 'all'){ const v = A[+band]; A[0] = v; A[1] = v; A[2] = v; A[3] = v; }
+  if(lvl !== 1){ A[0] *= lvl; A[1] *= lvl; A[2] *= lvl; A[3] *= lvl; }
+  specGain = lvl;
+}
+function slotAudioEnd(){ A.set(A_SAVE); specGain = 1; }
+function setAudBand(slot, id){
+  if(!['all', '0', '1', '2', '3'].includes(id)) id = 'all';
+  state['audBand' + slot] = id;
+  [document, popoutWin && !popoutWin.closed ? popoutWin.document : null].forEach(doc => {
+    const sel = doc && doc.getElementById('cAudBand' + slot); if(sel && sel.value !== id) sel.value = id;
+  });
 }
 // smoothed copies of the four bands so shapes swell and relax instead of flickering
 function smBands(S, t){
@@ -6875,6 +7068,318 @@ function drawHarmonic(t){
 }
 
 // ---------------------------------------------------------------------------------------------
+// Shapes in the spirit of browser WebGL music visualizers (mesh grids, particle clouds, stacked waveforms,
+// pulsing dot fields, displaced spheres, frequency hallways, equalizer rings and clustered eyes), redrawn here in
+// plain 2D canvas: MESH GRID, SWARM, UNKNOWN PLEASURES, DOT GRID, BLOB, HALLWAY.
+// All of them keep their moving state on the function object (per slot), integrate speed from dt (never t * audio)
+// and read the bands through smBands() / the spectrum through specAt().
+// ---------------------------------------------------------------------------------------------
+
+// MESH GRID: a wireframe plane seen from a low tilted camera. Rings ripple out from the centre, the spectrum is laid
+// along the radius (bass in the middle, treble at the rim), noise rolls slowly across the whole sheet and every bass
+// onset sends one extra crest outward. Bass raises the peaks, low-mids speed the ripple, high-mids stir the noise.
+// DENSITY sets the grid resolution.
+function drawMeshGrid(t){
+  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), S = drawMeshGrid, den = clamp(eff.density, 0, 1);
+  const dt = smBands(S, t), sm = S.sm;
+  if(S.ph === undefined){ S.ph = 0; S.yaw = 0; S.clock = 0; S.beat = -10; S.level = 0; }
+  S.ph += dt*(1.4 + sm[1]*3.2); S.yaw += dt*0.11; S.clock += dt;
+  if(A[0] > S.level*1.35 + 0.12 && S.clock - S.beat > 0.18) S.beat = S.clock;
+  S.level += (A[0] - S.level)*Math.min(1, dt*4);
+  const N = 12 + Math.round(den*18), D = 3.3, f = minD*1.35;
+  const ay = Math.sin(S.yaw)*0.45, ax = 1.0, amp = 0.10 + sm[0]*0.42, age = S.clock - S.beat;
+  const tint = pal.rgb[0], tint2 = pal.rgb[2 % pal.rgb.length], hot = [255, 245, 230];
+  const P = new Array((N + 1)*(N + 1));
+  for(let j = 0; j <= N; j++) for(let i = 0; i <= N; i++){
+    const x = (i/N - 0.5)*2.7, z = (j/N - 0.5)*2.7, r = Math.hypot(x, z);
+    let h = Math.sin(r*4.2 - S.ph)*Math.exp(-r*0.8)*amp + n2(x*1.4, z*1.4, t*0.5)*0.12*(0.6 + sm[2]);
+    h += specAt(clamp(r/1.9, 0, 1))*0.32*Math.max(0, 1 - r*0.25);
+    const d = r - age*2.4; h += Math.exp(-d*d*9)*Math.max(0, 1 - age*1.1)*(0.35 + S.level*0.4);
+    const p = m3Rot(x, h - 0.35, z, ay, ax, 0);
+    P[j*(N + 1) + i] = { q:m3Proj(p, D, f), h, z:p[2] };
+  }
+  bctx.save(); bctx.globalCompositeOperation = 'lighter'; bctx.lineCap = 'round';
+  const lw = Math.max(1, minD*0.0024);
+  const seg = (a, b, c) => {
+    const hh = (a.h + b.h)*0.5, depth = clamp(1 - (a.z + b.z)*0.5/2.2, 0.25, 1);
+    const k = clamp(hh*1.8, 0, 1);
+    const col = [lerp(c[0], hot[0], k), lerp(c[1], hot[1], k), lerp(c[2], hot[2], k)];
+    bctx.strokeStyle = m3Rgba(col, 1, depth*(0.35 + k*0.65));
+    bctx.lineWidth = lw*(1 + k*1.2);
+    bctx.beginPath(); bctx.moveTo(a.q[0], a.q[1]); bctx.lineTo(b.q[0], b.q[1]); bctx.stroke();
+  };
+  for(let j = 0; j <= N; j++) for(let i = 0; i < N; i++) seg(P[j*(N + 1) + i], P[j*(N + 1) + i + 1], tint);
+  for(let i = 0; i <= N; i++) for(let j = 0; j < N; j++) seg(P[j*(N + 1) + i], P[(j + 1)*(N + 1) + i], tint2);
+  bctx.restore();
+}
+
+// SWARM: three clouds of glowing particles, one per frequency band. The BASS cloud swells and scatters on every
+// kick, the LOW-MID cloud drives the orbit speed and streams the fastest, the HIGH-MID cloud is the most turbulent
+// (the noise field that folds all three is stirred by the high-mids). Treble sizes and brightens every dot and
+// throws off sparks. The clouds drift around each other; a loud bass onset flings every particle outward before
+// the orbits pull them back in. DENSITY sets the particle count.
+function drawSwarm(t){
+  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), S = drawSwarm, den = clamp(eff.density, 0, 1);
+  const dt = smBands(S, t), sm = S.sm, MAX = 1500;
+  if(!S.p){
+    const r = mulberry32(state.seed ^ 0x5a11);
+    S.p = new Float32Array(MAX*6);       // x, y (px), phase, ring radius, kick vx, kick vy
+    for(let i = 0; i < MAX; i++){ const o = i*6; S.p[o] = r()*bw; S.p[o + 1] = r()*bh; S.p[o + 2] = r()*TAU; S.p[o + 3] = 0.2 + r()*r()*1.1; }
+    S.ph = 0; S.punch = new Float32Array(4); S.level = 0; S.clock = 0; S.beat = -10; S.nt = 0;
+  }
+  S.clock += dt;
+  // per-band punch: fast attack, slower release, so each cloud jumps on its band and settles back
+  for(let b = 0; b < 4; b++) S.punch[b] += (sm[b] - S.punch[b])*Math.min(1, dt*(sm[b] > S.punch[b] ? 30 : 4));
+  const pb = S.punch;
+  S.ph += dt*(0.25 + pb[1]*1.5);                                    // low-mids: the whole dance turns faster
+  S.nt += dt*(0.3 + pb[2]*2.5);                                     // high-mids: the folding field churns faster
+  let kick = 0;
+  if(A[0] > S.level*1.35 + 0.12 && S.clock - S.beat > 0.16){ S.beat = S.clock; kick = 0.4 + clamp(A[0], 0, 1)*1.2; }
+  S.level += (A[0] - S.level)*Math.min(1, dt*4);
+  const N = 250 + Math.round(den*(MAX - 250)), cx = bw*0.5, cy = bh*0.5;
+  const att = [], R = [];
+  for(let k = 0; k < 3; k++){
+    att.push([cx + Math.sin(S.ph*0.7 + k*2.1)*bw*(0.2 + pb[0]*0.08), cy + Math.cos(S.ph*0.9 + k*1.7 + 0.6)*bh*(0.2 + pb[0]*0.08)]);
+    R.push(minD*(0.10 + pb[k]*0.30));                              // cloud k's size is its band's level
+  }
+  const rad = Math.max(0.7, minD*0.0018*(1 + pb[3]*2.2)), wob = minD*(0.03 + pb[2]*0.16), damp = Math.pow(0.08, dt);
+  const cols = [pal.rgb[0], pal.rgb[1 % pal.rgb.length], pal.rgb[3 % pal.rgb.length]], white = [255, 250, 240];
+  bctx.save(); bctx.globalCompositeOperation = 'lighter';
+  for(let k = 0; k < 3; k++){
+    const ease = Math.min(1, dt*(2 + pb[k]*6 + (k === 1 ? pb[1]*4 : 0))), spdK = k === 1 ? 2.2 : k === 0 ? 0.8 : 1.4;
+    const w = clamp((pb[3] - 0.35)*1.6, 0, 1), c = [lerp(cols[k][0], white[0], w), lerp(cols[k][1], white[1], w), lerp(cols[k][2], white[2], w)];
+    bctx.fillStyle = m3Rgba(c, 1.1 + pb[k]*0.3, 0.45 + pb[3]*0.45);
+    bctx.beginPath();
+    for(let i = k; i < N; i += 3){
+      const o = i*6, dir = (i & 1) ? 1 : -1, spd = 0.5 + (i % 5)*0.25;
+      S.p[o + 2] += dt*(0.25 + pb[1]*1.3)*spd*spdK*dir;
+      const ph = S.p[o + 2], rr = S.p[o + 3]*R[k];
+      const nx = S.p[o]/minD, ny = S.p[o + 1]/minD, n = n2(nx*1.8, ny*1.8, S.nt);
+      const tx = att[k][0] + Math.cos(ph)*rr + Math.cos(n*3.1)*wob, ty = att[k][1] + Math.sin(ph)*rr*0.75 + Math.sin(n*3.1)*wob;
+      if(kick > 0){ const dx = S.p[o] - att[k][0], dy = S.p[o + 1] - att[k][1], dd = Math.hypot(dx, dy) + 1; S.p[o + 4] += dx/dd*kick*minD*(0.4 + hash1(i*1.7)*0.8); S.p[o + 5] += dy/dd*kick*minD*(0.4 + hash1(i*2.3)*0.8); }
+      S.p[o + 4] *= damp; S.p[o + 5] *= damp;
+      S.p[o] += (tx - S.p[o])*ease + S.p[o + 4]*dt; S.p[o + 1] += (ty - S.p[o + 1])*ease + S.p[o + 5]*dt;
+      const x = S.p[o], y = S.p[o + 1];
+      bctx.moveTo(x + rad, y); bctx.arc(x, y, rad, 0, TAU);
+    }
+    bctx.fill();
+    // treble sparks: a few bright pinpoints flung off the cloud's rim
+    if(pb[3] > 0.3){
+      bctx.fillStyle = m3Rgba(white, 1, pb[3]*0.8); bctx.beginPath();
+      const ns = 4 + Math.round(pb[3]*14);
+      for(let q = 0; q < ns; q++){ const a = hash1(q*3.3 + k*17 + (S.clock*9|0))*TAU, d = R[k]*(1.1 + hash1(q*7.1 + k)*0.6), x = att[k][0] + Math.cos(a)*d, y = att[k][1] + Math.sin(a)*d*0.75; bctx.moveTo(x + rad*0.8, y); bctx.arc(x, y, rad*0.8, 0, TAU); }
+      bctx.fill();
+    }
+    const g = bctx.createRadialGradient(att[k][0], att[k][1], 0, att[k][0], att[k][1], R[k]*1.4);
+    g.addColorStop(0, m3Rgba(cols[k], 1, 0.12 + pb[k]*0.3)); g.addColorStop(1, m3Rgba(cols[k], 1, 0));
+    bctx.fillStyle = g; bctx.beginPath(); bctx.arc(att[k][0], att[k][1], R[k]*1.4, 0, TAU); bctx.fill();
+  }
+  bctx.restore();
+}
+
+// UNKNOWN PLEASURES: stacked oscilloscope traces. The live waveform (or a synthetic one with no input) is written into a
+// short history each frame and each line shows an older copy, so a hit rolls back through the stack like a ripple
+// in time; the traces are shaped by a ridge in the middle that the spectrum lifts. Front lines hide the ones behind
+// (unless BACKGROUND is off). Bass raises the ridge, low-mids sharpen the trace, treble brightens the front lines.
+// DENSITY sets the number of lines.
+function drawUnknownPleasures(t){
+  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), S = drawUnknownPleasures, den = clamp(eff.density, 0, 1);
+  const dt = smBands(S, t), sm = S.sm, SEGS = 96, HIST = 48;
+  if(!S.hist){ S.hist = new Float32Array(SEGS*HIST); S.head = 0; S.acc = 0; S.ph = 0; }
+  S.ph += dt*2.4;
+  const live = analyser && actx && actx.state === 'running';
+  if(live){ if(!S.time || S.time.length !== analyser.fftSize) S.time = new Float32Array(analyser.fftSize); analyser.getFloatTimeDomainData(S.time); }
+  // a fresh row roughly 40 times a second, so the ripple speed doesn't depend on the frame rate
+  S.acc += dt;
+  while(S.acc > 0.025){
+    S.acc -= 0.025; S.head = (S.head + 1) % HIST;
+    const row = S.head*SEGS, L = live ? S.time.length : 0;
+    for(let s = 0; s < SEGS; s++){
+      const u = s/(SEGS - 1), env = Math.exp(-Math.pow((u - 0.5)*3.4, 2));
+      let v = live ? S.time[Math.min(L - 1, (u*L)|0)]*(1.4 + sm[1]*2) : Math.sin(u*11 + S.ph)*0.25*Math.sin(u*3.1 - S.ph*0.7);
+      v = clamp(v, -1, 1);
+      S.hist[row + s] = v*env*(0.6 + sm[1]) + specAt(u)*env*(0.5 + sm[0]*1.2);
+    }
+  }
+  const rows = 10 + Math.round(den*26), top = bh*0.16, span = bh*0.70, amp = bh*(0.12 + sm[0]*0.12), x0 = bw*0.06, xs = bw*0.88/(SEGS - 1);
+  const c1 = pal.rgb[0], c2 = pal.rgb[2 % pal.rgb.length], white = [255, 250, 240];
+  bctx.save(); bctx.globalCompositeOperation = 'source-over'; bctx.lineJoin = 'round';
+  for(let k = 0; k < rows; k++){
+    const kk = k/(rows - 1), y0 = top + kk*span, back = Math.floor((1 - kk)*(HIST - 1));
+    const row = ((S.head - back + HIST) % HIST)*SEGS;
+    bctx.beginPath();
+    for(let s = 0; s < SEGS; s++){ const x = x0 + s*xs, y = y0 - S.hist[row + s]*amp*(0.4 + 0.6*kk); if(s) bctx.lineTo(x, y); else bctx.moveTo(x, y); }
+    if(!bgStrip){ bctx.lineTo(x0 + (SEGS - 1)*xs, bh); bctx.lineTo(x0, bh); bctx.closePath(); bctx.fillStyle = pal.bg; bctx.fill(); }
+    const c = [lerp(c1[0], c2[0], kk), lerp(c1[1], c2[1], kk), lerp(c1[2], c2[2], kk)];
+    const br = 0.45 + 0.55*kk + sm[3]*0.3*kk;
+    bctx.strokeStyle = m3Rgba(kk > 0.85 && sm[3] > 0.4 ? white : c, br, 0.6 + 0.4*kk);
+    bctx.lineWidth = Math.max(1, minD*0.0028*(0.6 + kk));
+    bctx.beginPath();
+    for(let s = 0; s < SEGS; s++){ const x = x0 + s*xs, y = y0 - S.hist[row + s]*amp*(0.4 + 0.6*kk); if(s) bctx.lineTo(x, y); else bctx.moveTo(x, y); }
+    bctx.stroke();
+  }
+  bctx.restore();
+}
+
+// DOT GRID: a field of dots that breathe in rings from the centre. The spectrum is laid along the radius (bass at
+// the middle, treble at the corners), a slow swell circles outward, and each bass onset launches a bright ring that
+// travels to the edge. Dot size and brightness follow the local level; treble whitens the brightest dots.
+// DENSITY sets the pitch of the grid.
+function drawDotGrid(t){
+  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), S = drawDotGrid, den = clamp(eff.density, 0, 1);
+  const dt = smBands(S, t), sm = S.sm;
+  if(!S.waves){ S.waves = []; S.level = 0; S.clock = 0; S.beat = -10; }
+  S.clock += dt;
+  if(A[0] > S.level*1.35 + 0.12 && S.clock - S.beat > 0.16){ S.beat = S.clock; S.waves.push({ t0:S.clock, amp:0.5 + clamp(A[0], 0, 1) }); if(S.waves.length > 6) S.waves.shift(); }
+  S.level += (A[0] - S.level)*Math.min(1, dt*4);
+  S.waves = S.waves.filter(w => S.clock - w.t0 < 2.2);
+  const pitch = minD/(8 + den*22), cols = Math.ceil(bw/pitch) + 1, rows = Math.ceil(bh/pitch) + 1;
+  const cx = bw*0.5, cy = bh*0.5, maxR = Math.hypot(cx, cy), ox = (bw - (cols - 1)*pitch)*0.5, oy = (bh - (rows - 1)*pitch)*0.5;
+  const c1 = pal.rgb[1 % pal.rgb.length], c2 = pal.rgb[3 % pal.rgb.length], hot = [255, 250, 235];
+  bctx.save(); bctx.globalCompositeOperation = 'lighter';
+  // bucket the dots by brightness so the whole grid is a handful of fills instead of one per dot
+  const B = 8, paths = []; for(let b = 0; b < B; b++) paths.push(new Path2D());
+  for(let j = 0; j < rows; j++) for(let i = 0; i < cols; i++){
+    const x = ox + i*pitch, y = oy + j*pitch, r = Math.hypot(x - cx, y - cy)/maxR;
+    let v = 0.12 + specAt(clamp(r, 0, 1))*0.9 + 0.12*Math.sin(r*9 - S.clock*2.5);
+    for(const w of S.waves){ const d = r - (S.clock - w.t0)*0.75; v += w.amp*Math.exp(-d*d*70)*Math.max(0, 1 - (S.clock - w.t0)*0.5); }
+    v = clamp(v, 0, 1.4);
+    const rad = pitch*(0.06 + 0.3*Math.min(1, v)), b = Math.min(B - 1, (v/1.4*B)|0);
+    paths[b].moveTo(x + rad, y); paths[b].arc(x, y, rad, 0, TAU);
+  }
+  for(let b = 0; b < B; b++){
+    const k = (b + 0.5)/B, c = [lerp(c1[0], c2[0], k), lerp(c1[1], c2[1], k), lerp(c1[2], c2[2], k)];
+    const w = clamp((k - 0.7)*3, 0, 1)*sm[3];
+    bctx.fillStyle = m3Rgba([lerp(c[0], hot[0], w), lerp(c[1], hot[1], w), lerp(c[2], hot[2], w)], 0.6 + k*0.9, 0.35 + k*0.65);
+    bctx.fill(paths[b]);
+  }
+  bctx.restore();
+}
+
+// BLOB: a wireframe ball whose surface is pushed in and out by rolling noise. Bass swells the whole blob with a
+// snap and drives spikes out of its surface, low-mids spin it and stretch it along the spin, high-mids churn the
+// noise and deepen the relief, treble whitens and thickens the front lines and lights the core. The spectrum runs
+// pole to pole as extra relief. DENSITY sets the mesh resolution.
+function drawBlob(t){
+  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), S = drawBlob, den = clamp(eff.density, 0, 1);
+  const dt = smBands(S, t), sm = S.sm;
+  if(S.rot === undefined){ S.rot = 0; S.tilt = 0; S.nt = 0; S.punch = new Float32Array(4); S.level = 0; S.clock = 0; S.beat = -10; S.spike = 0; }
+  for(let b = 0; b < 4; b++) S.punch[b] += (sm[b] - S.punch[b])*Math.min(1, dt*(sm[b] > S.punch[b] ? 28 : 4));
+  const pb = S.punch;
+  S.clock += dt;
+  if(A[0] > S.level*1.35 + 0.12 && S.clock - S.beat > 0.15){ S.beat = S.clock; S.spike = 1; }
+  S.level += (A[0] - S.level)*Math.min(1, dt*4);
+  S.spike *= Math.pow(0.02, dt);
+  S.rot += dt*(0.2 + pb[1]*1.6); S.tilt += dt*(0.17 + pb[1]*0.3); S.nt += dt*(0.4 + pb[2]*3);
+  const lat = 9 + Math.round(den*14), lon = lat*2, D = 3.4, f = minD*1.3;
+  const R0 = 0.72*(1 + pb[0]*0.3 + S.spike*0.08), disp = 0.05 + pb[2]*0.45 + pb[0]*0.15, stretch = 1 + pb[1]*0.35, ax = Math.sin(S.tilt)*0.5;
+  const tint = pal.rgb[0], tint2 = pal.rgb[2 % pal.rgb.length], hot = [255, 245, 235];
+  const P = new Array((lat + 1)*lon);
+  for(let i = 0; i <= lat; i++){
+    const th = i/lat*Math.PI, sy = Math.sin(th), y = Math.cos(th), relief = specAt(clamp(i/lat, 0, 1))*0.3;
+    for(let j = 0; j < lon; j++){
+      const ph = j/lon*TAU, x = sy*Math.cos(ph), z = sy*Math.sin(ph);
+      const n = n2(x*2.2 + y*1.3, z*2.2 - y*0.6, S.nt);
+      const spk = S.spike*Math.max(0, n - 0.25)*1.6;                 // kicks throw spikes out of the noise crests
+      const r = R0*(1 + n*disp + relief*sy + spk);
+      const p = m3Rot(x*r*stretch, y*r, z*r, S.rot, ax, 0);
+      P[i*lon + j] = { q:m3Proj(p, D, f), z:p[2], n:n + spk, lit:clamp(0.45 + 0.55*(p[0]*-0.5 + p[1]*0.6 - p[2]*0.6), 0, 1) };
+    }
+  }
+  bctx.save(); bctx.globalCompositeOperation = 'lighter'; bctx.lineCap = 'round';
+  const g = bctx.createRadialGradient(bw*0.5, bh*0.5, 0, bw*0.5, bh*0.5, minD*0.34*(1 + pb[0]*0.35));
+  g.addColorStop(0, m3Rgba(pb[3] > 0.4 ? hot : tint, 1, 0.15 + pb[0]*0.35 + pb[3]*0.15)); g.addColorStop(1, m3Rgba(tint, 1, 0));
+  bctx.fillStyle = g; bctx.fillRect(0, 0, bw, bh);
+  const lw = Math.max(0.5, minD*0.0013*(1 + pb[3]*0.8));
+  const seg = (a, b) => {
+    const front = (a.z + b.z)*0.5 < 0.05, k = (a.n + b.n)*0.5;
+    const c = k > 0 ? tint2 : tint, w = clamp(k*1.4, 0, 1)*(0.4 + pb[3]*0.8);
+    const col = [lerp(c[0], hot[0], w), lerp(c[1], hot[1], w), lerp(c[2], hot[2], w)];
+    bctx.strokeStyle = m3Rgba(col, front ? 0.7 + (a.lit + b.lit)*0.45 : 0.6, front ? 0.85 : 0.14);
+    bctx.lineWidth = front ? lw*(1 + Math.abs(k)*1.4) : lw*0.7;
+    bctx.beginPath(); bctx.moveTo(a.q[0], a.q[1]); bctx.lineTo(b.q[0], b.q[1]); bctx.stroke();
+  };
+  for(let i = 1; i < lat; i++) for(let j = 0; j < lon; j++) seg(P[i*lon + j], P[i*lon + (j + 1) % lon]);
+  for(let j = 0; j < lon; j++) for(let i = 0; i < lat; i++) seg(P[i*lon + j], P[(i + 1)*lon + j]);
+  bctx.restore();
+}
+
+// HALLWAY: a corridor receding to a vanishing point, drifting slowly toward the viewer. The walls are what move. A
+// uniform squeeze would only read as a zoom (scaling x and y about the vanishing point is the same as changing the
+// focal length), so the walls hinge instead: on every kick the near end of both walls, the floor and the ceiling
+// swings hard into the corridor while the far end stays put, then a pulse rolls down the hall to the vanishing
+// point as the near end relaxes. Between kicks the walls breathe with the bass and low-mids. Each slab also leans
+// in by its own band (nearest = bass, farthest = high-mids) through a smooth envelope. The wall edges are drawn as
+// continuous lines so the bend is visible. Beat timing runs on real time, so RATE only changes the walk speed.
+// DENSITY sets how many slabs line the hall.
+function drawHallway(t){
+  const pal = PALETTES[state.palette], minD = Math.min(bw, bh), S = drawHallway, den = clamp(eff.density, 0, 1);
+  const dt = smBands(S, t), sm = S.sm;
+  const rnow = performance.now()*0.001;
+  if(S.z === undefined){ S.z = 0; S.sway = 0; S.low = 0; S.mid = 0; S.lv = null; S.rt = rnow; S.beat = -10; S.level = 0; S.kick = 0; S.breath = 0; S.waves = []; }
+  let rdt = rnow - S.rt; S.rt = rnow; if(rdt < 0 || rdt > 0.25) rdt = 0;
+  const n = 14 + Math.round(den*30), sp = 0.9, far = n*sp, f = minD*0.95;
+  if(!S.lv || S.lv.length !== n) S.lv = new Float32Array(n);
+  S.low += (sm[0]*0.7 + sm[1]*0.3 - S.low)*Math.min(1, dt*2.2);
+  S.mid += (sm[1] - S.mid)*Math.min(1, dt*1.6);
+  S.z += dt*(0.35 + S.low*0.45); S.sway += dt*(0.25 + S.mid*0.3);          // a slow walk down the hall
+  // the beat: a kick swings the near end of the walls in at once and launches a pulse down the hall
+  if(A[0] > S.level*1.35 + 0.12 && rnow - S.beat > 0.15){ S.beat = rnow; S.kick = 1; S.waves.push(rnow); if(S.waves.length > 4) S.waves.shift(); }
+  S.level += (A[0] - S.level)*Math.min(1, rdt*4);
+  S.kick *= Math.pow(0.03, rdt);                                            // gone in ~0.6 s
+  S.breath += ((sm[0]*0.6 + sm[1]*0.4) - S.breath)*Math.min(1, rdt*(sm[0] > S.breath ? 14 : 3));
+  S.waves = S.waves.filter(w => rnow - w < 1.6);
+  // how far the wall is pushed into the corridor at depth u (0 = camera, 1 = vanishing point), as a fraction of
+  // the half-width: the kick hinges the near end, the pulses travel far, the breath moves the whole wall
+  const inset = (u) => {
+    let v = S.kick*1.1*Math.pow(1 - u, 0.6) + S.breath*0.45*(1 - u*0.6);
+    for(const w of S.waves){ const age = rnow - w, pos = age*0.75, d = (u - pos)/0.14; v += Math.exp(-d*d)*0.55*Math.max(0, 1 - age*0.6); }
+    return clamp(v, 0, 0.88);
+  };
+  const off = S.z % sp;
+  if(S.prevOff !== undefined && off < S.prevOff){ for(let k = 0; k < n - 1; k++) S.lv[k] = S.lv[k + 1]; S.lv[n - 1] = 0; }   // the slab index shifts by one when a slab passes the camera: carry the envelopes with the slabs
+  S.prevOff = off;
+  for(let k = 0; k < n; k++){
+    const u = clamp((0.35 + k*sp + (sp - off))/far, 0, 1), target = specAt(u*0.55)*(0.85 + 0.15*Math.sin(k*1.7));
+    S.lv[k] += (target - S.lv[k])*Math.min(1, dt*(target > S.lv[k] ? 9 : 3.5));
+  }
+  const vx = bw*0.5 + Math.sin(S.sway)*bw*0.05, vy = bh*0.5 + Math.cos(S.sway*0.7)*bh*0.035;
+  const HW = 1.25, HH = 0.78, ratio = bw/bh;
+  const proj = (x, y, z) => { const s = f/Math.max(0.08, z); return [vx + x*s*ratio*0.62, vy + y*s]; };
+  const c1 = pal.rgb[0], c2 = pal.rgb[1 % pal.rgb.length], c3 = pal.rgb[3 % pal.rgb.length], hot = [255, 248, 240];
+  bctx.save(); bctx.globalCompositeOperation = 'source-over'; bctx.lineJoin = 'round';
+  const g = bctx.createRadialGradient(vx, vy, 0, vx, vy, minD*0.3);
+  g.addColorStop(0, m3Rgba(c2, 1, 0.45 + S.low*0.35 + S.kick*0.25)); g.addColorStop(1, m3Rgba(c2, 1, 0));
+  bctx.fillStyle = g; bctx.beginPath(); bctx.arc(vx, vy, minD*0.3, 0, TAU); bctx.fill();
+  const quad = (pts, col, a) => { bctx.fillStyle = m3Rgba(col, 1, a); bctx.beginPath(); bctx.moveTo(pts[0][0], pts[0][1]); for(let i = 1; i < 4; i++) bctx.lineTo(pts[i][0], pts[i][1]); bctx.closePath(); bctx.fill(); };
+  const edges = [[], [], [], []];                                            // the four wall corners along the hall, far -> near
+  for(let k = n - 1; k >= 0; k--){
+    const z0 = 0.35 + k*sp + (sp - off), z1 = z0 + sp*0.5, u = clamp(z0/far, 0, 1), lvl = S.lv[k];
+    const ins0 = inset(u), ins1 = inset(clamp(z1/far, 0, 1));
+    const w0 = HW*(1 - ins0), w1 = HW*(1 - ins1), h0 = HH*(1 - ins0), h1 = HH*(1 - ins1);   // corridor half-size at the slab's near and far faces
+    const fade = clamp(1 - u, 0, 1)*(0.55 + lvl*0.45), br = 0.6 + lvl*0.7 + S.kick*0.3, wh = (1 - u)*(S.low*lvl*0.8 + S.kick*0.5);
+    const base = k % 2 ? c1 : c3, col = [lerp(base[0], hot[0], wh), lerp(base[1], hot[1], wh), lerp(base[2], hot[2], wh)];
+    const dx0 = lvl*0.3*w0, dx1 = lvl*0.3*w1, dy0 = lvl*0.25*h0, dy1 = lvl*0.25*h1;
+    // walls: the face toward the corridor and its lit top edge
+    quad([proj(-w0 + dx0, -h0, z0), proj(-w1 + dx1, -h1, z1), proj(-w1 + dx1, h1, z1), proj(-w0 + dx0, h0, z0)], col, fade*0.85);
+    quad([proj(-w0, -h0, z0), proj(-w1, -h1, z1), proj(-w1 + dx1, -h1, z1), proj(-w0 + dx0, -h0, z0)], col, fade*0.45);
+    quad([proj(w0 - dx0, -h0, z0), proj(w1 - dx1, -h1, z1), proj(w1 - dx1, h1, z1), proj(w0 - dx0, h0, z0)], col, fade*0.85);
+    quad([proj(w0, -h0, z0), proj(w1, -h1, z1), proj(w1 - dx1, -h1, z1), proj(w0 - dx0, -h0, z0)], col, fade*0.45);
+    // floor / ceiling slabs
+    quad([proj(-w0, h0 - dy0, z0), proj(-w1, h1 - dy1, z1), proj(w1, h1 - dy1, z1), proj(w0, h0 - dy0, z0)], c2, fade*0.5*br);
+    quad([proj(-w0, -h0 + dy0, z0), proj(-w1, -h1 + dy1, z1), proj(w1, -h1 + dy1, z1), proj(w0, -h0 + dy0, z0)], c2, fade*0.5*br);
+    bctx.strokeStyle = m3Rgba(col, br + 0.4, fade); bctx.lineWidth = Math.max(1, minD*0.003*(1 - u));
+    const a = proj(-w0 + dx0, h0, z0), b = proj(w0 - dx0, h0, z0), c = proj(w0 - dx0, -h0, z0), d = proj(-w0 + dx0, -h0, z0);
+    bctx.beginPath(); bctx.moveTo(a[0], a[1]); bctx.lineTo(b[0], b[1]); bctx.moveTo(c[0], c[1]); bctx.lineTo(d[0], d[1]); bctx.stroke();
+    edges[0].push(proj(-w0, -h0, z0)); edges[1].push(proj(w0, -h0, z0)); edges[2].push(proj(w0, h0, z0)); edges[3].push(proj(-w0, h0, z0));
+  }
+  // the corridor's four long edges, so the walls' bend reads as a shape
+  bctx.strokeStyle = m3Rgba(c2, 1.2 + S.kick*0.5, 0.75); bctx.lineWidth = Math.max(1, minD*0.0035);
+  for(const e of edges){ bctx.beginPath(); e.forEach((p, i) => i ? bctx.lineTo(p[0], p[1]) : bctx.moveTo(p[0], p[1])); bctx.stroke(); }
+  bctx.restore();
+}
+
+// ---------------------------------------------------------------------------------------------
 // Registry: SHAPES (UI order/labels) and DRAW (id -> render function). Ids are what presets store.
 // ---------------------------------------------------------------------------------------------
 // OFF is a shape that draws nothing, so a slot can be disabled (video / background still show through).
@@ -6901,7 +7406,9 @@ const SHAPES = [
   { id:'skyline', label:'SKYLINE' }, { id:'amoebas', label:'AMOEBAS' },
   { id:'playfield', label:'PLAYFIELD' }, { id:'sprites', label:'SPRITES' }, { id:'munch', label:'MUNCH' },
   { id:'paddles', label:'PADDLES' }, { id:'quilt', label:'QUILT' }, { id:'liquidlight', label:'LIQUID LIGHT' },
-  { id:'matrix', label:'MATRIX' }, { id:'harmonic', label:'HARMONIC' }
+  { id:'matrix', label:'MATRIX' }, { id:'harmonic', label:'HARMONIC' },
+  { id:'meshgrid', label:'MESH GRID' }, { id:'swarm', label:'SWARM' }, { id:'unknownpleasures', label:'UNKNOWN PLEASURES' }, { id:'dotgrid', label:'DOT GRID' },
+  { id:'blob', label:'BLOB' }, { id:'hallway', label:'HALLWAY' }
 ];
 
 const DRAW = {
@@ -6921,7 +7428,9 @@ const DRAW = {
   jellyfish:drawJellyfish, oilscape:drawOilscape,
   neoncity:drawNeonCity, scratch:drawScratch, skyline:drawSkylinePaint, amoebas:drawAmoebas,
   playfield:drawPlayfield, sprites:drawSprites, munch:drawMunch, paddles:drawPaddles, quilt:drawQuilt, liquidlight:drawLiquidLight,
-  matrix:drawMatrix, harmonic:drawHarmonic
+  matrix:drawMatrix, harmonic:drawHarmonic,
+  meshgrid:drawMeshGrid, swarm:drawSwarm, unknownpleasures:drawUnknownPleasures, dotgrid:drawDotGrid,
+  blob:drawBlob, hallway:drawHallway
 };
 
 // Film/video filters. FX holds each filter's parameters, read by displayFilterPass() and filmOverlays().
@@ -7615,7 +8124,7 @@ let lastScanOpacity = -1;
 // Shapes built from many overlapping strokes/discs would show their internal structure when drawn at partial
 // opacity during a crossfade. For those we draw at full opacity, then blend the previous buffer back over the
 // result, which fades the shape as one solid layer.
-const SOLID_MIX = new Set(['rings', 'spiro', 'helix', 'supernova', 'blackhole', 'memory', 'tunnel', 'modsynth', 'orbs', 'polylock', 'vmsolid', 'triangulation', 'rising', 'mosaic', 'waves', 'dotgrid', 'playfield', 'paddles', 'planet']);
+const SOLID_MIX = new Set(['rings', 'spiro', 'helix', 'supernova', 'blackhole', 'memory', 'tunnel', 'modsynth', 'orbs', 'polylock', 'vmsolid', 'triangulation', 'rising', 'mosaic', 'waves', 'dotgrid', 'playfield', 'paddles', 'planet', 'unknownpleasures', 'hallway']);
 const mixSnap = document.createElement('canvas'), mixSnapCtx = mixSnap.getContext('2d');
 const drawErrLogged = new Set();
 // A shape that throws mid-frame must never stall the output: log it once and carry on with the rest of the frame.
@@ -7701,6 +8210,7 @@ function frame(now){
     lfoPhases[K] += dt * TAU * state['lfoRate' + K];
     eff[key] = clamp(state[key] + Math.sin(lfoPhases[K]) * state['mod' + K] + A[band] * state['audMod' + K], 0, 1);
   }
+  eff.sizeImg = clamp(state.sizeImg + Math.sin(lfoPhases.SizeImg)*state.modSizeImg + A[0]*state.audModSizeImg, 0.05, 3);   // SIZE runs past 100%
   eff.rate = eff.rateA; eff.density = eff.denA;   // slot A's values stand in for anything that reads them outside a draw
   lfoPhases.fid         += dt * TAU * state.lfoRateFid;
   lfoPhases.fxLvl       += dt * TAU * state.lfoRateFxLvl;
@@ -7762,10 +8272,12 @@ function frame(now){
   stripFrame++;
   const drawShapeSlot = (slot, tt) => {
     const id = state['shape' + slot], alpha = eff['mix' + slot];
-    if(alpha <= 0.004 || !DRAW[id]) return;
+    if(alpha <= 0.004 || !DRAW[id] || state['mute' + slot]) return;
     eff.density = eff['den' + slot]; eff.rate = eff['rate' + slot];
     bgStrip = state['noBg' + slot];
-    if(slot === 'A') drawMixed(id, alpha, tt); else drawSlot(slot, id, alpha, tt);
+    slotAudioBegin(slot);
+    try{ if(slot === 'A') drawMixed(id, alpha, tt); else drawSlot(slot, id, alpha, tt); }
+    finally{ slotAudioEnd(); }
   };
   drawShapeSlot('A', t); drawShapeSlot('B', tB); drawShapeSlot('C', tC);
   bgStrip = false;
@@ -8046,7 +8558,7 @@ function micSetOff(){
   if(micSrcNode){ try{ micSrcNode.disconnect(); }catch(e){} micSrcNode = null; }
   analyser = null; aData = null;
   if(actx && actx.state === 'running') actx.suspend();
-  syncButton('bMic', 'MIC OFF', false);
+  syncButton('bMic', 'MIC OFF', false); syncReadouts();
 }
 async function micStart(){
   if(!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -8070,7 +8582,7 @@ async function micStart(){
   analyser = an;
   computeAudioBins();
   bandPeak.fill(0.3);
-  syncButton('bMic', 'MIC ON', true);
+  syncButton('bMic', 'MIC ON', true); syncReadouts();
   refreshAudioDevices();
 }
 async function toggleMic(){
@@ -8080,7 +8592,7 @@ async function toggleMic(){
     console.warn('audio input failed:', err);
     micSetOff();
     syncButton('bMic', 'MIC ERR', false);
-    setTimeout(()=>{ if(!analyser) syncButton('bMic', 'MIC OFF', false); }, 1500);
+    setTimeout(()=>{ if(!analyser){ syncButton('bMic', 'MIC OFF', false); syncReadouts(); } }, 1500);
   }
 }
 async function refreshAudioDevices(){
@@ -8149,12 +8661,15 @@ function syncReadouts(){
     update('vRate' + K, state['rate' + K].toFixed(2));
     update('vDen' + K, Math.round(state['den' + K] * 100) + '%');
     update('vMix' + K, Math.round(state['mix' + K] * 100) + '%');
+    update('vAudLvl' + K, Math.round(state['audLvl' + K] * 100) + '%');
   });
+  update('vMixImg', Math.round(state.mixImg * 100) + '%');
+  update('vSizeImg', Math.round(state.sizeImg * 100) + '%');
   update('vMixCam', Math.round(state.mixCam * 100) + '%');
   update('vMixVA', Math.round(state.mixVA * 100) + '%');
   update('vMixVB', Math.round(state.mixVB * 100) + '%');
   update('vFid', Math.round(state.fidelity * 100) + '% · ' + targetBufferWidth() + 'PX');
-  update('vAud', Math.round(state.audio * 100) + '%');
+  update('vAud', analyser ? Math.round(state.audio * 100) + '%' : 'OFF');   // the section tag shows OFF until an input is running
 
   update('vTextScale', Math.round(state.textScale));
   update('vTextPosY', Math.round(state.textPosY * 100) + '%');
@@ -8195,6 +8710,14 @@ function setNoBg(slot, on){
   state['noBg' + slot] = on;
   syncButton('bNoBg' + slot, on ? 'BACKGROUND OFF' : 'BACKGROUND ON', on);
 }
+
+// MUTE per source (camera, video A / B, shape A / B / C): the source keeps running, it just isn't drawn.
+const MUTE_KEYS = ['Cam', 'VA', 'VB', 'Img', 'A', 'B', 'C'];
+function setMute(k, on){
+  state['mute' + k] = on;
+  syncButton('bMute' + k, on ? 'MUTED' : 'MUTE OFF', on);
+}
+function syncMutes(){ MUTE_KEYS.forEach(k => setMute(k, state['mute' + k])); }
 
 // Invert all rendered colours.
 function setInvert(on){
@@ -8613,10 +9136,12 @@ function presetCapture(){
   return {
     app:'null-ventana', version:1, saved:new Date().toISOString(),
     sliders, text:state.text, seed:state.seed, recMax:REC.max, vcamRes:OUTRES.w + 'x' + OUTRES.h,
-    seg:{ fontStyle:state.fontStyle, shapeA:state.shapeA, shapeB:state.shapeB, shapeC:state.shapeC, filter:state.filter, palette:state.palette, bgMode:state.bgMode, fbKey:state.fbKey, camKey:state.camKey, vAKey:state.vAKey, vBKey:state.vBKey },
-    toggles:{ invert:state.invert, vALoop:state.vALoop, vBLoop:state.vBLoop, noBgA:state.noBgA, noBgB:state.noBgB, noBgC:state.noBgC,
+    seg:{ fontStyle:state.fontStyle, shapeA:state.shapeA, shapeB:state.shapeB, shapeC:state.shapeC, filter:state.filter, palette:state.palette, bgMode:state.bgMode, fbKey:state.fbKey, camKey:state.camKey, vAKey:state.vAKey, vBKey:state.vBKey, imgKey:state.imgKey,
+         audBandA:state.audBandA, audBandB:state.audBandB, audBandC:state.audBandC },
+    toggles:{ invert:state.invert, vALoop:state.vALoop, vBLoop:state.vBLoop, vAFill:state.vAFill, vBFill:state.vBFill, noBgA:state.noBgA, noBgB:state.noBgB, noBgC:state.noBgC,
               beatReseed:state.beatReseed, camGranular:state.camGranular, vAGranular:state.vAGranular, vBGranular:state.vBGranular, palAudio:state.palAudio,
-              camKeyInv:state.camKeyInv, vAKeyInv:state.vAKeyInv, vBKeyInv:state.vBKeyInv }
+              camKeyInv:state.camKeyInv, vAKeyInv:state.vAKeyInv, vBKeyInv:state.vBKeyInv, imgKeyInv:state.imgKeyInv,
+              muteCam:state.muteCam, muteVA:state.muteVA, muteVB:state.muteVB, muteA:state.muteA, muteB:state.muteB, muteC:state.muteC }
   };
 }
 // Presets saved by the single-video / crossfade layout map onto the layered mixer: the crossfade becomes Shape A / B
@@ -8648,7 +9173,7 @@ function presetApply(p){
   const sg = p.seg || {};
   if(sg.fontStyle) setFontStyle(sg.fontStyle);
   // presets saved before PLASMA / WOBBLE / LATTICE / ECHO were replaced load the shape that took each slot
-  const SHAPE_ALIAS = { plasma:'memory', wobble:'odyssey', lattice:'supernova', echo:'blackhole', halo:'rings', sequencer:'modsynth', stickdancer:'orbs', web:'tunnel', pixelworld:'vaporland' };   // removed shapes -> nearest surviving one, so old presets still load
+  const SHAPE_ALIAS = { plasma:'memory', wobble:'odyssey', lattice:'supernova', echo:'blackhole', halo:'rings', sequencer:'modsynth', stickdancer:'orbs', web:'tunnel', pixelworld:'vaporland', wavyform:'unknownpleasures', bassball:'blob', eqrings:'sonar', bugeyed:'orbs' };   // removed shapes -> nearest surviving one, so old presets still load
   const shA = sg.shapeA || sg.shape;
   if(shA) setShape('A', SHAPE_ALIAS[shA] || shA);
   if(sg.shapeB) setShape('B', SHAPE_ALIAS[sg.shapeB] || sg.shapeB);
@@ -8657,11 +9182,13 @@ function presetApply(p){
   if(Number.isInteger(sg.palette) && sg.palette >= 0 && sg.palette < PALETTES.length) setPalette(sg.palette);
   if(sg.bgMode) setBgMode(sg.bgMode);
   setFbKey(sg.fbKey || 'off');
-  setSrcKey('cam', sg.camKey || 'off'); setSrcKey('vA', sg.vAKey || 'off'); setSrcKey('vB', sg.vBKey || 'off');
-  const tgk = p.toggles || {}; setSrcKeyInv('cam', Boolean(tgk.camKeyInv)); setSrcKeyInv('vA', Boolean(tgk.vAKeyInv)); setSrcKeyInv('vB', Boolean(tgk.vBKeyInv));
+  setSrcKey('cam', sg.camKey || 'off'); setSrcKey('vA', sg.vAKey || 'off'); setSrcKey('vB', sg.vBKey || 'off'); setSrcKey('img', sg.imgKey || 'off');
+  ['A', 'B', 'C'].forEach(k => setAudBand(k, sg['audBand' + k] || 'all'));
+  const tgk = p.toggles || {}; setSrcKeyInv('cam', Boolean(tgk.camKeyInv)); setSrcKeyInv('vA', Boolean(tgk.vAKeyInv)); setSrcKeyInv('vB', Boolean(tgk.vBKeyInv)); setSrcKeyInv('img', Boolean(tgk.imgKeyInv));
   const tg = p.toggles || {};
   setInvert(Boolean(tg.invert));
   DECK.A.setLoop(Boolean(tg.vALoop !== undefined ? tg.vALoop : tg.videoLoop)); DECK.B.setLoop(Boolean(tg.vBLoop));
+  DECK.A.setFill(Boolean(tg.vAFill)); DECK.B.setFill(Boolean(tg.vBFill));
   setNoBg('A', Boolean(tg.noBgA)); setNoBg('B', Boolean(tg.noBgB)); setNoBg('C', tg.noBgC === undefined ? true : Boolean(tg.noBgC));
   state.beatReseed = Boolean(tg.beatReseed);
   syncButton('bBeatReseed', state.beatReseed ? 'BEAT RESEED ON' : 'BEAT RESEED OFF', state.beatReseed);
@@ -8669,6 +9196,7 @@ function presetApply(p){
   DECK.A.setGranular(Boolean(tg.vAGranular !== undefined ? tg.vAGranular : tg.videoGranular));
   DECK.B.setGranular(Boolean(tg.vBGranular));
   setPalAudio(Boolean(tg.palAudio));
+  MUTE_KEYS.forEach(k => setMute(k, Boolean(tg['mute' + k])));
   if(Number.isInteger(p.seed)){ state.seed = p.seed; reseed(p.seed); }
   if(p.recMax !== undefined) setRecMax(p.recMax);
   if(p.vcamRes) setVCamRes(p.vcamRes);
@@ -8800,9 +9328,13 @@ function buildShapeSelects(targetDoc){
     const sel = targetDoc.getElementById('cShape' + slot);
     if(!sel) return;
     sel.innerHTML = '';
-    SHAPES.forEach(sh => { const o = targetDoc.createElement('option'); o.value = sh.id; o.textContent = sh.label; sel.appendChild(o); });
+    SHAPES.forEach(sh => { const o = targetDoc.createElement('option'); o.value = sh.id; o.textContent = 'SHAPE: ' + sh.label; sel.appendChild(o); });   // prefixed so the closed dropdown reads as the shape picker
     sel.value = state['shape' + slot];
     sel.addEventListener('change', ()=>setShape(slot, sel.value));
+    const bs = targetDoc.getElementById('cAudBand' + slot);
+    if(bs){ bs.value = state['audBand' + slot]; bs.addEventListener('change', ()=>setAudBand(slot, bs.value)); }
+    const lv = targetDoc.getElementById('cAudLvl' + slot);
+    if(lv) lv.addEventListener('input', ()=>{ state['audLvl' + slot] = lv.value*0.01; syncReadouts(); });
   });
 }
 
@@ -8879,6 +9411,7 @@ function wireControls(targetDoc = document){
     if(bLoad && cFile) bLoad.addEventListener('click', ()=>cFile.click());
     const bPlay = g('bVideoPlay'); if(bPlay) bPlay.addEventListener('click', ()=>d.setPlaying(!d.playing));
     const bLoop = g('bVideoLoop'); if(bLoop) bLoop.addEventListener('click', ()=>d.setLoop(!state[d.p + 'Loop']));
+    const bFill = g('bVideoFill'); if(bFill) bFill.addEventListener('click', ()=>d.setFill(!state[d.p + 'Fill']));
     const cPos = g('cVidPos');
     if(cPos){
       const grab = ()=>{ d.scrubbing = true; };
@@ -8944,6 +9477,10 @@ function wireControls(targetDoc = document){
     refreshCamDevices();
   }
   buildSrcKeyButtons(targetDoc);
+  // IMAGE layer: load, focus colour reaction
+  const cImgFile = targetDoc.getElementById('cImageFile'), bImgLoad = targetDoc.getElementById('bImageLoad');
+  if(cImgFile) cImgFile.addEventListener('change', ()=>{ imgLoad(cImgFile.files && cImgFile.files[0]); cImgFile.value = ''; });
+  if(bImgLoad && cImgFile) bImgLoad.addEventListener('click', ()=>cImgFile.click());
   SRC_GRADES.forEach(([I, pp]) => {
     const bInv = targetDoc.getElementById('bKeyInv' + I);
     if(bInv) bInv.addEventListener('click', ()=>setSrcKeyInv(pp, !state[pp + 'KeyInv']));
@@ -8951,10 +9488,12 @@ function wireControls(targetDoc = document){
       const el = targetDoc.getElementById('c' + I + k);
       if(el) el.addEventListener('input', ()=>{ state[pp + k] = el.value * 0.01; syncSrcKeys(); });
     });
-    ['Exp', 'Temp', 'Sat', 'Sh', 'Mid', 'Hi'].forEach(k => {
+    ['Exp', 'Temp', 'Sat', 'Sh', 'Mid', 'Hi', 'TintAmt'].forEach(k => {
       const el = targetDoc.getElementById('c' + I + k);
       if(el) el.addEventListener('input', ()=>{ state[pp + k] = el.value * 0.01; syncSrcGrades(); });
     });
+    const cTH = targetDoc.getElementById('c' + I + 'TintHue');
+    if(cTH) cTH.addEventListener('input', ()=>{ state[pp + 'TintHue'] = +cTH.value; syncSrcGrades(); });
   });
   const bindOut = (id, prop, scale) => {
     const el = targetDoc.getElementById(id);
@@ -8973,6 +9512,10 @@ function wireControls(targetDoc = document){
   });
   const bInvert = targetDoc.getElementById('bInvert');
   if(bInvert) bInvert.addEventListener('click', ()=>setInvert(!state.invert));
+  MUTE_KEYS.forEach(k => {
+    const b = targetDoc.getElementById('bMute' + k);
+    if(b) b.addEventListener('click', ()=>setMute(k, !state['mute' + k]));
+  });
   ['A', 'B', 'C'].forEach(slot => {
     const b = targetDoc.getElementById('bNoBg' + slot);
     if(b) b.addEventListener('click', ()=>setNoBg(slot, !state['noBg' + slot]));
@@ -9179,7 +9722,7 @@ function syncSources(){
   syncButton('bGranularCam', state.camGranular ? 'GRANULAR RESET ON' : 'GRANULAR RESET OFF', state.camGranular);
   ['Cam', 'VA', 'VB'].forEach(syncGrain);
   DECKS.forEach(d => {
-    d.setLoop(state[d.p + 'Loop']);
+    d.setLoop(state[d.p + 'Loop']); d.setFill(state[d.p + 'Fill']);
     syncButton('bGranularV' + d.K, state[d.p + 'Granular'] ? 'GRANULAR RESET ON' : 'GRANULAR RESET OFF', state[d.p + 'Granular']);
     syncButton('bVideoPlay' + d.K, d.playing ? 'STOP' : 'START', d.playing);
     if(d.name){ const nm = d.name.length > 18 ? d.name.slice(0, 16) + '…' : d.name; syncButton('vVidName' + d.K, nm.toUpperCase(), null); }
@@ -9187,6 +9730,8 @@ function syncSources(){
   });
   syncSrcGrades();
   syncSrcKeys();
+  syncMutes();
+  if(IMG.name){ const nm = IMG.name.length > 18 ? IMG.name.slice(0, 16) + '…' : IMG.name; syncButton('vImgName', nm.toUpperCase(), null); }
 }
 
 // Detach the control panel into its own window (canvas stays in the main window).
