@@ -6,7 +6,7 @@ Download the HTML to run locally or run directly from the GitHub page using this
 
 # NULL VENTANA — User Guide
 
-Null Ventana is a browser-based, audio-reactive visualizer and video mixer. Seven source layers — a live camera, two video files, three generative shapes and a text overlay — are stacked bottom to top, each with its own mix, and the result runs through a chain of retro video effects. Almost everything can be modulated by LFOs and by whatever is coming into the audio input. Output can be screenshotted, recorded to MP4, floated as a virtual-camera source, and saved as presets.
+Null Ventana is a browser-based, audio-reactive visualizer and video mixer. Eight source layers — a live camera, two video files, a still image, three generative shapes and a text overlay — are stacked bottom to top, each with its own mix and mute, and the result runs through a chain of retro video effects. Almost everything can be modulated by LFOs and by whatever is coming into the audio input. Output can be screenshotted, recorded to MP4, floated as a virtual-camera source, and saved as presets.
 
 Everything lives in one HTML file. Open it in a modern browser (Chrome or Edge recommended; Safari works; Firefox works but records WebM instead of MP4).
 
@@ -15,8 +15,8 @@ Everything lives in one HTML file. Open it in a modern browser (Chrome or Edge r
 ## 1. Quick start
 
 1. Open `Null_Ventana.html` in your browser.
-2. Press **MIC ON** at the bottom of the panel and allow microphone access. The four band meters in AUDIO INPUT should start moving.
-3. Pick a shape from the dropdown under **SHAPE A**, a palette under **COLOR PALETTE**, and drag that shape's **DENSITY** and **RATE OF CHANGE** to taste.
+2. Open the **AUDIO INPUT** section, press **MIC ON** and allow microphone access. The header changes from OFF to the sensitivity percentage and the four band meters start moving.
+3. Open **SHAPE A**, pick a shape from the **SHAPE:** dropdown, a palette under **COLOR PALETTE**, and drag that shape's **DENSITY** and **RATE OF CHANGE** to taste.
 4. Press **F** for fullscreen and **Tab** to hide the panel.
 
 Nothing is uploaded anywhere; audio, video and camera stay in the browser.
@@ -32,19 +32,20 @@ The control panel sits on the left. The canvas fills the rest of the window.
 1. **CAMERA** — layer 1 (bottom)
 2. **VIDEO FILE A** — layer 2
 3. **VIDEO FILE B** — layer 3
-4. **SHAPE A** — layer 4
-5. **SHAPE B** — layer 5
-6. **SHAPE C** — layer 6
-7. **TEXT OVERLAY** — layer 7 (top)
-8. **GLOBAL EFFECTS** — resolution, flux lines, ink, RGB split, glitch, points, paint, trails, blur, feedback
-9. **DISPLAY FILTER**
-10. **COLOR PALETTE**, **OUTPUT GRADE**, **BACKGROUND**
-11. **TRANSPORT** (pause, fullscreen, detach, reseed, mic), **AUDIO INPUT**, **EXPORT**, **PRESETS**
+4. **IMAGE** — layer 4
+5. **SHAPE A** — layer 5
+6. **SHAPE B** — layer 6
+7. **SHAPE C** — layer 7
+8. **TEXT OVERLAY** — layer 8 (top)
+9. **GLOBAL EFFECTS** — resolution, flux lines, ink, RGB split, glitch, points, paint, trails, blur, feedback
+10. **DISPLAY FILTER**
+11. **COLOR PALETTE**, **OUTPUT GRADE**, **BACKGROUND**
+12. **TRANSPORT** (pause, fullscreen, detach, reseed), **AUDIO INPUT** (mic, sensitivity, device, meters), **EXPORT**, **PRESETS**
 
-Every source layer ends with a **MIX** slider: how much of that layer goes into the picture, over everything beneath it. There is no crossfader any more — set each layer's mix independently.
+Every source layer starts with a **MUTE** button and ends with a **MIX** slider. MUTE (red when on) silences that layer: it keeps running — the camera stream, video playback, grain loops and shape clocks all carry on — but nothing from it reaches the picture, so unmuting is instant. MIX is how much of the layer goes into the picture, over everything beneath it. There is no crossfader — set each layer's mix independently.
 
 **Panel behaviour**
-- Every section header collapses when clicked. CAMERA, VIDEO FILE A / B and TEXT OVERLAY start collapsed; click their headers to open them.
+- Every section header collapses when clicked. All sections start collapsed; click a header to open it.
 - The panel stays up only while the mouse is over it and fades out the moment the mouse leaves the panel area (or the window). Move the mouse back over the strip on the left to bring it straight back. A key press or a touch shows it for a couple of seconds instead, since neither has a hover. The mouse cursor stays visible over the display.
 - **DETACH ↗** (in TRANSPORT) pops the whole panel into its own window so the visuals can go fullscreen on one display while you drive them from another. Every control stays in sync in both windows. **ATTACH ↙** brings it back.
 - **Double-click any slider** to reset it to its default.
@@ -67,13 +68,14 @@ Shortcuts are ignored while you're typing in the text box.
 - **DETACH / ATTACH** — the pop-out panel, see above.
 - **RESEED** — new random seed; generated shapes rebuild with a different layout (all three shape slots).
 - **BEAT RESEED** — reseeds automatically on every detected kick. Turns the mic on if needed.
-- **MIC** — turns the audio input on/off.
+
+The **MIC ON/OFF** button lives in AUDIO INPUT (section 11).
 
 ---
 
 ## 3. Modulation: the MOD DEPTH / LFO RATE / AUDIO MOD groups
 
-Most sliders — every effect, and each layer's DENSITY, RATE OF CHANGE and MIX — have a small indented group under them with three sub-sliders. These modulate the parent slider around its current value:
+Most sliders — every effect, each layer's DENSITY, RATE OF CHANGE and MIX, and the image's SIZE — have a small indented group under them with three sub-sliders. These modulate the parent slider around its current value:
 
 - **MOD DEPTH** (-100% … +100%) — how far an LFO swings the parameter. Negative values invert the swing. 0% = off.
 - **LFO RATE** (0.02 Hz … 5 Hz) — speed of that LFO. Around 0.1 Hz is a slow breathe; 2–5 Hz is a flicker.
@@ -87,15 +89,17 @@ LFO and audio modulation add together on top of the slider's own value, and the 
 
 The bottom three layers are live or recorded pictures. They are drawn beneath the shapes and pass through invert, ink, resolution, RGB split, glitch, points, paint, blur, trails, feedback and the display filter like everything else. A source that isn't running (camera off, no file loaded, deck stopped) simply drops out of the stack.
 
-Each of the three sections has the same shape, top to bottom: its own controls, GRANULAR RESET, a six-slider grade, a KEY section, then MIX.
+Each of the three sections has the same shape, top to bottom: MUTE, its own controls, GRANULAR RESET, an eight-slider grade (six tone controls plus tint), a KEY section, then MIX.
 
 **CAMERA (layer 1)**
-- **CAMERA ON/OFF** and a device selector.
+- **MUTE**, **CAMERA ON/OFF** and a device selector.
 
 **VIDEO FILE A (layer 2) and VIDEO FILE B (layer 3)** — two independent decks with their own file, play head, loop, grain, grade and key.
+- **MUTE** — silence this deck without stopping it.
 - **LOAD VIDEO** — choose a local file (anything the browser can play: MP4, WebM, MOV…). It starts playing immediately, muted; the file name shows in the header.
 - **START / STOP** — STOP returns the play head to LOOP START.
 - **LOOP** — repeat between LOOP START and LOOP END.
+- **FILL SCREEN** — every source is already scaled to cover the screen, so if a clip still shows black bars they are baked into the file (letterbox or pillarbox). With FILL SCREEN on, the deck measures those bars from a small copy of the picture about once a second and zooms past them so the real image fills the display. It follows the grade, key and grain hold frame, and is saved in presets.
 - **PLAY HEAD** — follows playback; drag to scrub. The readout shows time / duration.
 - **LOOP START / LOOP END** — the region used by LOOP and by GRANULAR RESET. Labels switch from % to timestamps once a file is loaded. With LOOP off, playback stops at LOOP END.
 
@@ -105,7 +109,9 @@ Each of the three sources has its own GRANULAR RESET button and grain sliders, s
 - **GRAIN CROSSFADE** — the frame before each jump or loop-wrap is held and faded out over the new picture so cuts don't flash (0 = hard cut, default 150 ms). Capped at half the grain length for very short grains.
 
 **Grade** (per source)
-- **EXPOSURE / TEMPERATURE / SATURATION / SHADOWS / MIDTONES / HIGHLIGHTS** — a colour grade applied to that source alone, before it is mixed (the held frames used by GRAIN CROSSFADE are graded too). Each source has its own grade, so the camera can be cool and desaturated while video B is warm. Everything at neutral costs nothing. The same six controls appear in OUTPUT GRADE for the whole picture.
+- **EXPOSURE / TEMPERATURE / SATURATION / SHADOWS / MIDTONES / HIGHLIGHTS** — a colour grade applied to that source alone, before it is mixed (the held frames used by GRAIN CROSSFADE are graded too). Each source has its own grade, so the camera can be cool and desaturated while video B is warm. Everything at neutral costs nothing.
+- **TINT COLOR / TINT AMOUNT** — a colour gel over this source alone: pick a hue (the readout takes on the colour) and how strongly the layer is pushed toward it. The tint is luma-normalised, so moderate amounts recolour without darkening. It is baked into the same per-source lookup as the grade, so it costs nothing extra.
+- The same eight controls appear in OUTPUT GRADE for the whole picture.
 
 **KEY** (per source)
 A keyer like the one on a video mixer: the chosen colour or brightness is cut out of this layer and the layers beneath show through the hole.
@@ -120,12 +126,29 @@ A keyer like the one on a video mixer: the chosen colour or brightness is cut ou
 
 ---
 
-## 5. Source layers 4–6: SHAPE A, SHAPE B, SHAPE C
+## 5. Source layer 4: IMAGE
 
-Three shape slots draw on top of the video layers, Shape A lowest and Shape C highest. Each slot, top to bottom:
+A still picture between the video decks and the shapes, always centred on the screen. The section, top to bottom:
 
-- **Shape dropdown** — pick the shape. **OFF** draws nothing.
+- **MUTE** and **LOAD IMAGE** — any image the browser can show (PNG, JPEG, GIF, WebP…). The file name shows in the header.
+- **SIZE** (10–300%) — how big the image is on the display. 100% covers the screen; smaller sizes leave the layers beneath showing around the picture, larger sizes zoom into its middle. Modulatable: the MOD DEPTH / LFO RATE / AUDIO MOD (BASS) group under it lets the image breathe on an LFO or swell on the kick (modulation can push it from 5% to 300%).
+- **Grade** — the same EXPOSURE … HIGHLIGHTS and TINT COLOR / TINT AMOUNT as the video sources.
+- **KEY** — the same keyer as the video sources (OFF / CHROMA GREEN / CHROMA BLUE / LUMA BLACK / LUMA WHITE, INVERT KEY, KEY LEVEL, KEY GAIN), so a logo on green or a picture's dark areas can open onto the layers below.
+- **MIX** — modulatable, as on every layer.
+
+The scaled copy is only redrawn when the size changes, so a static image costs one draw a frame. The loaded file is not part of a preset; everything else in the section is.
+
+---
+
+## 6. Source layers 5–7: SHAPE A, SHAPE B, SHAPE C
+
+Three shape slots draw on top of the image and video layers, Shape A lowest and Shape C highest. Each slot, top to bottom:
+
+- **MUTE** — silence the slot without changing its settings.
+- **SHAPE: dropdown** — pick the shape (entries read "SHAPE: NAME" so the closed control is easy to spot). **OFF** draws nothing.
 - **BACKGROUND ON/OFF** — OFF (the default) skips that shape's own backdrop fills so only the main geometry is drawn and the layers beneath show through. A few shapes go further and open windows in themselves: ALTITUDE drops its sea, TUNNEL leaves half its wall panels unfilled, BLACKHOLE's disc becomes a clear hole and MEMORY keeps only its bright stripes (see the shape notes below). Turn it ON for the shape's full painted backdrop.
+- **AUDIO BAND** — which part of the spectrum drives this shape. **ALL BANDS (SHAPE DEFAULT)** keeps the shape's own mapping (bass does one thing, treble another, as described in the shape notes). **BASS**, **LOW-MID**, **HIGH-MID** or **AIR** routes that one band into every reaction the shape has, so a shape that normally spins on the low-mids and flashes on the treble does both on the bass instead. Works for every shape.
+- **AUDIO EFFECT** (0–200%) — how strongly the audio drives this shape: 0% holds it still (only the LFOs and its own drift remain), 100% is normal, 200% doubles every reaction. Both AUDIO BAND and AUDIO EFFECT are per slot, so the same shape can be quiet in A and wild in C.
 - **DENSITY** — how much stuff the shape draws (particle counts, line counts, ring counts). Per slot, modulatable.
 - **RATE OF CHANGE** — speed of that shape's animation. Per slot — each slot runs on its own clock — and modulatable.
 - **MIX** — the slot's opacity over what is beneath it. Shape A defaults to 100%, B and C to 0%, so a fresh session shows one shape. Modulatable.
@@ -134,9 +157,18 @@ The same shape can sit in more than one slot: each slot keeps its own copy of th
 
 Number keys 1–9 and 0 still pick Shape A.
 
-Available shapes: ORBS, RINGS, SCOPE, WAVES, TUNNEL, MEMORY, LISSAJOUS, ALTITUDE, BLOBS, POLYLOCK, SONAR, AURORA, ODYSSEY, SUPERNOVA, BLACKHOLE, CONSTELLATION, GLITCH, HLINES, MOIRE, COLORBARS, SPIROGRAPH, PULSES, FOREST, SNOW, RAIN, TRIANGLES, RISING, DIAMONDS, HOLLOW, SOLAR, LIMINAL, SYNTH, GROVE, VAPORWAVE, ASTEROIDS, CITY, PLANET, JELLYFISH, OIL PAINT, NEON CITY, SCRATCH, SKYLINE, AMOEBAS, PLAYFIELD, SPRITES, MUNCH, PADDLES, QUILT, LIQUID LIGHT, MATRIX, HARMONIC.
+Available shapes: ORBS, RINGS, SCOPE, WAVES, TUNNEL, MEMORY, LISSAJOUS, ALTITUDE, BLOBS, POLYLOCK, SONAR, AURORA, ODYSSEY, SUPERNOVA, BLACKHOLE, CONSTELLATION, GLITCH, HLINES, MOIRE, COLORBARS, SPIROGRAPH, PULSES, FOREST, SNOW, RAIN, TRIANGLES, RISING, DIAMONDS, HOLLOW, SOLAR, LIMINAL, SYNTH, GROVE, VAPORWAVE, ASTEROIDS, CITY, PLANET, JELLYFISH, OIL PAINT, NEON CITY, SCRATCH, SKYLINE, AMOEBAS, PLAYFIELD, SPRITES, MUNCH, PADDLES, QUILT, LIQUID LIGHT, MATRIX, HARMONIC, MESH GRID, SWARM, UNKNOWN PLEASURES, DOT GRID, BLOB, HALLWAY.
 
 Each shape reacts to the audio bands in its own way — SCOPE draws the raw waveform, DIAMONDS drives each ring from a different band, PLANET flies faster and dips lower on the bass, and so on. Experiment.
+
+### WebGL-visualizer set
+Six shapes in the spirit of browser music visualizers, drawn in plain 2D. All six keep their own state per slot, integrate their motion from time (so RATE OF CHANGE and PAUSE apply) and draw no backdrop, so they are transparent with BACKGROUND OFF and work as overlays.
+- **MESH GRID** — a wireframe plane seen from a low, slowly yawing camera. Rings ripple out from the centre, the spectrum is laid along the radius (bass in the middle, treble at the rim), noise rolls across the whole sheet and every bass onset sends one extra crest outward. Bass raises the peaks, low-mids speed the ripple, high-mids stir the noise; the lines whiten at the crests. DENSITY sets the grid resolution.
+- **SWARM** — three clouds of glowing particles, one per band: the bass cloud, the low-mid cloud and the high-mid cloud each swell with their own level (fast attack, slow release) as they drift around each other. Low-mids drive the orbit speed, high-mids stir the noise field that folds the clouds into one another, treble sizes and whitens every dot and throws sparks off the rims, and a bass onset flings all the particles outward before the orbits pull them back in. DENSITY sets the particle count (250–1,500).
+- **UNKNOWN PLEASURES** — stacked oscilloscope traces. The live waveform is written into a short history and each line shows an older copy, so a hit rolls back through the stack like a ripple in time; a ridge in the middle, lifted by the spectrum, shapes every trace. Front lines hide the ones behind them (that occlusion is skipped with BACKGROUND OFF, so the layers beneath show through the whole stack). Bass raises the ridge, low-mids sharpen the trace, treble brightens the front lines. With no input it draws a synthetic wave. DENSITY sets the number of lines (10–36).
+- **DOT GRID** — a field of dots breathing in rings from the centre: the spectrum runs along the radius, a slow swell circles outward and every bass onset launches a bright ring that travels to the edge. Dot size and brightness follow the local level; treble whitens the brightest dots. DENSITY sets the pitch of the grid.
+- **BLOB** — a thin-lined wireframe ball whose surface is pushed in and out by rolling noise. Bass snaps the whole blob larger and throws spikes out of the noise crests on each kick, low-mids spin and stretch it, high-mids churn the noise and deepen the relief, treble whitens and thickens the front lines and lights the core; the spectrum runs pole to pole as extra relief. The back of the mesh is a faint ghost. DENSITY sets the mesh resolution.
+- **HALLWAY** — a corridor of slabs receding to a vanishing point, walking slowly toward the viewer. The walls are what move: on every kick the near end of both walls, the floor and the ceiling hinges hard into the corridor while the far end stays put, then a pulse rolls down the hall to the vanishing point as the near end relaxes; between kicks the walls breathe with the bass and low-mids. Each slab also leans into the hall by its own band (nearest = bass, farthest = high-mids) through a smooth attack/release envelope, so the hall ripples rather than flickers. Beat timing runs on real time, so RATE OF CHANGE only changes the walking speed. DENSITY sets how many slabs line the hall.
 
 ### Newer shapes
 
@@ -172,7 +204,7 @@ Notes on existing shapes: HALO has been removed; CONSTELLATION's lines are twice
 
 ---
 
-## 6. TEXT OVERLAY — layer 7
+## 7. TEXT OVERLAY — layer 8
 
 The top layer. Draws text over every source, crisp at full resolution and degraded along with the picture as RESOLUTION drops. The section has no mix slider: empty the text box to remove it.
 
@@ -189,7 +221,7 @@ Colours come from the current palette.
 
 ---
 
-## 7. GLOBAL EFFECTS
+## 8. GLOBAL EFFECTS
 
 Everything in this section acts on the whole mixed picture, in this order. All ten are modulatable (the FEEDBACK KEY controls are not).
 - **RESOLUTION** (default 80%, formerly FIDELITY) — the master "image quality" control. Low values pixelate the picture, posterise the colours, add colour fringing and heavy scan lines, and also drop the internal render resolution; high values are sharp and clean. The readout shows the working buffer width. Text overlay follows it. An AUDIO MOD (HIGH-MID) on RESOLUTION is a classic move.
@@ -212,7 +244,7 @@ Everything in this section acts on the whole mixed picture, in this order. All t
 
 ---
 
-## 8. DISPLAY FILTER
+## 9. DISPLAY FILTER
 
 Whole-picture film and video looks, applied to the finished frame after every effect in GLOBAL EFFECTS and just before OUTPUT GRADE — so dust, static, tape wobble and tint land on top of text, trails and the feedback loop the way a real film or tape transfer would. The panel sits in the same place in the chain: below GLOBAL EFFECTS, above the palette and OUTPUT GRADE.
 - **NONE**
@@ -229,7 +261,7 @@ The filter runs on the GPU at full output resolution, so it costs about the same
 
 ---
 
-## 9. OUTPUT GRADE
+## 10. OUTPUT GRADE
 
 A colour grade applied to the finished frame, after every other effect, so it colours everything: shapes, video, text, trails and feedback. Screenshots, recordings and the virtual camera all include it.
 
@@ -241,11 +273,11 @@ A colour grade applied to the finished frame, after every other effect, so it co
 - **TINT AMOUNT** — 0–100%, how strongly the output is pushed toward the tint colour. Low values shift the colour without darkening the picture; 100% acts like a full colour gel.
 - **RESET GRADE** — all eight back to neutral.
 
-The first six are the same controls as the per-source grades in CAMERA / VIDEO FILE A / VIDEO FILE B, but those affect only their own layer before mixing; this one affects the whole output (the tint is output-only). All eight are saved in presets.
+The same eight controls appear as per-source grades in CAMERA, VIDEO FILE A / B and IMAGE, but those affect only their own layer before mixing; this one affects the whole output. All eight are saved in presets.
 
 ---
 
-## 10. COLOR PALETTE and BACKGROUND
+## 11. COLOR PALETTE and BACKGROUND
 
 - **Swatches** — click any palette. Shape colours, text colours and the default background all come from it.
 - **AUDIO PALETTE** — on every detected beat, jump to a random palette. Turns the mic on if needed.
@@ -254,9 +286,12 @@ The first six are the same controls as the per-source grades in CAMERA / VIDEO F
 
 ---
 
-## 11. AUDIO INPUT
+## 12. AUDIO INPUT
 
-- **Slider** — overall audio sensitivity. It scales all the band levels and the beat detector.
+The section header reads **OFF** until an input is running, then shows the sensitivity percentage.
+
+- **MIC ON/OFF** — turns the audio input on or off (it was in TRANSPORT before). Recording, BEAT RESEED, AUDIO PALETTE and GRANULAR RESET turn it on for you when needed.
+- **Slider** — overall audio sensitivity. It scales all the band levels and the beat detector. Each shape slot can further scale or re-route this with its own AUDIO BAND and AUDIO EFFECT controls.
 - **Device selector** — choose the input. To react to music playing on the computer rather than a mic, set a loopback/virtual audio device as the input (BlackHole on macOS, VB-Cable or Stereo Mix on Windows).
 - **Band meters** — Sub/Bass, Low Mid, High Mid, High/Air. These are the four bands the AUDIO MOD sliders and the shapes listen to. Each band auto-levels so quiet sources still use the full range.
 
@@ -264,7 +299,7 @@ The input is captured raw (no echo cancellation, noise suppression or auto gain)
 
 ---
 
-## 12. EXPORT
+## 13. EXPORT
 
 **SCREENSHOT** — saves the current frame as a PNG at the window's resolution, scan lines included.
 
@@ -284,24 +319,24 @@ Browsers can't register themselves as a webcam device, so this feature gets you 
 
 ---
 
-## 13. PRESETS
+## 14. PRESETS
 
 - **SLOT 1–8** with **SAVE / LOAD** — stored in this browser. Filled slots are marked with •.
 - **EXPORT FILE / IMPORT FILE** — download or load a `.json` preset you can keep, share or move between machines.
-- A preset captures every slider (all three shapes' density, rate and mix; every layer's mix, grade, key and grain settings), the text, Shape A/B/C, filter, palette, background mode, all toggles (backgrounds, loops, granular, key inverts), both loop ranges, recording length and level, virtual-camera resolution, and the seed. It does not include the loaded video files, the play head positions, or the audio/camera device choice.
+- A preset captures every slider (all three shapes' density, rate, mix and audio effect; every layer's mix, grade, tint, key and grain settings; the image size and its modulators), the text, Shape A/B/C and their AUDIO BAND choices, filter, palette, background mode, all toggles (mutes, backgrounds, loops, fill screen, granular, key inverts), both loop ranges, recording length and level, virtual-camera resolution, and the seed. It does not include the loaded video or image files, the play head positions, or the audio/camera device choice.
 - Presets saved with the old single-video / crossfade panel still load: the crossfade becomes the Shape A and B mixes, the shared source grade and grain settings are copied to the camera and video A, and SOURCE MIX becomes the camera / video A mixes.
 
 ---
 
-## 14. Signal chain (for the curious)
+## 15. Signal chain (for the curious)
 
-Background → CAMERA (graded, keyed, mixed) → VIDEO FILE A → VIDEO FILE B → SHAPE A → SHAPE B → SHAPE C (each at its own DENSITY, RATE and MIX) → FLUX LINES → INVERT → INK → RESOLUTION post-processing (posterise, grain, colour fringing) → RESOLUTION downscale → TEXT OVERLAY (resolution-treated) → RGB SPLIT → GLITCH → POINTS → PAINT → BLUR → TRAILS → FEEDBACK (with optional KEY) → DISPLAY FILTER (weave / tape wobble, colour offset, softening, tint and flicker, block noise, static, grain, dust and stains, vignette) → OUTPUT GRADE (including TINT) → scan lines.
+Background → CAMERA (graded, tinted, keyed, mixed) → VIDEO FILE A → VIDEO FILE B → IMAGE (sized, graded, tinted, keyed, mixed) → SHAPE A → SHAPE B → SHAPE C (each at its own DENSITY, RATE, MIX and audio routing) → FLUX LINES → INVERT → INK → RESOLUTION post-processing (posterise, grain, colour fringing) → RESOLUTION downscale → TEXT OVERLAY (resolution-treated) → RGB SPLIT → GLITCH → POINTS → PAINT → BLUR → TRAILS → FEEDBACK (with optional KEY) → DISPLAY FILTER (weave / tape wobble, colour offset, softening, tint and flicker, block noise, static, grain, dust and stains, vignette) → OUTPUT GRADE (including TINT) → scan lines.
 
-Knowing the order helps: FEEDBACK recirculates everything up to and including the text and effects; the DISPLAY FILTER comes after it, so the film or tape look sits on top of the loop rather than being fed back into it; INK is early, so it inks the video, shapes and FLUX LINES but not the later effects. Each source's own KEY happens as that layer is mixed in, so a keyed layer only ever opens onto the layers below it.
+Knowing the order helps: FEEDBACK recirculates everything up to and including the text and effects; the DISPLAY FILTER comes after it, so the film or tape look sits on top of the loop rather than being fed back into it; INK is early, so it inks the video, shapes and FLUX LINES but not the later effects. Each source's own KEY happens as that layer is mixed in, so a keyed layer only ever opens onto the layers below it. A muted layer is simply skipped at its place in the stack.
 
 ---
 
-## 15. Tips
+## 16. Tips
 
 - **Reactive but not chaotic:** put a modest AUDIO MOD (30–50%) on RESOLUTION, TRAILS or RGB SPLIT rather than on RATE OF CHANGE.
 - **Beat-driven cuts:** LOAD VIDEO in deck A → its GRANULAR RESET ON → set LOOP START/END to the interesting part of the clip → raise GRAIN CROSSFADE if the cuts feel too harsh. Load a second clip in deck B with a different loop region and set both decks granular for two independent cutters.
@@ -316,23 +351,30 @@ Knowing the order helps: FEEDBACK recirculates everything up to and including th
 - **Stippled drawing:** POINTS around 20–50% over a high-contrast shape (LIQUID LIGHT, AMOEBAS, BLOBS, ORBS) with a touch of TRAILS and BLUR; add 30–50% AUDIO MOD on POINTS so the stipple coarsens and the dots swell on the kick. Put FEEDBACK under 100% behind it and the dots tunnel away.
 - **Static overlay:** FLUX LINES at 30–60% over a high-contrast shape (SUPERNOVA, RINGS, text) so the sparks have edges and corners to grow from; add 40–70% AUDIO MOD so the static flares on the kick.
 - **Lo-fi overlay:** put SPRITES, PADDLES or QUILT in Shape C with MIX up over a video or a smooth shape in A — only the blocks land on top.
-- **Three shapes:** with three slots and per-slot rates, try a slow full-screen shape in A (AURORA, LIQUID LIGHT), a mid-speed line shape in B (RINGS, HARMONIC) and a fast sparse one in C (SNOW, SCRATCH) at 40–60% MIX.
+- **Three shapes:** with three slots and per-slot rates, try a slow full-screen shape in A (AURORA, LIQUID LIGHT), a mid-speed line shape in B (RINGS, HARMONIC, MESH GRID) and a fast sparse one in C (SNOW, SCRATCH, SWARM) at 40–60% MIX. MUTE lets you drop a layer in and out on cue without touching its mix.
+- **Corridor under a waveform:** HALLWAY in Shape A, UNKNOWN PLEASURES in Shape B with BACKGROUND OFF and MIX around 70% — the traces ripple over the breathing corridor.
 - **Whitney over oil:** LIQUID LIGHT in Shape A, MATRIX or HARMONIC in Shape B with MIX up — the white line figures float over the slow-moving dyes. A little TRAILS gives the lines the film's phosphor lag.
+- **Breathing logo:** load a PNG in IMAGE, SIZE around 40%, KEY → LUMA BLACK (or CHROMA GREEN for a green-backed file), then 20–40% AUDIO MOD (BASS) on SIZE so it pumps on the kick; a slow LFO at low depth keeps it alive between hits.
+- **One band, many shapes:** put three shapes in A, B and C and set A's AUDIO BAND to BASS, B's to LOW-MID and C's to AIR — each layer moves to its own part of the mix. AUDIO EFFECT at 150–200% on the treble layer makes the highs sparkle.
+- **Still shape, moving effects:** AUDIO EFFECT at 0% on a shape freezes its reactions while the global effects keep pumping on the same music.
+- **Letterboxed clips:** FILL SCREEN on the deck crops away baked-in black bars, so a mixed bag of 4:3 and widescreen files all fill the frame.
 - **Performing:** DETACH the panel to a second display, F for fullscreen on the main one, and save a few slots to jump between looks with SAVE/LOAD.
 - **Better recording audio:** feed a virtual audio device (BlackHole / VB-Cable) instead of a microphone for a clean direct signal.
 
 ---
 
-## 16. Troubleshooting
+## 17. Troubleshooting
 
-- **Nothing reacts to sound** — press MIC ON and allow access; check the device selector; raise the AUDIO INPUT slider. The band meters should move.
+- **Nothing reacts to sound** — open AUDIO INPUT (its header reads OFF), press MIC ON and allow access; check the device selector; raise the sensitivity slider. The band meters should move. If one shape is still, check its AUDIO EFFECT isn't at 0%.
+- **A layer is invisible** — check its MUTE button (red = muted) and its MIX.
 - **MIC ERR** — the browser refused the microphone. Check site permissions and that no other app has exclusive use of the device.
 - **CAMERA ERR** — same as above for the camera; try a different device in the selector.
 - **Video won't play** — the browser may not support that codec/container. Re-encode to H.264 MP4 or VP9 WebM.
 - **Recording is WebM, not MP4** — the browser (typically Firefox) has no MP4 muxer. Use Chrome, Edge or Safari, or convert afterwards.
 - **POPUP BLOCKED** — allow pop-ups for the file so the DETACH panel and virtual camera windows can open.
 - **Everything feels slow** — lower RESOLUTION (it also lowers the render resolution), reduce DENSITY, turn off FEEDBACK, BLUR and PAINT, or set a shape slot to OFF or 0% MIX (a slot at 0% costs nothing). Two video decks with grades and keys cost two graded draws a frame, which is cheap on the GPU path. The DISPLAY FILTER is cheap (no per-pixel work at the output resolution) and POINTS stays around a few milliseconds: it stamps its points into a buffer no wider than 960 pixels. PAINT draws several thousand strokes a frame; raising its slider actually makes it cheaper (fewer, fatter strokes). VAPORWAVE at high DENSITY with loud input is one of the heavier shapes at the top RESOLUTION step. PLANET ray-casts every pixel of a 224-pixel-wide buffer each frame and pauses briefly to rebuild its surface on a new seed or a DENSITY change, so BEAT RESEED with PLANET will stutter on every kick. LIQUID LIGHT shades every pixel of a 288-pixel-wide plate (352 at the top RESOLUTION step) and is the heaviest shape at high DENSITY; if it drags, lower DENSITY or RESOLUTION.
-- **Old preset loads a different shape** — PLASMA, WOBBLE, LATTICE and ECHO were replaced; presets that used them load MEMORY, ODYSSEY, SUPERNOVA and BLACKHOLE respectively. HALO, SEQUENCER, DANCER, WEB and PIXEL WORLD were removed; presets that used them load RINGS, SYNTH, ORBS, TUNNEL and VAPORWAVE respectively.
+- **Old preset loads a different shape** — PLASMA, WOBBLE, LATTICE and ECHO were replaced; presets that used them load MEMORY, ODYSSEY, SUPERNOVA and BLACKHOLE respectively. HALO, SEQUENCER, DANCER, WEB and PIXEL WORLD were removed; presets that used them load RINGS, SYNTH, ORBS, TUNNEL and VAPORWAVE respectively. WAVY FORM and BASS BALL were renamed UNKNOWN PLEASURES and BLOB and load as such.
+- **Video shows black bars** — turn on the deck's FILL SCREEN; the bars are part of the file and it zooms past them. A clip that fades fully to black keeps its last measured crop until the picture returns.
 - **Old preset looks different** — it was saved with the crossfade panel; see PRESETS for how the old controls map onto the layers. Shape backgrounds now default to OFF, but a preset restores whatever it saved.
 - **Presets vanished** — slots live in the browser's local storage for that file location; clearing site data or moving the HTML file resets them. Use EXPORT FILE for anything you want to keep.
 
