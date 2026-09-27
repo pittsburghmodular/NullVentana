@@ -617,6 +617,30 @@
   <div class="feature-box collapsed">
     <div class="box-title">GLOBAL EFFECTS</div>
     <div class="fxrow">
+      <span class="lbl">PRESSURE <b id="vNoisefield"></b></span>
+      <input type="range" id="cNoisefield" min="0" max="100" value="0" title="the picture pulled along a slowly turning noise flow and combed with strands in its own colours; higher = stronger flow, more strands"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModNoisefield">0%</b></span>
+        <input type="range" class="mod-slider" id="cModNoisefield" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateNoisefield">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateNoisefield" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (LOW-MID) <b class="b-aud" id="vAudModNoisefield">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModNoisefield" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">STATIC <b id="vFlux"></b></span>
+      <input type="range" id="cFlux" min="0" max="100" value="0" title="crackling static-electricity lines thrown out from the edges and corners of the picture: mixed widths and lengths, some solid, some a trail of dots; higher = more and longer lines"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModFlux">0%</b></span>
+        <input type="range" class="mod-slider" id="cModFlux" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateFlux">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateFlux" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModFlux">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModFlux" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
       <span class="lbl">RESOLUTION <b id="vFid"></b></span>
       <input type="range" id="cFid" min="0" max="100" value="80" title="rendering resolution: low = chunky pixels, posterised colour and grain; high = clean"/>
       <div class="mod-group">
@@ -626,18 +650,6 @@
         <input type="range" class="lfo-rate-slider" id="cLfoRateFid" min="1" max="100" value="35"/>
         <span class="sub-lbl">AUDIO MOD (HIGH-MID) <b class="b-aud" id="vAudModFid">0%</b></span>
         <input type="range" class="aud-mod-slider" id="cAudModFid" min="-100" max="100" value="0"/>
-      </div>
-    </div>
-    <div class="fxrow">
-      <span class="lbl">FLUX LINES <b id="vFlux"></b></span>
-      <input type="range" id="cFlux" min="0" max="100" value="0" title="crackling static-electricity lines thrown out from the edges and corners of the picture: mixed widths and lengths, some solid, some a trail of dots; higher = more and longer lines"/>
-      <div class="mod-group">
-        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModFlux">0%</b></span>
-        <input type="range" class="mod-slider" id="cModFlux" min="-100" max="100" value="0"/>
-        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateFlux">0.25 Hz</b></span>
-        <input type="range" class="lfo-rate-slider" id="cLfoRateFlux" min="1" max="100" value="35"/>
-        <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModFlux">0%</b></span>
-        <input type="range" class="aud-mod-slider" id="cAudModFlux" min="-100" max="100" value="0"/>
       </div>
     </div>
     <div class="fxrow">
@@ -653,7 +665,7 @@
       </div>
     </div>
     <div class="fxrow">
-      <span class="lbl">RGB SPLIT <b id="vSp"></b></span>
+      <span class="lbl">RGB <b id="vSp"></b></span>
       <input type="range" id="cSplit" min="0" max="100" value="0" title="horizontal separation between red / green / blue channels"/>
       <div class="mod-group">
         <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModSplit">0%</b></span>
@@ -662,6 +674,30 @@
         <input type="range" class="lfo-rate-slider" id="cLfoRateSplit" min="1" max="100" value="35"/>
         <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModSplit">0%</b></span>
         <input type="range" class="aud-mod-slider" id="cAudModSplit" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">ASCII <b id="vAscii"></b></span>
+      <input type="range" id="cAscii" min="0" max="100" value="0" title="the picture as a grid of characters from a brightness ramp, coloured by the picture; higher = bigger characters"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModAscii">0%</b></span>
+        <input type="range" class="mod-slider" id="cModAscii" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateAscii">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateAscii" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (LOW-MID) <b class="b-aud" id="vAudModAscii">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModAscii" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">TRAILS <b id="vTr"></b></span>
+      <input type="range" id="cTrails" min="0" max="100" value="0"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModTrails">0%</b></span>
+        <input type="range" class="mod-slider" id="cModTrails" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateTrails">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateTrails" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModTrails">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModTrails" min="-100" max="100" value="0"/>
       </div>
     </div>
     <div class="fxrow">
@@ -677,18 +713,6 @@
       </div>
     </div>
     <div class="fxrow">
-      <span class="lbl">POINTS <b id="vPt"></b></span>
-      <input type="range" id="cPoints" min="0" max="100" value="0" title="rebuilds the picture as a drifting grid of small points; higher = wider spacing, bigger dots"/>
-      <div class="mod-group">
-        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModPoints">0%</b></span>
-        <input type="range" class="mod-slider" id="cModPoints" min="-100" max="100" value="0"/>
-        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRatePoints">0.25 Hz</b></span>
-        <input type="range" class="lfo-rate-slider" id="cLfoRatePoints" min="1" max="100" value="35"/>
-        <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModPoints">0%</b></span>
-        <input type="range" class="aud-mod-slider" id="cAudModPoints" min="-100" max="100" value="0"/>
-      </div>
-    </div>
-    <div class="fxrow">
       <span class="lbl">PAINT <b id="vPa"></b></span>
       <input type="range" id="cPaint" min="0" max="100" value="0" title="repaints the picture as oil brush strokes that follow the image; higher = fatter, looser brush"/>
       <div class="mod-group">
@@ -701,15 +725,87 @@
       </div>
     </div>
     <div class="fxrow">
-      <span class="lbl">TRAILS <b id="vTr"></b></span>
-      <input type="range" id="cTrails" min="0" max="100" value="0"/>
+      <span class="lbl">POINTS <b id="vPt"></b></span>
+      <input type="range" id="cPoints" min="0" max="100" value="0" title="rebuilds the picture as a drifting grid of small points; higher = wider spacing, bigger dots"/>
       <div class="mod-group">
-        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModTrails">0%</b></span>
-        <input type="range" class="mod-slider" id="cModTrails" min="-100" max="100" value="0"/>
-        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateTrails">0.25 Hz</b></span>
-        <input type="range" class="lfo-rate-slider" id="cLfoRateTrails" min="1" max="100" value="35"/>
-        <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModTrails">0%</b></span>
-        <input type="range" class="aud-mod-slider" id="cAudModTrails" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModPoints">0%</b></span>
+        <input type="range" class="mod-slider" id="cModPoints" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRatePoints">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRatePoints" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModPoints">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModPoints" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">THRESHOLD <b id="vThresh"></b></span>
+      <input type="range" id="cThresh" min="0" max="100" value="0" title="cuts the picture to two tones: the first quarter fades it in, the rest raises the cut level"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModThresh">0%</b></span>
+        <input type="range" class="mod-slider" id="cModThresh" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateThresh">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateThresh" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModThresh">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModThresh" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">EDGES <b id="vEdges"></b></span>
+      <input type="range" id="cEdges" min="0" max="100" value="0" title="draws the edges of the picture in its own colours: first over the picture, then on their own as the picture fades out"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModEdges">0%</b></span>
+        <input type="range" class="mod-slider" id="cModEdges" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateEdges">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateEdges" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (HIGH-MID) <b class="b-aud" id="vAudModEdges">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModEdges" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">CONTOUR <b id="vContour"></b></span>
+      <input type="range" id="cContour" min="0" max="100" value="0" title="topographic contour lines where the brightness steps between bands; higher = more bands, darker wash beneath"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModContour">0%</b></span>
+        <input type="range" class="mod-slider" id="cModContour" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateContour">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateContour" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (LOW-MID) <b class="b-aud" id="vAudModContour">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModContour" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">SMEAR <b id="vPsort"></b></span>
+      <input type="range" id="cPsort" min="0" max="100" value="0" title="sorts runs of bright pixels along each row so bright areas smear into streaks; higher = longer runs, past halfway the streaks run vertically"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModPsort">0%</b></span>
+        <input type="range" class="mod-slider" id="cModPsort" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRatePsort">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRatePsort" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModPsort">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModPsort" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">DITHER <b id="vDither"></b></span>
+      <input type="range" id="cDither" min="0" max="100" value="0" title="ordered (Bayer) dithering to a 1-bit screen of dots; higher = coarser blocks"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModDither">0%</b></span>
+        <input type="range" class="mod-slider" id="cModDither" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateDither">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateDither" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (HIGH-MID) <b class="b-aud" id="vAudModDither">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModDither" min="-100" max="100" value="0"/>
+      </div>
+    </div>
+    <div class="fxrow">
+      <span class="lbl">HALFTONE <b id="vHalftone"></b></span>
+      <input type="range" id="cHalftone" min="0" max="100" value="0" title="a grid of dots sized by brightness and coloured by the picture; higher = wider pitch"/>
+      <div class="mod-group">
+        <span class="sub-lbl">MOD DEPTH <b class="b-depth" id="vModHalftone">0%</b></span>
+        <input type="range" class="mod-slider" id="cModHalftone" min="-100" max="100" value="0"/>
+        <span class="sub-lbl">LFO RATE <b class="b-rate" id="vLfoRateHalftone">0.25 Hz</b></span>
+        <input type="range" class="lfo-rate-slider" id="cLfoRateHalftone" min="1" max="100" value="35"/>
+        <span class="sub-lbl">AUDIO MOD (BASS) <b class="b-aud" id="vAudModHalftone">0%</b></span>
+        <input type="range" class="aud-mod-slider" id="cAudModHalftone" min="-100" max="100" value="0"/>
       </div>
     </div>
     <div class="fxrow">
@@ -969,6 +1065,14 @@ const state = {
   paint:0, modPaint:0.0, lfoRatePaint:0.25, audModPaint:0.0,
   flux:0, modFlux:0.0, lfoRateFlux:0.25, audModFlux:0.0,
   points:0, modPoints:0.0, lfoRatePoints:0.25, audModPoints:0.0,
+  thresh:0, modThresh:0.0, lfoRateThresh:0.25, audModThresh:0.0,
+  edges:0, modEdges:0.0, lfoRateEdges:0.25, audModEdges:0.0,
+  contour:0, modContour:0.0, lfoRateContour:0.25, audModContour:0.0,
+  psort:0, modPsort:0.0, lfoRatePsort:0.25, audModPsort:0.0,
+  dither:0, modDither:0.0, lfoRateDither:0.25, audModDither:0.0,
+  halftone:0, modHalftone:0.0, lfoRateHalftone:0.25, audModHalftone:0.0,
+  ascii:0, modAscii:0.0, lfoRateAscii:0.25, audModAscii:0.0,
+  noisefield:0, modNoisefield:0.0, lfoRateNoisefield:0.25, audModNoisefield:0.0,
   feedback:0, fbZoom:0.12, fbRot:5.7, fbHue:0, fbKey:'off', fbKeyLevel:0.5, fbKeyGain:0.5, modFeedback:0.0, lfoRateFeedback:0.25, audModFeedback:0.0,
   invert:false, bgMode:'palette', noBgA:true, noBgB:true, palAudio:false,
   muteCam:false, muteVA:false, muteVB:false, muteImg:false, muteA:false, muteB:false, muteC:false,
@@ -996,11 +1100,13 @@ SRC_MODS.forEach(([K, key, band, def]) => { state[key] = def; state['mod' + K] =
 
 const lfoPhases = { 
   fid: 0, fxLvl: 0, trails: 0, blur: 0, glitch: 0, points: 0, paint: 0, flux: 0, comic: 0, split: 0, feedback: 0,
+  thresh: 0, edges: 0, contour: 0, psort: 0, dither: 0, halftone: 0, ascii: 0, noisefield: 0,
   textScale: 0, textScatter: 0, textRotate: 0, textPulse: 0, textScan: 0
 };
 // eff.rate / eff.density are what the shapes read: they are set to the current slot's values just before each slot draws.
 const eff = { 
   rate: 0.45, density: 0.5, fidelity: 0.80, fxLevel: 0.7, trails: 0, blur: 0, glitch: 0, points: 0, paint: 0, flux: 0, comic: 0, split: 0, feedback: 0,
+  thresh: 0, edges: 0, contour: 0, psort: 0, dither: 0, halftone: 0, ascii: 0, noisefield: 0,
   textScale: 46, textScatter: 0.15, textRotate: 0.0, textPulse: 0.30, textScan: 0.45
 };
 SRC_MODS.forEach(([K, key, band, def]) => { lfoPhases[K] = 0; eff[key] = def; });
@@ -2033,6 +2139,235 @@ function pointsPass(ctx, W, H, tw, a){
 // wiped, strokes are laid over the previous painting. A coarse layer of fat strokes blocks in the picture, a fine
 // layer of small strokes fades in only along edges, then a canvas weave is laid over the top. The AMOUNT fades the
 // painting in over the first two-thirds of the slider and loosens the brush a little over the rest.
+// ---------------------------------------------------------------------------------------------
+// STYLIZE: eight picture treatments in the spirit of WebGPU "retro" effect tools - NOISE FIELD, ASCII, THRESHOLD,
+// EDGES, CONTOUR, PIXEL SORT, DITHER and HALFTONE. stylizePass() runs whichever of them are named in `keys` on the
+// given canvas as one stage: the picture is shrunk to a working buffer (at most 768 pixels wide, so the cost is
+// the same at any window size), the pixel treatments run on that buffer in order, and the drawn treatments
+// (halftone dots, glyphs, streamlines) read the buffer and draw at full resolution. It is called three times a
+// frame at different points of the chain: NOISE FIELD on the shape buffer before FLUX LINES, ASCII on the view
+// after RGB SPLIT, and THRESHOLD -> EDGES -> CONTOUR -> PIXEL SORT -> DITHER -> HALFTONE after POINTS. Each slider
+// fades its treatment in over its first quarter, then drives its character (cell size, threshold, line count ...).
+// A call is skipped when every slider it covers is at zero. `S` holds that call's own buffers.
+// ---------------------------------------------------------------------------------------------
+const ST_BUF = { c:null }, ST_VIEW = { c:null };
+const ST_BAYER = [0,32,8,40,2,34,10,42, 48,16,56,24,50,18,58,26, 12,44,4,36,14,46,6,38, 60,28,52,20,62,30,54,22, 3,35,11,43,1,33,9,41, 51,19,59,27,49,17,57,25, 15,47,7,39,13,45,5,37, 63,31,55,23,61,29,53,21];
+const ST_RAMP = ' .\'`^",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$';
+function stylizePass(ST, ctx, src, W, H, tw, keys){
+  const on = (k) => keys.includes(k) && eff[k] > 0.01;
+  if(!keys.some(k => eff[k] > 0.01)) return;
+  if(!ST.c){
+    ST.c = document.createElement('canvas'); ST.x = ST.c.getContext('2d', { willReadFrequently:true });
+    ST.sw = 0; ST.sh = 0; ST.glyphs = null; ST.glyphSize = 0; ST.nfPts = null;
+  }
+  const pal = PALETTES[state.palette], bass = A[0] || 0;
+  const fade = (a) => Math.min(1, a/0.25), chr = (a) => clamp((a - 0.25)/0.75, 0, 1);   // slider: fade-in, then character
+  // ---- 1. working buffer ----
+  const scale = Math.min(1, 768/W), SW = Math.max(8, Math.round(W*scale)), SH = Math.max(8, Math.round(H*scale)), N = SW*SH;
+  if(ST.sw !== SW || ST.sh !== SH){
+    ST.sw = SW; ST.sh = SH; ST.c.width = SW; ST.c.height = SH;
+    ST.lum = new Float32Array(N); ST.tmp = new Uint8ClampedArray(N*4); ST.lum2 = new Float32Array(N);
+  }
+  const sx = ST.x;
+  sx.setTransform(1, 0, 0, 1, 0, 0); sx.globalCompositeOperation = 'copy'; sx.globalAlpha = 1; sx.imageSmoothingEnabled = true;
+  sx.drawImage(src, 0, 0, W, H, 0, 0, SW, SH);
+  const img = sx.getImageData(0, 0, SW, SH), d = img.data, lum = ST.lum;
+  let lumDirty = true, pixelsChanged = false;
+  const relum = () => { lumDirty = true; pixelsChanged = true; };   // a treatment changed the pixels: brightness is stale
+  const needLum = () => { if(!lumDirty) return; lumDirty = false; for(let i = 0, q = 0; i < N; i++, q += 4) lum[i] = (d[q]*0.299 + d[q+1]*0.587 + d[q+2]*0.114)*(1/255); };
+  const cols = pal.rgb, cA = cols[0], cB = cols[1 % cols.length], cC = cols[2 % cols.length];
+
+  // ---- 2. pixel treatments, in order ----
+  // THRESHOLD: two tones. The level rises with the slider (and the bass), the fade blends it over the picture.
+  if(on('thresh')){
+    needLum();
+    const a = eff.thresh, mix = fade(a), thr = 0.3 + chr(a)*0.45 + bass*0.08, lo = pal.bgRgb || [0, 0, 0], hi = [255, 255, 255];
+    for(let i = 0, q = 0; i < N; i++, q += 4){
+      const on = lum[i] > thr, t = on ? hi : lo;
+      d[q] += (t[0] - d[q])*mix; d[q+1] += (t[1] - d[q+1])*mix; d[q+2] += (t[2] - d[q+2])*mix;
+    }
+    relum();
+  }
+  // EDGES: Sobel edge magnitude, coloured with the picture's own colour (whitened as the slider rises); the first
+  // quarter of the slider lays the edges over the picture, the rest fades the picture out under them.
+  if(on('edges')){
+    needLum();
+    const a = eff.edges, mix = fade(a), keep = 1 - chr(a), gainE = 2.2 + chr(a)*3, out = ST.tmp, white = chr(a)*0.7;
+    for(let y = 0; y < SH; y++) for(let x = 0; x < SW; x++){
+      const i = y*SW + x, q = i*4;
+      let e = 0;
+      if(x > 0 && y > 0 && x < SW - 1 && y < SH - 1){
+        const gx = -lum[i-SW-1] - 2*lum[i-1] - lum[i+SW-1] + lum[i-SW+1] + 2*lum[i+1] + lum[i+SW+1];
+        const gy = -lum[i-SW-1] - 2*lum[i-SW] - lum[i-SW+1] + lum[i+SW-1] + 2*lum[i+SW] + lum[i+SW+1];
+        e = Math.min(1, Math.sqrt(gx*gx + gy*gy)*gainE);
+      }
+      const r = d[q], g = d[q+1], b = d[q+2], m = Math.max(r, g, b, 1), k = 255/m;
+      const er = (r*k*(1 - white) + 255*white)*e, eg = (g*k*(1 - white) + 255*white)*e, eb = (b*k*(1 - white) + 255*white)*e;
+      out[q]   = r + (Math.min(255, r*keep + er) - r)*mix;
+      out[q+1] = g + (Math.min(255, g*keep + eg) - g)*mix;
+      out[q+2] = b + (Math.min(255, b*keep + eb) - b)*mix;
+      out[q+3] = 255;
+    }
+    d.set(out); relum(); pixelsChanged = true;
+  }
+  // CONTOUR: topographic lines. Brightness is smoothed, quantised into bands, and a line is drawn wherever the
+  // band changes; the lines take a palette colour by band, the picture beneath fades to a dark wash.
+  if(on('contour')){
+    needLum();
+    const a = eff.contour, mix = fade(a), bands = 4 + Math.round(chr(a)*12 + bass*2), out = ST.tmp, l2 = ST.lum2, wash = 0.35*(1 - chr(a)*0.6);
+    for(let y = 0; y < SH; y++) for(let x = 0; x < SW; x++){          // 3x3 box blur so the bands have clean edges
+      const i = y*SW + x; let s = 0, c = 0;
+      for(let dy = -1; dy <= 1; dy++){ const yy = y + dy; if(yy < 0 || yy >= SH) continue; for(let dx = -1; dx <= 1; dx++){ const xx = x + dx; if(xx < 0 || xx >= SW) continue; s += lum[yy*SW + xx]; c++; } }
+      l2[i] = Math.floor(s/c*bands);
+    }
+    for(let y = 0; y < SH; y++) for(let x = 0; x < SW; x++){
+      const i = y*SW + x, q = i*4, lv = l2[i];
+      const line = (x < SW - 1 && l2[i+1] !== lv) || (y < SH - 1 && l2[i+SW] !== lv);
+      let tr, tg, tb;
+      if(line){ const c = cols[lv % cols.length], k = 0.75 + 0.25*(lv/bands); tr = c[0]*k + 60; tg = c[1]*k + 60; tb = c[2]*k + 60; }
+      else { tr = d[q]*wash; tg = d[q+1]*wash; tb = d[q+2]*wash; }
+      out[q] = d[q] + (tr - d[q])*mix; out[q+1] = d[q+1] + (tg - d[q+1])*mix; out[q+2] = d[q+2] + (tb - d[q+2])*mix; out[q+3] = 255;
+    }
+    d.set(out); relum(); pixelsChanged = true;
+  }
+  // PIXEL SORT: in every row, runs of pixels brighter than a threshold are sorted by brightness, so bright areas
+  // smear into streaks. The threshold falls as the slider rises (longer runs); the bass pulls it lower still; the
+  // upper half of the slider flips to vertical columns.
+  if(on('psort')){
+    needLum();
+    const a = eff.psort, mix = fade(a), c = chr(a), thr = clamp(0.8 - c*1.2 - bass*0.15, 0.06, 0.95), vertical = c > 0.5;
+    const out = ST.tmp; out.set(d);
+    const L1 = vertical ? SH : SW, L2 = vertical ? SW : SH, stepA = vertical ? SW : 1, stepB = vertical ? 1 : SW;
+    // counting sort on 8-bit brightness: each run is bucketed then written back in order, so the cost is linear
+    const counts = new Int32Array(257), order = new Int32Array(L1);
+    for(let b = 0; b < L2; b++){
+      let s = 0;
+      while(s < L1){
+        while(s < L1 && lum[b*stepB + s*stepA] <= thr) s++;
+        let e = s; while(e < L1 && lum[b*stepB + e*stepA] > thr) e++;
+        const len = e - s;
+        if(len > 2){
+          counts.fill(0);
+          for(let k = 0; k < len; k++) counts[((lum[b*stepB + (s + k)*stepA]*255)|0) + 1]++;
+          for(let k = 1; k < 257; k++) counts[k] += counts[k - 1];
+          for(let k = 0; k < len; k++){ const key = (lum[b*stepB + (s + k)*stepA]*255)|0; order[counts[key]++] = k; }
+          for(let k = 0; k < len; k++){ const from = (b*stepB + (s + order[k])*stepA)*4, to = (b*stepB + (s + k)*stepA)*4; out[to] = d[from]; out[to+1] = d[from+1]; out[to+2] = d[from+2]; }
+        }
+        s = e;
+      }
+    }
+    if(mix >= 0.999) d.set(out); else for(let q = 0; q < N*4; q += 4){ d[q] += (out[q] - d[q])*mix; d[q+1] += (out[q+1] - d[q+1])*mix; d[q+2] += (out[q+2] - d[q+2])*mix; }
+    relum();
+  }
+  // DITHER: ordered (Bayer 8x8) dithering to two tones per channel, in blocks that grow with the slider, so the
+  // picture becomes a 1-bit screen of coarse dots; the dark tone is the palette background.
+  if(on('dither')){
+    needLum();
+    const a = eff.dither, mix = fade(a), px = 1 + Math.round(chr(a)*5), lo = pal.bgRgb || [0, 0, 0], boost = 1.15 + bass*0.2;
+    for(let y = 0; y < SH; y += px) for(let x = 0; x < SW; x += px){
+      const i0 = y*SW + x, q0 = i0*4, th = (ST_BAYER[((y/px|0) & 7)*8 + ((x/px|0) & 7)] + 0.5)/64*255;
+      const r = d[q0]*boost > th ? 255 : lo[0], g = d[q0+1]*boost > th ? 255 : lo[1], b = d[q0+2]*boost > th ? 255 : lo[2];
+      for(let yy = y; yy < Math.min(SH, y + px); yy++) for(let xx = x; xx < Math.min(SW, x + px); xx++){
+        const q = (yy*SW + xx)*4; d[q] += (r - d[q])*mix; d[q+1] += (g - d[q+1])*mix; d[q+2] += (b - d[q+2])*mix;
+      }
+    }
+    relum();
+  }
+  // NOISE FIELD (pixel part): the picture is pulled along a slowly turning noise flow, so it smears into streams
+  if(on('noisefield')){
+    const a = eff.noisefield, mix = fade(a), amt = (2 + chr(a)*14 + bass*4)*scale, out = ST.tmp, t = tw*0.25;
+    // the flow is smooth, so its direction is sampled on a 4-pixel grid and shared by the pixels in each cell
+    const G = 4, gw = Math.ceil(SW/G) + 1, gh = Math.ceil(SH/G) + 1;
+    if(!ST.flow || ST.flow.length !== gw*gh*2) ST.flow = new Float32Array(gw*gh*2);
+    const F = ST.flow;
+    for(let gy = 0; gy < gh; gy++) for(let gx = 0; gx < gw; gx++){ const ang = n2(gx*G/SW*3.1, gy*G/SH*3.1, t)*Math.PI*2, o = (gy*gw + gx)*2; F[o] = Math.cos(ang)*amt; F[o+1] = Math.sin(ang)*amt; }
+    for(let y = 0; y < SH; y++) for(let x = 0; x < SW; x++){
+      const q = (y*SW + x)*4, o = (((y/G)|0)*gw + ((x/G)|0))*2;
+      const xs = Math.round(x + F[o]), ys = Math.round(y + F[o+1]);
+      const qs = (clamp(ys, 0, SH - 1)*SW + clamp(xs, 0, SW - 1))*4;
+      out[q] = d[q] + (d[qs] - d[q])*mix; out[q+1] = d[q+1] + (d[qs+1] - d[q+1])*mix; out[q+2] = d[q+2] + (d[qs+2] - d[q+2])*mix; out[q+3] = 255;
+    }
+    d.set(out); relum(); pixelsChanged = true;
+  }
+  if(pixelsChanged){
+    sx.putImageData(img, 0, 0);
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'copy'; ctx.globalAlpha = 1;
+    ctx.imageSmoothingEnabled = !on('dither') && !on('psort');    // blocks stay crisp, smooth treatments stay smooth
+    ctx.drawImage(ST.c, 0, 0, SW, SH, 0, 0, W, H);
+    ctx.imageSmoothingEnabled = true; ctx.restore();
+  }
+
+  // ---- 3. drawn treatments at full resolution, reading the buffer ----
+  const sample = (x, y) => { const i = clamp(y|0, 0, SH - 1)*SW + clamp(x|0, 0, SW - 1); return i; };
+  // HALFTONE: a grid of dots on the palette background, each sized by the brightness of its cell and coloured by
+  // the cell; the grid pitch grows with the slider, the bass fattens the dots.
+  if(on('halftone')){
+    needLum();
+    const a = eff.halftone, mix = fade(a), cell = lerp(6, 26, chr(a))*Math.max(1, W/1280), bg = pal.bg;
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = mix; ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    const B = 6, paths = [], pcol = [];
+    for(let b = 0; b < B; b++){ paths.push(new Path2D()); pcol.push([0, 0, 0, 0]); }
+    const cx0 = cell*0.5, cy0 = cell*0.5;
+    for(let y = cy0; y < H + cell; y += cell) for(let x = cx0; x < W + cell; x += cell){
+      const i = sample(x*scale, y*scale), q = i*4, l = lum[i];
+      if(l < 0.03) continue;
+      const rad = cell*0.55*Math.sqrt(l)*(1 + bass*0.25), b = Math.min(B - 1, (l*B)|0);
+      pcol[b][0] += d[q]; pcol[b][1] += d[q+1]; pcol[b][2] += d[q+2]; pcol[b][3]++;
+      paths[b].moveTo(x + rad, y); paths[b].arc(x, y, rad, 0, TAU);
+    }
+    for(let b = 0; b < B; b++){ const c = pcol[b]; if(!c[3]) continue; const k = 1/c[3]; ctx.fillStyle = m3Rgba([c[0]*k, c[1]*k, c[2]*k], 1.15, 1); ctx.fill(paths[b]); }
+    ctx.restore();
+  }
+  // ASCII: the picture as a grid of characters from a brightness ramp, coloured by the picture beneath. Glyphs
+  // come from a cached atlas; a mask of glyphs is built with drawImage and the blocky colour is keyed through it.
+  if(on('ascii')){
+    needLum();
+    const a = eff.ascii, mix = fade(a), cell = Math.round(lerp(9, 24, chr(a))*Math.max(1, W/1280)), ramp = ST_RAMP, RL = ramp.length;
+    if(!ST.glyphs || ST.glyphSize !== cell){
+      const g = document.createElement('canvas'); g.width = cell*RL; g.height = cell;
+      const gx = g.getContext('2d'); gx.fillStyle = '#fff'; gx.font = 'bold ' + Math.round(cell*1.05) + 'px monospace'; gx.textAlign = 'center'; gx.textBaseline = 'middle';
+      for(let k = 0; k < RL; k++) gx.fillText(ramp[k], k*cell + cell*0.5, cell*0.55);
+      ST.glyphs = g; ST.glyphSize = cell;
+    }
+    if(!ST.m){ ST.m = document.createElement('canvas'); ST.mx = ST.m.getContext('2d'); }
+    if(ST.m.width !== W || ST.m.height !== H){ ST.m.width = W; ST.m.height = H; }
+    const mx = ST.mx; mx.setTransform(1, 0, 0, 1, 0, 0); mx.clearRect(0, 0, W, H); mx.globalCompositeOperation = 'source-over';
+    const gain = 1 + bass*0.3;
+    for(let y = 0; y < H; y += cell) for(let x = 0; x < W; x += cell){
+      const i = sample((x + cell*0.5)*scale, (y + cell*0.5)*scale), l = Math.min(1, lum[i]*gain);
+      const k = Math.min(RL - 1, (l*RL)|0); if(k === 0) continue;
+      mx.drawImage(ST.glyphs, k*cell, 0, cell, cell, x, y, cell, cell);
+    }
+    // colour: the blocky picture keyed through the glyph mask
+    mx.globalCompositeOperation = 'source-in'; mx.imageSmoothingEnabled = false;
+    mx.drawImage(ST.c, 0, 0, SW, SH, 0, 0, W, H); mx.imageSmoothingEnabled = true;
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = mix;
+    ctx.fillStyle = pal.bg; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(ST.m, 0, 0); ctx.drawImage(ST.m, 0, 0);   // twice: glyphs read brighter than the cells they came from
+    ctx.restore();
+  }
+  // NOISE FIELD (drawn part): short streamlines follow the same flow, each in the colour of the picture where it
+  // starts, so the smeared picture is combed with strands; the strand count grows with the slider.
+  if(on('noisefield')){
+    needLum();
+    const a = eff.noisefield, mix = fade(a), n = Math.round(lerp(300, 2200, chr(a))), t = tw*0.25;
+    if(!ST.nfPts || ST.nfPts.length < n*2){ ST.nfPts = new Float32Array(2200*2); const r = mulberry32(0x9e37); for(let i = 0; i < 2200*2; i++) ST.nfPts[i] = r(); }
+    const P = ST.nfPts, segs = 7, len = Math.max(3, Math.min(W, H)*0.012*(1 + bass*0.6));
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = mix*0.85; ctx.globalCompositeOperation = 'source-over'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(0.5, Math.min(W, H)*0.0011);   // hair-fine strands
+    for(let k = 0; k < n; k++){
+      let x = P[k*2]*W, y = P[k*2 + 1]*H;
+      const i = sample(x*scale, y*scale), q = i*4, l = lum[i];
+      if(l < 0.05) continue;
+      ctx.strokeStyle = m3Rgba([d[q], d[q+1], d[q+2]], 1.3, 0.5 + l*0.5);
+      ctx.beginPath(); ctx.moveTo(x, y);
+      for(let s = 0; s < segs; s++){ const ang = n2(x/W*3.1, y/H*3.1, t)*Math.PI*2; x += Math.cos(ang)*len; y += Math.sin(ang)*len; ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
 const PB = { c:null, x:null, s:null, sx:null, pw:0, ph:0, sw:0, sh:0, luma:null, gx:null, gy:null, tex:null, texPat:null, armed:false, layers:[null, null], lastT:0 };
 const PB_COL_T = 2.2, PB_DIR_T = 3.0, PB_FADE_T = 1.6;   // seconds to settle: colour, direction/length, fine-stroke presence
 function paintTexture(){
@@ -7468,14 +7803,22 @@ function invertData(d){
 
 // One readback / one upload for the whole per-pixel chain (INVERT -> COMIC INK -> post-process). Each stage
 // used to do its own getImageData/putImageData; sharing the ImageData saves a GPU sync per active stage.
-function pixelStage(){
-  const doInv = state.invert, doComic = eff.comic > 0.01, doPost = postNeeded();
-  if(!doInv && !doComic && !doPost) return;
+function pixelStage(inkHere){
+  const doInv = state.invert, doPost = postNeeded(), doInk = inkHere && eff.comic > 0.01;
+  if(!doInv && !doPost && !doInk) return;
   const img = bctx.getImageData(0, 0, bw, bh), d = img.data;
   if(doInv) invertData(d);
-  if(doComic) comicInkData(d, eff.comic);
   if(doPost) postProcessData(d);
+  if(doInk) comicInkData(d, eff.comic);   // no downscale to follow: ink in the same readback (RESOLUTION -> INK order is kept)
   bctx.putImageData(img, 0, 0);
+}
+// INK runs after the RESOLUTION downscale, on whichever buffer is about to be shown, so the ink lines are drawn
+// over the pixelated picture rather than being pixelated with it.
+function inkStage(c){
+  if(eff.comic <= 0.01) return;
+  const img = c.getImageData(0, 0, bw, bh), d = img.data;
+  comicInkData(d, eff.comic);
+  c.putImageData(img, 0, 0);
 }
 
 // FLUX LINES: fine field lines combed out of the edges and corners of the picture, like iron filings around a
@@ -8228,6 +8571,14 @@ function frame(now){
   lfoPhases.textRotate  += dt * TAU * state.lfoRateTextRotate;
   lfoPhases.textPulse   += dt * TAU * state.lfoRateTextPulse;
   lfoPhases.textScan    += dt * TAU * state.lfoRateTextScan;
+  lfoPhases.thresh      += dt * TAU * state.lfoRateThresh;
+  lfoPhases.edges       += dt * TAU * state.lfoRateEdges;
+  lfoPhases.contour     += dt * TAU * state.lfoRateContour;
+  lfoPhases.psort       += dt * TAU * state.lfoRatePsort;
+  lfoPhases.dither      += dt * TAU * state.lfoRateDither;
+  lfoPhases.halftone    += dt * TAU * state.lfoRateHalftone;
+  lfoPhases.ascii       += dt * TAU * state.lfoRateAscii;
+  lfoPhases.noisefield  += dt * TAU * state.lfoRateNoisefield;
 
   eff.fidelity= clamp(state.fidelity+ Math.sin(lfoPhases.fid)    * state.modFid    + A[2] * state.audModFid,    0, 1);
   eff.fxLevel = clamp(state.fxLevel + Math.sin(lfoPhases.fxLvl)  * state.modFxLvl  + A[3] * state.audModFxLvl,  0, 1);
@@ -8240,6 +8591,14 @@ function frame(now){
   eff.comic   = clamp(state.comic   + Math.sin(lfoPhases.comic)  * state.modComic  + A[2] * state.audModComic,  0, 1);
   eff.split   = clamp(state.split   + Math.sin(lfoPhases.split)  * state.modSplit  + A[0] * state.audModSplit,  0, 1);
   eff.feedback= clamp(state.feedback+ Math.sin(lfoPhases.feedback)* state.modFeedback + A[0] * state.audModFeedback, 0, 2);
+  eff.thresh    = clamp(state.thresh + Math.sin(lfoPhases.thresh)*state.modThresh + A[0]*state.audModThresh, 0, 1);
+  eff.edges     = clamp(state.edges + Math.sin(lfoPhases.edges)*state.modEdges + A[2]*state.audModEdges, 0, 1);
+  eff.contour   = clamp(state.contour + Math.sin(lfoPhases.contour)*state.modContour + A[1]*state.audModContour, 0, 1);
+  eff.psort     = clamp(state.psort + Math.sin(lfoPhases.psort)*state.modPsort + A[0]*state.audModPsort, 0, 1);
+  eff.dither    = clamp(state.dither + Math.sin(lfoPhases.dither)*state.modDither + A[2]*state.audModDither, 0, 1);
+  eff.halftone  = clamp(state.halftone + Math.sin(lfoPhases.halftone)*state.modHalftone + A[0]*state.audModHalftone, 0, 1);
+  eff.ascii     = clamp(state.ascii + Math.sin(lfoPhases.ascii)*state.modAscii + A[1]*state.audModAscii, 0, 1);
+  eff.noisefield = clamp(state.noisefield + Math.sin(lfoPhases.noisefield)*state.modNoisefield + A[1]*state.audModNoisefield, 0, 1);
 
   eff.textScale   = clamp(state.textScale + (Math.sin(lfoPhases.textScale) * state.modTextScale + A[0] * state.audModTextScale) * 60, 8, 220);
   eff.textScatter = clamp(state.textScatter + Math.sin(lfoPhases.textScatter) * state.modTextScatter + A[2] * state.audModTextScatter, 0, 1);
@@ -8286,14 +8645,15 @@ function frame(now){
   bctx.globalAlpha = 1.0;
   bctx.globalCompositeOperation = 'source-over';
 
-  if(eff.flux > 0.01) fluxLinesPass(tw, eff.flux);   // FLUX LINES: drawn into the buffer just ahead of COMIC INK
+  // NOISE FIELD is first in the effects chain: it combs the mixed sources in the shape buffer before anything else
+  stylizePass(ST_BUF, bctx, buf, bw, bh, tw, ['noisefield']);
+  if(eff.flux > 0.01) fluxLinesPass(tw, eff.flux);   // FLUX LINES: drawn into the buffer just ahead of RESOLUTION
   else FL.live = false;
-  pixelStage();                        // INVERT -> COMIC INK (effects chain stage 1) -> FIDELITY posterise/grain, one readback
-
-  const targetScale = lerp(0.12, 1.0, Math.pow(eff.fidelity, 1.25));
+  const targetScale = lerp(0.12, 1.0, Math.pow(eff.fidelity, 1.25)), downscaled = targetScale < 0.98;
+  pixelStage(!downscaled);             // INVERT -> RESOLUTION posterise / grain (-> INK when there is no downscale), one readback
   let finalSource = buf;
 
-  if(targetScale < 0.98){
+  if(downscaled){
     const subW = Math.max(16, Math.round(bw * targetScale));
     const subH = Math.max(9, Math.round(bh * targetScale));
     dctx.clearRect(0, 0, bw, bh);
@@ -8310,6 +8670,7 @@ function frame(now){
     }
     finalSource = downBuf2;
   }
+  if(downscaled) inkStage(dctx2);      // INK after the RESOLUTION downscale, on the pixelated picture
 
   ctx.imageSmoothingEnabled = false;
   const [wx, wy] = wobbleOffset(tw);
@@ -8426,25 +8787,10 @@ function frame(now){
     ctx.restore();
   }
 
-  // GLITCH runs before blur/trails so the slice displacement gets softened and smeared into the trail memory
-  if(eff.glitch > 0.01) glitchPass(ctx, W, H, tw);
-  else GL.until = 0;
+  // ASCII, right after RGB SPLIT, so the split picture is set in characters
+  stylizePass(ST_VIEW, ctx, view, W, H, tw, ['ascii']);
 
-  // POINTS sits between glitch and paint: the sliced frame is rebuilt as a drifting grid of dots, which the brush,
-  // blur and trails then work on like any other picture
-  if(eff.points > 0.01) pointsPass(ctx, W, H, tw, eff.points);
-
-  // PAINT BRUSH sits between points and blur/trails: the brush strokes get softened and smeared like the rest
-  if(eff.paint > 0.01) paintPass(ctx, W, H, tw, eff.paint);
-  else PB.armed = false;
-
-  if(eff.blur > 0.01 && FILTER_OK){
-    ctx.save();
-    ctx.filter = `blur(${eff.blur * Math.min(W, H) * 0.02}px)`;
-    ctx.drawImage(view, 0, 0);
-    ctx.restore();
-  }
-
+  // TRAILS: persistence of everything up to here; the later effects work on the smeared picture
   if(eff.trails > 0.01){
     if(!trailsArmed){
       tctx.globalCompositeOperation = 'source-over';
@@ -8469,6 +8815,26 @@ function frame(now){
   } else if(trailsArmed){
     trailsArmed = false;
   }
+
+  // GLITCH runs on the trailed picture
+  if(eff.glitch > 0.01) glitchPass(ctx, W, H, tw);
+  else GL.until = 0;
+
+  // PAINT BRUSH, then POINTS: the glitched frame is repainted, then rebuilt as a drifting grid of dots
+  if(eff.paint > 0.01) paintPass(ctx, W, H, tw, eff.paint);
+  else PB.armed = false;
+  if(eff.points > 0.01) pointsPass(ctx, W, H, tw, eff.points);
+
+  // THRESHOLD -> EDGES -> CONTOUR -> PIXEL SORT -> DITHER -> HALFTONE, then BLUR and FEEDBACK finish the chain
+  stylizePass(ST_VIEW, ctx, view, W, H, tw, ['thresh', 'edges', 'contour', 'psort', 'dither', 'halftone']);
+
+  if(eff.blur > 0.01 && FILTER_OK){
+    ctx.save();
+    ctx.filter = `blur(${eff.blur * Math.min(W, H) * 0.02}px)`;
+    ctx.drawImage(view, 0, 0);
+    ctx.restore();
+  }
+
 
   // FEEDBACK (last in the effects chain): analog video feedback. The previous output frame is re-zoomed, re-rotated,
   // hue-drifted and screened back over the current frame, then the result becomes the memory for the next pass,
@@ -8545,7 +8911,7 @@ function frame(now){
     if(DOM.scan) DOM.scan.style.opacity = (curScan * 0.01).toFixed(2);
   }
   if(OUT.stream) outTick(now);   // feed the fixed-resolution export canvas (recording / virtual camera)
-  if(REC.rec) recLevelTick();
+  if(REC.gain && actx && actx.state === 'running') recLevelTick();   // the recording leveler tracks the input at all times
 }
 
 let micStream = null, micDeviceId = '', micSrcNode = null, recDest = null;
@@ -8572,7 +8938,8 @@ async function micStart(){
   const srcNode = actx.createMediaStreamSource(stream);
   if(micSrcNode){ try{ micSrcNode.disconnect(); }catch(e){} }
   micSrcNode = srcNode;
-  if(REC.gain) srcNode.connect(REC.gain);   // keep a running recording fed if the input device changes
+  recAudioChain();                          // the recording chain runs from the moment the input does, so its leveler is
+  srcNode.connect(REC.gain);                //   already settled when a recording starts (and a running recording stays fed)
   const an = actx.createAnalyser();
   an.fftSize = 1024;
   an.smoothingTimeConstant = 0.35;
@@ -8699,6 +9066,14 @@ function syncFx(){
   update('vGl', glStr);
   update('vPt', Math.round(state.points * 100) + '%');
   update('vPa', Math.round(state.paint * 100) + '%');
+  update('vThresh', Math.round(state.thresh * 100) + '%');
+  update('vEdges', Math.round(state.edges * 100) + '%');
+  update('vContour', Math.round(state.contour * 100) + '%');
+  update('vPsort', Math.round(state.psort * 100) + '%');
+  update('vDither', Math.round(state.dither * 100) + '%');
+  update('vHalftone', Math.round(state.halftone * 100) + '%');
+  update('vAscii', Math.round(state.ascii * 100) + '%');
+  update('vNoisefield', Math.round(state.noisefield * 100) + '%');
   update('vFlux', Math.round(state.flux * 100) + '%');
   update('vCo', Math.round(state.comic * 100) + '%');
   update('vSp', Math.round(state.split * 100) + '%');
@@ -8767,7 +9142,9 @@ function setShape(slot, id){
   if(!DRAW[id]) id = 'off';
   state['shape' + slot] = id;
   [document, popoutWin && !popoutWin.closed ? popoutWin.document : null].forEach(doc => {
-    const sel = doc && doc.getElementById('cShape' + slot); if(sel && sel.value !== id) sel.value = id;
+    const sel = doc && doc.getElementById('cShape' + slot); if(!sel) return;
+    if(sel.value !== id) sel.value = id;
+    if(sel._prefixed && doc.activeElement !== sel) sel._prefixed();
   });
 }
 
@@ -8950,13 +9327,22 @@ function recAudioChain(){
   REC.comp.connect(REC.ceil);
   REC.ceil.connect(recDest);
 }
-// Called every frame while recording: measure the post-gain peak, duck instantly when it is over the target and
+// Set the make-up gain from the last couple of seconds' peak in one step, so a recording starts at full level
+// instead of fading in while the leveler creeps up to it.
+function recPrimeGain(){
+  if(!REC.gain || !actx || !(REC.recent > 0.01)) return;
+  const g = REC.gain.gain.value, ng = clamp(g*REC.target/REC.recent, REC_GAIN_MIN, REC_GAIN_MAX);   // REC.recent is post-gain, so rescale
+  REC.gain.gain.cancelScheduledValues(actx.currentTime); REC.gain.gain.setValueAtTime(ng, actx.currentTime);
+  REC.recent *= ng/g;
+}
+// Called every frame while the input runs: measure the post-gain peak, duck instantly when it is over the target and
 // creep the gain up (~+8 dB/s) when it is under, ignoring near-silence so pauses don't wind the gain to maximum.
 function recLevelTick(){
-  if(!REC.rec || !REC.ana || !actx) return;
+  if(!REC.ana || !actx) return;
   REC.ana.getFloatTimeDomainData(REC.anaBuf);
   let peak = 0;
   for(let i = 0; i < REC.anaBuf.length; i++){ const v = Math.abs(REC.anaBuf[i]); if(v > peak) peak = v; }
+  REC.recent = Math.max(peak, (REC.recent || 0)*0.985);          // slow-decay peak of the last couple of seconds, for recPrimeGain()
   const g = REC.gain.gain.value, target = REC.target;
   let ng = g;
   if(peak > target) ng = g * (target / peak);
@@ -8982,6 +9368,7 @@ async function recStart(){
   if(actx && micSrcNode){
     recAudioChain();
     try{ micSrcNode.connect(REC.gain); }catch(e){}
+    recPrimeGain();
     recDest.stream.getAudioTracks().forEach(tr => stream.addTrack(tr));
   }
   const hasAudio = stream.getAudioTracks().length > 0;
@@ -9328,8 +9715,15 @@ function buildShapeSelects(targetDoc){
     const sel = targetDoc.getElementById('cShape' + slot);
     if(!sel) return;
     sel.innerHTML = '';
-    SHAPES.forEach(sh => { const o = targetDoc.createElement('option'); o.value = sh.id; o.textContent = 'SHAPE: ' + sh.label; sel.appendChild(o); });   // prefixed so the closed dropdown reads as the shape picker
-    sel.value = state['shape' + slot];
+    SHAPES.forEach(sh => { const o = targetDoc.createElement('option'); o.value = sh.id; o.textContent = sh.label; sel.appendChild(o); });
+    // the closed control reads "SHAPE: NAME"; the open list shows plain names. The prefix is put on the selected
+    // option while the control is closed and stripped from every option while it is open.
+    const plain = () => { for(const o of sel.options) o.textContent = o.textContent.replace(/^SHAPE: /, ''); };
+    const prefixed = () => { plain(); const o = sel.options[sel.selectedIndex]; if(o) o.textContent = 'SHAPE: ' + o.textContent; };
+    sel.addEventListener('mousedown', plain); sel.addEventListener('focus', plain); sel.addEventListener('keydown', plain);
+    sel.addEventListener('blur', prefixed); sel.addEventListener('change', ()=>{ if(targetDoc.activeElement !== sel) prefixed(); });
+    sel._prefixed = prefixed;
+    sel.value = state['shape' + slot]; prefixed();
     sel.addEventListener('change', ()=>setShape(slot, sel.value));
     const bs = targetDoc.getElementById('cAudBand' + slot);
     if(bs){ bs.value = state['audBand' + slot]; bs.addEventListener('change', ()=>setAudBand(slot, bs.value)); }
@@ -9589,6 +9983,14 @@ function wireControls(targetDoc = document){
   if(cGlitch) cGlitch.addEventListener('input', ()=>{ state.glitch = cGlitch.value * 0.01; syncFx(); });
   if(cPoints) cPoints.addEventListener('input', ()=>{ state.points = cPoints.value * 0.01; syncFx(); });
   if(cPaint)  cPaint.addEventListener('input',  ()=>{ state.paint = cPaint.value * 0.01; syncFx(); });
+  const cThresh = targetDoc.getElementById('cThresh'); if(cThresh) cThresh.addEventListener('input', ()=>{ state.thresh = cThresh.value * 0.01; syncFx(); });
+  const cEdges = targetDoc.getElementById('cEdges'); if(cEdges) cEdges.addEventListener('input', ()=>{ state.edges = cEdges.value * 0.01; syncFx(); });
+  const cContour = targetDoc.getElementById('cContour'); if(cContour) cContour.addEventListener('input', ()=>{ state.contour = cContour.value * 0.01; syncFx(); });
+  const cPsort = targetDoc.getElementById('cPsort'); if(cPsort) cPsort.addEventListener('input', ()=>{ state.psort = cPsort.value * 0.01; syncFx(); });
+  const cDither = targetDoc.getElementById('cDither'); if(cDither) cDither.addEventListener('input', ()=>{ state.dither = cDither.value * 0.01; syncFx(); });
+  const cHalftone = targetDoc.getElementById('cHalftone'); if(cHalftone) cHalftone.addEventListener('input', ()=>{ state.halftone = cHalftone.value * 0.01; syncFx(); });
+  const cAscii = targetDoc.getElementById('cAscii'); if(cAscii) cAscii.addEventListener('input', ()=>{ state.ascii = cAscii.value * 0.01; syncFx(); });
+  const cNoisefield = targetDoc.getElementById('cNoisefield'); if(cNoisefield) cNoisefield.addEventListener('input', ()=>{ state.noisefield = cNoisefield.value * 0.01; syncFx(); });
   const cFlux = targetDoc.getElementById('cFlux');
   if(cFlux) cFlux.addEventListener('input', ()=>{ state.flux = cFlux.value * 0.01; syncFx(); });
   if(cComic)  cComic.addEventListener('input',  ()=>{ state.comic = cComic.value * 0.01; syncFx(); });
@@ -9640,6 +10042,14 @@ function wireControls(targetDoc = document){
   bindDepth('cModComic', 'vModComic', 'modComic');
   bindDepth('cModSplit', 'vModSplit', 'modSplit');
   bindDepth('cModFeedback', 'vModFeedback', 'modFeedback');
+  bindDepth('cModThresh', 'vModThresh', 'modThresh'); bindLfo('cLfoRateThresh', 'vLfoRateThresh', 'lfoRateThresh'); bindDepth('cAudModThresh', 'vAudModThresh', 'audModThresh');
+  bindDepth('cModEdges', 'vModEdges', 'modEdges'); bindLfo('cLfoRateEdges', 'vLfoRateEdges', 'lfoRateEdges'); bindDepth('cAudModEdges', 'vAudModEdges', 'audModEdges');
+  bindDepth('cModContour', 'vModContour', 'modContour'); bindLfo('cLfoRateContour', 'vLfoRateContour', 'lfoRateContour'); bindDepth('cAudModContour', 'vAudModContour', 'audModContour');
+  bindDepth('cModPsort', 'vModPsort', 'modPsort'); bindLfo('cLfoRatePsort', 'vLfoRatePsort', 'lfoRatePsort'); bindDepth('cAudModPsort', 'vAudModPsort', 'audModPsort');
+  bindDepth('cModDither', 'vModDither', 'modDither'); bindLfo('cLfoRateDither', 'vLfoRateDither', 'lfoRateDither'); bindDepth('cAudModDither', 'vAudModDither', 'audModDither');
+  bindDepth('cModHalftone', 'vModHalftone', 'modHalftone'); bindLfo('cLfoRateHalftone', 'vLfoRateHalftone', 'lfoRateHalftone'); bindDepth('cAudModHalftone', 'vAudModHalftone', 'audModHalftone');
+  bindDepth('cModAscii', 'vModAscii', 'modAscii'); bindLfo('cLfoRateAscii', 'vLfoRateAscii', 'lfoRateAscii'); bindDepth('cAudModAscii', 'vAudModAscii', 'audModAscii');
+  bindDepth('cModNoisefield', 'vModNoisefield', 'modNoisefield'); bindLfo('cLfoRateNoisefield', 'vLfoRateNoisefield', 'lfoRateNoisefield'); bindDepth('cAudModNoisefield', 'vAudModNoisefield', 'audModNoisefield');
 
   bindDepth('cModTextScale', 'vModTextScale', 'modTextScale');
   bindDepth('cModTextScatter', 'vModTextScatter', 'modTextScatter');
