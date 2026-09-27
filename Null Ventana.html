@@ -188,6 +188,8 @@
   <filter id="caB" x="-10%" y="-10%" width="120%" height="120%"><feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 1 0  0 0 0 1 0"/><feOffset id="caBO" dx="-2" dy="0"/></filter>
   <!-- DISPLAY FILTER: tint / flicker / desaturation of the finished frame in one colour matrix, set per frame by dfSetTint() -->
   <filter id="dfTint" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feColorMatrix id="dfTintM" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/></filter>
+  <!-- FEEDBACK loop colour: hue-rotate, saturate, brightness and contrast composed into one matrix by fbColorMatrix() -->
+  <filter id="fbCM" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feColorMatrix id="fbCMm" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/></filter>
   <!-- RGB SPLIT: pure channel isolation (offsets are applied by drawImage position) -->
   <filter id="rsR" x="0" y="0" width="100%" height="100%"><feColorMatrix type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/></filter>
   <filter id="rsG" x="0" y="0" width="100%" height="100%"><feColorMatrix type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0"/></filter>
@@ -1903,12 +1905,14 @@ function drawVideoLayer(){
   if(IMG.el && !state.muteImg && eff.mixImg > 0.004){ const c = imgFrame(); if(c) drawGraded(c, eff.mixImg, IMG.grade, 'img'); }
 }
 const downBuf = document.createElement('canvas');
-const dctx    = downBuf.getContext('2d');
+const dctx    = downBuf.getContext('2d', { willReadFrequently: true });   // CPU-side, like the shape buffer: the RESOLUTION chain never round-trips through the GPU
 const downBuf2 = document.createElement('canvas');
-const dctx2   = downBuf2.getContext('2d');
+const dctx2   = downBuf2.getContext('2d', { willReadFrequently: true });
 const trail = document.createElement('canvas');
 const tctx  = trail.getContext('2d');
 // Full-res scratch canvas used by the GLITCH slice/block displacement pass.
+const RS = { c:null, x:null };   // RGB channel scratch
+const BLR = { c:null, x:null };  // BLUR's shrunk working copy
 const fxc   = document.createElement('canvas');
 const fxctx = fxc.getContext('2d');
 // Full-res scratch canvases for the text overlay so it can be degraded by FIDELITY (pixelated + colour-fringed)
@@ -1921,6 +1925,33 @@ const txtdctx = txtDown.getContext('2d');
 let fbA = document.createElement('canvas'), fbB = document.createElement('canvas');
 let fbActx = fbA.getContext('2d'), fbBctx = fbB.getContext('2d');
 let fbArmed = false;
+// The loop contribution (zoomed, rotated, filtered memory) is built once per frame in this scratch, then added to
+// both the memory and the view, so the filter runs once and at the memory's resolution.
+const fbL = document.createElement('canvas'), fbLctx = fbL.getContext('2d');
+// The loop's colour treatment - CSS hue-rotate(h) saturate(s) brightness(b) contrast(c), in that order - composed
+// into a single colour matrix, so it is one filter pass instead of four. The matrix is only rewritten on change.
+let fbCMsig = '';
+function fbColorMatrix(hueDeg, sat, bright, con){
+  const sig = hueDeg.toFixed(1) + '|' + sat.toFixed(3) + '|' + bright.toFixed(3) + '|' + con.toFixed(3);
+  if(sig === fbCMsig) return; fbCMsig = sig;
+  const a = hueDeg*Math.PI/180, c = Math.cos(a), s = Math.sin(a);
+  const Hm = [0.213 + c*0.787 - s*0.213, 0.715 - c*0.715 - s*0.715, 0.072 - c*0.072 + s*0.928,
+              0.213 - c*0.213 + s*0.143, 0.715 + c*0.285 + s*0.140, 0.072 - c*0.072 - s*0.283,
+              0.213 - c*0.213 - s*0.787, 0.715 - c*0.715 + s*0.715, 0.072 + c*0.928 + s*0.072];
+  const Sm = [0.213 + 0.787*sat, 0.715 - 0.715*sat, 0.072 - 0.072*sat,
+              0.213 - 0.213*sat, 0.715 + 0.285*sat, 0.072 - 0.072*sat,
+              0.213 - 0.213*sat, 0.715 - 0.715*sat, 0.072 + 0.928*sat];
+  const M = [];
+  for(let r = 0; r < 3; r++) for(let k = 0; k < 3; k++) M.push((Sm[r*3]*Hm[k] + Sm[r*3+1]*Hm[3+k] + Sm[r*3+2]*Hm[6+k])*bright*con);   // contrast(brightness(S*H))
+  const off = (0.5 - 0.5*con).toFixed(4), f = v => v.toFixed(4);
+  const el = document.getElementById('fbCMm');
+  if(el) el.setAttribute('values', f(M[0]) + ' ' + f(M[1]) + ' ' + f(M[2]) + ' 0 ' + off + '  ' + f(M[3]) + ' ' + f(M[4]) + ' ' + f(M[5]) + ' 0 ' + off + '  ' + f(M[6]) + ' ' + f(M[7]) + ' ' + f(M[8]) + ' 0 ' + off + '  0 0 0 1 0');
+}
+// TRAILS and FEEDBACK keep their memories at a capped working resolution (LOOP_MAX_W wide): a smear and a feedback
+// loop are soft by nature, and every pass over them then costs the same on a 4K / Retina window as on a laptop.
+// Only the final blit back onto the view runs at full size. LW x LH is that working size.
+const LOOP_MAX_W = 1280, FB_MAX_W = 960;
+let LW = 0, LH = 0, FW = 0, FH = 0;   // TRAILS memory size, FEEDBACK memory size
 
 let trailsArmed = false, W = 0, H = 0, dpr = 1;
 // Rendering surfaces. Shapes draw into a low-res buffer (bw x bh, 512 wide) that is post-processed, then scaled to the view.
@@ -2153,141 +2184,172 @@ function pointsPass(ctx, W, H, tw, a){
 const ST_BUF = { c:null }, ST_VIEW = { c:null };
 const ST_BAYER = [0,32,8,40,2,34,10,42, 48,16,56,24,50,18,58,26, 12,44,4,36,14,46,6,38, 60,28,52,20,62,30,54,22, 3,35,11,43,1,33,9,41, 51,19,59,27,49,17,57,25, 15,47,7,39,13,45,5,37, 63,31,55,23,61,29,53,21];
 const ST_RAMP = ' .\'`^",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$';
+const ST_MAX_W = 640;                                  // working buffer width cap for the treatments
+// Pixels are handled as 32-bit words (little-endian: 0xAABBGGRR) and brightness as 0..255 integers, so the inner
+// loops are integer maths with one store per pixel instead of three clamped float stores.
+const stPack = (r, g, b) => (0xff000000 | (b << 16) | (g << 8) | r) >>> 0;
 function stylizePass(ST, ctx, src, W, H, tw, keys){
   const on = (k) => keys.includes(k) && eff[k] > 0.01;
   if(!keys.some(k => eff[k] > 0.01)) return;
   if(!ST.c){
     ST.c = document.createElement('canvas'); ST.x = ST.c.getContext('2d', { willReadFrequently:true });
-    ST.sw = 0; ST.sh = 0; ST.glyphs = null; ST.glyphSize = 0; ST.nfPts = null;
+    ST.g = document.createElement('canvas'); ST.gx = ST.g.getContext('2d');   // GPU-side shrink, so only the small copy is read back
+    ST.sw = 0; ST.sh = 0; ST.asciiFont = ''; ST.nfPts = null;
   }
   const pal = PALETTES[state.palette], bass = A[0] || 0;
   const fade = (a) => Math.min(1, a/0.25), chr = (a) => clamp((a - 0.25)/0.75, 0, 1);   // slider: fade-in, then character
   // ---- 1. working buffer ----
-  const scale = Math.min(1, 768/W), SW = Math.max(8, Math.round(W*scale)), SH = Math.max(8, Math.round(H*scale)), N = SW*SH;
+  const scale = Math.min(1, ST_MAX_W/W), SW = Math.max(8, Math.round(W*scale)), SH = Math.max(8, Math.round(H*scale)), N = SW*SH;
   if(ST.sw !== SW || ST.sh !== SH){
-    ST.sw = SW; ST.sh = SH; ST.c.width = SW; ST.c.height = SH;
-    ST.lum = new Float32Array(N); ST.tmp = new Uint8ClampedArray(N*4); ST.lum2 = new Float32Array(N);
+    ST.sw = SW; ST.sh = SH; ST.c.width = SW; ST.c.height = SH; ST.g.width = SW; ST.g.height = SH;
+    ST.lum = new Uint8Array(N); ST.tmp = new Uint32Array(N); ST.band = new Uint8Array(N); ST.rs = new Uint16Array(N);
   }
   const sx = ST.x;
   sx.setTransform(1, 0, 0, 1, 0, 0); sx.globalCompositeOperation = 'copy'; sx.globalAlpha = 1; sx.imageSmoothingEnabled = true;
-  sx.drawImage(src, 0, 0, W, H, 0, 0, SW, SH);
-  const img = sx.getImageData(0, 0, SW, SH), d = img.data, lum = ST.lum;
+  if(src === view){
+    // the view is a GPU canvas: shrink it on the GPU first, then read back only the small copy
+    const gx = ST.gx; gx.globalCompositeOperation = 'copy'; gx.imageSmoothingEnabled = true; gx.drawImage(src, 0, 0, W, H, 0, 0, SW, SH);
+    sx.drawImage(ST.g, 0, 0);
+  } else sx.drawImage(src, 0, 0, W, H, 0, 0, SW, SH);
+  const img = sx.getImageData(0, 0, SW, SH), d = img.data, d32 = new Uint32Array(d.buffer, d.byteOffset, N), lum = ST.lum, out32 = ST.tmp;
   let lumDirty = true, pixelsChanged = false;
   const relum = () => { lumDirty = true; pixelsChanged = true; };   // a treatment changed the pixels: brightness is stale
-  const needLum = () => { if(!lumDirty) return; lumDirty = false; for(let i = 0, q = 0; i < N; i++, q += 4) lum[i] = (d[q]*0.299 + d[q+1]*0.587 + d[q+2]*0.114)*(1/255); };
-  const cols = pal.rgb, cA = cols[0], cB = cols[1 % cols.length], cC = cols[2 % cols.length];
+  const needLum = () => {
+    if(!lumDirty) return; lumDirty = false;
+    for(let i = 0; i < N; i++){ const v = d32[i]; lum[i] = ((v & 255)*77 + ((v >>> 8) & 255)*150 + ((v >>> 16) & 255)*29) >>> 8; }
+  };
+  // blend out32 into the pixels at `mix` (straight copy when fully in)
+  const commit = (mix) => {
+    if(mix >= 0.999){ d32.set(out32); return; }
+    const m = (mix*256) | 0, im = 256 - m;
+    for(let i = 0; i < N; i++){
+      const a = d32[i], b = out32[i];
+      const r = ((a & 255)*im + (b & 255)*m) >>> 8, g = (((a >>> 8) & 255)*im + ((b >>> 8) & 255)*m) >>> 8, bl = (((a >>> 16) & 255)*im + ((b >>> 16) & 255)*m) >>> 8;
+      d32[i] = (0xff000000 | (bl << 16) | (g << 8) | r) >>> 0;
+    }
+  };
+  const cols = pal.rgb;
 
   // ---- 2. pixel treatments, in order ----
   // THRESHOLD: two tones. The level rises with the slider (and the bass), the fade blends it over the picture.
   if(on('thresh')){
     needLum();
-    const a = eff.thresh, mix = fade(a), thr = 0.3 + chr(a)*0.45 + bass*0.08, lo = pal.bgRgb || [0, 0, 0], hi = [255, 255, 255];
-    for(let i = 0, q = 0; i < N; i++, q += 4){
-      const on = lum[i] > thr, t = on ? hi : lo;
-      d[q] += (t[0] - d[q])*mix; d[q+1] += (t[1] - d[q+1])*mix; d[q+2] += (t[2] - d[q+2])*mix;
-    }
-    relum();
+    const a = eff.thresh, thr = ((0.3 + chr(a)*0.45 + bass*0.08)*255) | 0, lo = pal.bgRgb || [0, 0, 0], LO = stPack(lo[0], lo[1], lo[2]), HI = 0xffffffff >>> 0;
+    for(let i = 0; i < N; i++) out32[i] = lum[i] > thr ? HI : LO;
+    commit(fade(a)); relum();
   }
   // EDGES: Sobel edge magnitude, coloured with the picture's own colour (whitened as the slider rises); the first
   // quarter of the slider lays the edges over the picture, the rest fades the picture out under them.
   if(on('edges')){
     needLum();
-    const a = eff.edges, mix = fade(a), keep = 1 - chr(a), gainE = 2.2 + chr(a)*3, out = ST.tmp, white = chr(a)*0.7;
-    for(let y = 0; y < SH; y++) for(let x = 0; x < SW; x++){
-      const i = y*SW + x, q = i*4;
-      let e = 0;
-      if(x > 0 && y > 0 && x < SW - 1 && y < SH - 1){
-        const gx = -lum[i-SW-1] - 2*lum[i-1] - lum[i+SW-1] + lum[i-SW+1] + 2*lum[i+1] + lum[i+SW+1];
-        const gy = -lum[i-SW-1] - 2*lum[i-SW] - lum[i-SW+1] + lum[i+SW-1] + 2*lum[i+SW] + lum[i+SW+1];
-        e = Math.min(1, Math.sqrt(gx*gx + gy*gy)*gainE);
+    const a = eff.edges, keep = 1 - chr(a), gainE = (2.2 + chr(a)*3)/255, white = chr(a)*0.7, w255 = 255*white, nw = 1 - white;
+    for(let y = 0; y < SH; y++){
+      const edgeRow = y === 0 || y === SH - 1;
+      for(let x = 0, i = y*SW; x < SW; x++, i++){
+        let e = 0;
+        if(!edgeRow && x > 0 && x < SW - 1){
+          const tl = lum[i-SW-1], tc = lum[i-SW], tr = lum[i-SW+1], ml = lum[i-1], mr = lum[i+1], bl = lum[i+SW-1], bc = lum[i+SW], br = lum[i+SW+1];
+          const gx = tr + 2*mr + br - tl - 2*ml - bl, gy = bl + 2*bc + br - tl - 2*tc - tr;
+          e = Math.sqrt(gx*gx + gy*gy)*gainE; if(e > 1) e = 1;
+        }
+        const v = d32[i], r = v & 255, g = (v >>> 8) & 255, b = (v >>> 16) & 255, m = r > g ? (r > b ? r : b) : (g > b ? g : b), k = 255/(m || 1);
+        let R = r*keep + (r*k*nw + w255)*e, G = g*keep + (g*k*nw + w255)*e, B = b*keep + (b*k*nw + w255)*e;
+        R = R > 255 ? 255 : R | 0; G = G > 255 ? 255 : G | 0; B = B > 255 ? 255 : B | 0;
+        out32[i] = (0xff000000 | (B << 16) | (G << 8) | R) >>> 0;
       }
-      const r = d[q], g = d[q+1], b = d[q+2], m = Math.max(r, g, b, 1), k = 255/m;
-      const er = (r*k*(1 - white) + 255*white)*e, eg = (g*k*(1 - white) + 255*white)*e, eb = (b*k*(1 - white) + 255*white)*e;
-      out[q]   = r + (Math.min(255, r*keep + er) - r)*mix;
-      out[q+1] = g + (Math.min(255, g*keep + eg) - g)*mix;
-      out[q+2] = b + (Math.min(255, b*keep + eb) - b)*mix;
-      out[q+3] = 255;
     }
-    d.set(out); relum(); pixelsChanged = true;
+    commit(fade(a)); relum();
   }
   // CONTOUR: topographic lines. Brightness is smoothed, quantised into bands, and a line is drawn wherever the
   // band changes; the lines take a palette colour by band, the picture beneath fades to a dark wash.
   if(on('contour')){
     needLum();
-    const a = eff.contour, mix = fade(a), bands = 4 + Math.round(chr(a)*12 + bass*2), out = ST.tmp, l2 = ST.lum2, wash = 0.35*(1 - chr(a)*0.6);
-    for(let y = 0; y < SH; y++) for(let x = 0; x < SW; x++){          // 3x3 box blur so the bands have clean edges
-      const i = y*SW + x; let s = 0, c = 0;
-      for(let dy = -1; dy <= 1; dy++){ const yy = y + dy; if(yy < 0 || yy >= SH) continue; for(let dx = -1; dx <= 1; dx++){ const xx = x + dx; if(xx < 0 || xx >= SW) continue; s += lum[yy*SW + xx]; c++; } }
-      l2[i] = Math.floor(s/c*bands);
+    const a = eff.contour, bands = 4 + Math.round(chr(a)*12 + bass*2), band = ST.band, rs = ST.rs, wash = (0.35*(1 - chr(a)*0.6)*256) | 0;
+    // 3x3 box blur as two running-sum passes (edges repeat the border pixel), then quantise into bands
+    for(let y = 0; y < SH; y++){
+      const o = y*SW;
+      for(let x = 0; x < SW; x++){ const l = lum[o + (x > 0 ? x - 1 : 0)], c = lum[o + x], r = lum[o + (x < SW - 1 ? x + 1 : x)]; rs[o + x] = l + c + r; }
     }
-    for(let y = 0; y < SH; y++) for(let x = 0; x < SW; x++){
-      const i = y*SW + x, q = i*4, lv = l2[i];
-      const line = (x < SW - 1 && l2[i+1] !== lv) || (y < SH - 1 && l2[i+SW] !== lv);
-      let tr, tg, tb;
-      if(line){ const c = cols[lv % cols.length], k = 0.75 + 0.25*(lv/bands); tr = c[0]*k + 60; tg = c[1]*k + 60; tb = c[2]*k + 60; }
-      else { tr = d[q]*wash; tg = d[q+1]*wash; tb = d[q+2]*wash; }
-      out[q] = d[q] + (tr - d[q])*mix; out[q+1] = d[q+1] + (tg - d[q+1])*mix; out[q+2] = d[q+2] + (tb - d[q+2])*mix; out[q+3] = 255;
+    const bk = bands/(9*256);
+    for(let y = 0; y < SH; y++){
+      const o = y*SW, up = (y > 0 ? y - 1 : 0)*SW, dn = (y < SH - 1 ? y + 1 : y)*SW;
+      for(let x = 0; x < SW; x++) band[o + x] = ((rs[up + x] + rs[o + x] + rs[dn + x])*bk) | 0;
     }
-    d.set(out); relum(); pixelsChanged = true;
+    const LINE = []; for(let lv = 0; lv <= bands; lv++){ const c = cols[lv % cols.length], k = 0.75 + 0.25*(lv/bands); LINE.push(stPack(Math.min(255, c[0]*k + 60) | 0, Math.min(255, c[1]*k + 60) | 0, Math.min(255, c[2]*k + 60) | 0)); }
+    for(let y = 0; y < SH; y++){
+      const lastRow = y === SH - 1;
+      for(let x = 0, i = y*SW; x < SW; x++, i++){
+        const lv = band[i];
+        if((x < SW - 1 && band[i+1] !== lv) || (!lastRow && band[i+SW] !== lv)) out32[i] = LINE[lv];
+        else { const v = d32[i]; out32[i] = (0xff000000 | (((((v >>> 16) & 255)*wash) >>> 8) << 16) | (((((v >>> 8) & 255)*wash) >>> 8) << 8) | (((v & 255)*wash) >>> 8)) >>> 0; }
+      }
+    }
+    commit(fade(a)); relum();
   }
-  // PIXEL SORT: in every row, runs of pixels brighter than a threshold are sorted by brightness, so bright areas
-  // smear into streaks. The threshold falls as the slider rises (longer runs); the bass pulls it lower still; the
-  // upper half of the slider flips to vertical columns.
+  // SMEAR (pixel sort): in every row, runs of pixels brighter than a threshold are sorted by brightness, so bright
+  // areas smear into streaks. The threshold falls as the slider rises (longer runs); the bass pulls it lower still;
+  // the upper half of the slider flips to vertical columns.
   if(on('psort')){
     needLum();
-    const a = eff.psort, mix = fade(a), c = chr(a), thr = clamp(0.8 - c*1.2 - bass*0.15, 0.06, 0.95), vertical = c > 0.5;
-    const out = ST.tmp; out.set(d);
+    const a = eff.psort, c = chr(a), thr = (clamp(0.8 - c*1.2 - bass*0.15, 0.06, 0.95)*255) | 0, vertical = c > 0.5;
+    out32.set(d32);
     const L1 = vertical ? SH : SW, L2 = vertical ? SW : SH, stepA = vertical ? SW : 1, stepB = vertical ? 1 : SW;
     // counting sort on 8-bit brightness: each run is bucketed then written back in order, so the cost is linear
-    const counts = new Int32Array(257), order = new Int32Array(L1);
+    const counts = ST.counts || (ST.counts = new Int32Array(257)); if(!ST.order || ST.order.length < L1) ST.order = new Int32Array(Math.max(SW, SH));
+    const order = ST.order;
     for(let b = 0; b < L2; b++){
+      const base = b*stepB;
       let s = 0;
       while(s < L1){
-        while(s < L1 && lum[b*stepB + s*stepA] <= thr) s++;
-        let e = s; while(e < L1 && lum[b*stepB + e*stepA] > thr) e++;
+        while(s < L1 && lum[base + s*stepA] <= thr) s++;
+        let e = s; while(e < L1 && lum[base + e*stepA] > thr) e++;
         const len = e - s;
         if(len > 2){
           counts.fill(0);
-          for(let k = 0; k < len; k++) counts[((lum[b*stepB + (s + k)*stepA]*255)|0) + 1]++;
+          for(let k = 0; k < len; k++) counts[lum[base + (s + k)*stepA] + 1]++;
           for(let k = 1; k < 257; k++) counts[k] += counts[k - 1];
-          for(let k = 0; k < len; k++){ const key = (lum[b*stepB + (s + k)*stepA]*255)|0; order[counts[key]++] = k; }
-          for(let k = 0; k < len; k++){ const from = (b*stepB + (s + order[k])*stepA)*4, to = (b*stepB + (s + k)*stepA)*4; out[to] = d[from]; out[to+1] = d[from+1]; out[to+2] = d[from+2]; }
+          for(let k = 0; k < len; k++) order[counts[lum[base + (s + k)*stepA]]++] = k;
+          for(let k = 0; k < len; k++) out32[base + (s + k)*stepA] = d32[base + (s + order[k])*stepA];
         }
         s = e;
       }
     }
-    if(mix >= 0.999) d.set(out); else for(let q = 0; q < N*4; q += 4){ d[q] += (out[q] - d[q])*mix; d[q+1] += (out[q+1] - d[q+1])*mix; d[q+2] += (out[q+2] - d[q+2])*mix; }
-    relum();
+    commit(fade(a)); relum();
   }
   // DITHER: ordered (Bayer 8x8) dithering to two tones per channel, in blocks that grow with the slider, so the
   // picture becomes a 1-bit screen of coarse dots; the dark tone is the palette background.
   if(on('dither')){
-    needLum();
-    const a = eff.dither, mix = fade(a), px = 1 + Math.round(chr(a)*5), lo = pal.bgRgb || [0, 0, 0], boost = 1.15 + bass*0.2;
-    for(let y = 0; y < SH; y += px) for(let x = 0; x < SW; x += px){
-      const i0 = y*SW + x, q0 = i0*4, th = (ST_BAYER[((y/px|0) & 7)*8 + ((x/px|0) & 7)] + 0.5)/64*255;
-      const r = d[q0]*boost > th ? 255 : lo[0], g = d[q0+1]*boost > th ? 255 : lo[1], b = d[q0+2]*boost > th ? 255 : lo[2];
-      for(let yy = y; yy < Math.min(SH, y + px); yy++) for(let xx = x; xx < Math.min(SW, x + px); xx++){
-        const q = (yy*SW + xx)*4; d[q] += (r - d[q])*mix; d[q+1] += (g - d[q+1])*mix; d[q+2] += (b - d[q+2])*mix;
+    const a = eff.dither, px = 1 + Math.round(chr(a)*5), lo = pal.bgRgb || [0, 0, 0], boost = 1.15 + bass*0.2;
+    for(let y = 0; y < SH; y += px){
+      const by = ((y/px) | 0) & 7, yEnd = Math.min(SH, y + px);
+      for(let x = 0; x < SW; x += px){
+        const th = (ST_BAYER[by*8 + (((x/px) | 0) & 7)] + 0.5)*(255/64)/boost, v = d32[y*SW + x];
+        const P = stPack((v & 255) > th ? 255 : lo[0], ((v >>> 8) & 255) > th ? 255 : lo[1], ((v >>> 16) & 255) > th ? 255 : lo[2]);
+        const xEnd = Math.min(SW, x + px);
+        for(let yy = y; yy < yEnd; yy++){ const o = yy*SW; for(let xx = x; xx < xEnd; xx++) out32[o + xx] = P; }
       }
     }
-    relum();
+    commit(fade(a)); relum();
   }
-  // NOISE FIELD (pixel part): the picture is pulled along a slowly turning noise flow, so it smears into streams
+  // PRESSURE (noise field, pixel part): the picture is pulled along a slowly turning noise flow, so it smears into
+  // streams. The flow is smooth, so its offset is sampled on a 4-pixel grid and shared by the pixels in each cell.
   if(on('noisefield')){
-    const a = eff.noisefield, mix = fade(a), amt = (2 + chr(a)*14 + bass*4)*scale, out = ST.tmp, t = tw*0.25;
-    // the flow is smooth, so its direction is sampled on a 4-pixel grid and shared by the pixels in each cell
+    const a = eff.noisefield, amt = (2 + chr(a)*14 + bass*4)*scale, t = tw*0.25;
     const G = 4, gw = Math.ceil(SW/G) + 1, gh = Math.ceil(SH/G) + 1;
-    if(!ST.flow || ST.flow.length !== gw*gh*2) ST.flow = new Float32Array(gw*gh*2);
+    if(!ST.flow || ST.flow.length !== gw*gh*2) ST.flow = new Int16Array(gw*gh*2);
     const F = ST.flow;
-    for(let gy = 0; gy < gh; gy++) for(let gx = 0; gx < gw; gx++){ const ang = n2(gx*G/SW*3.1, gy*G/SH*3.1, t)*Math.PI*2, o = (gy*gw + gx)*2; F[o] = Math.cos(ang)*amt; F[o+1] = Math.sin(ang)*amt; }
-    for(let y = 0; y < SH; y++) for(let x = 0; x < SW; x++){
-      const q = (y*SW + x)*4, o = (((y/G)|0)*gw + ((x/G)|0))*2;
-      const xs = Math.round(x + F[o]), ys = Math.round(y + F[o+1]);
-      const qs = (clamp(ys, 0, SH - 1)*SW + clamp(xs, 0, SW - 1))*4;
-      out[q] = d[q] + (d[qs] - d[q])*mix; out[q+1] = d[q+1] + (d[qs+1] - d[q+1])*mix; out[q+2] = d[q+2] + (d[qs+2] - d[q+2])*mix; out[q+3] = 255;
+    for(let gy = 0; gy < gh; gy++) for(let gx = 0; gx < gw; gx++){ const ang = n2(gx*G/SW*3.1, gy*G/SH*3.1, t)*TAU, o = (gy*gw + gx)*2; F[o] = Math.round(Math.cos(ang)*amt); F[o+1] = Math.round(Math.sin(ang)*amt); }
+    const xm = SW - 1, ym = SH - 1;
+    for(let y = 0; y < SH; y++){
+      const fo = ((y >> 2)*gw)*2;
+      for(let x = 0, i = y*SW; x < SW; x++, i++){
+        const o = fo + (x >> 2)*2;
+        let xs = x + F[o], ys = y + F[o+1];
+        xs = xs < 0 ? 0 : xs > xm ? xm : xs; ys = ys < 0 ? 0 : ys > ym ? ym : ys;
+        out32[i] = d32[ys*SW + xs];
+      }
     }
-    d.set(out); relum(); pixelsChanged = true;
+    commit(fade(a)); relum();
   }
   if(pixelsChanged){
     sx.putImageData(img, 0, 0);
@@ -2298,9 +2360,11 @@ function stylizePass(ST, ctx, src, W, H, tw, keys){
   }
 
   // ---- 3. drawn treatments at full resolution, reading the buffer ----
-  const sample = (x, y) => { const i = clamp(y|0, 0, SH - 1)*SW + clamp(x|0, 0, SW - 1); return i; };
+  const xm = SW - 1, ym = SH - 1;
+  const sample = (x, y) => { x |= 0; y |= 0; return (y < 0 ? 0 : y > ym ? ym : y)*SW + (x < 0 ? 0 : x > xm ? xm : x); };
   // HALFTONE: a grid of dots on the palette background, each sized by the brightness of its cell and coloured by
-  // the cell; the grid pitch grows with the slider, the bass fattens the dots.
+  // the cell; the grid pitch grows with the slider, the bass fattens the dots. Dots are grouped into six brightness
+  // bands, one fill each.
   if(on('halftone')){
     needLum();
     const a = eff.halftone, mix = fade(a), cell = lerp(6, 26, chr(a))*Math.max(1, W/1280), bg = pal.bg;
@@ -2308,37 +2372,41 @@ function stylizePass(ST, ctx, src, W, H, tw, keys){
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
     const B = 6, paths = [], pcol = [];
     for(let b = 0; b < B; b++){ paths.push(new Path2D()); pcol.push([0, 0, 0, 0]); }
-    const cx0 = cell*0.5, cy0 = cell*0.5;
+    const cx0 = cell*0.5, cy0 = cell*0.5, rk = cell*0.55*(1 + bass*0.25)/16;   // sqrt(l/255)*16 = sqrt(l)
     for(let y = cy0; y < H + cell; y += cell) for(let x = cx0; x < W + cell; x += cell){
-      const i = sample(x*scale, y*scale), q = i*4, l = lum[i];
-      if(l < 0.03) continue;
-      const rad = cell*0.55*Math.sqrt(l)*(1 + bass*0.25), b = Math.min(B - 1, (l*B)|0);
-      pcol[b][0] += d[q]; pcol[b][1] += d[q+1]; pcol[b][2] += d[q+2]; pcol[b][3]++;
+      const i = sample(x*scale, y*scale), l = lum[i];
+      if(l < 8) continue;
+      const rad = rk*Math.sqrt(l), b = (l*B) >> 8, v = d32[i], pc = pcol[b];
+      pc[0] += v & 255; pc[1] += (v >>> 8) & 255; pc[2] += (v >>> 16) & 255; pc[3]++;
       paths[b].moveTo(x + rad, y); paths[b].arc(x, y, rad, 0, TAU);
     }
     for(let b = 0; b < B; b++){ const c = pcol[b]; if(!c[3]) continue; const k = 1/c[3]; ctx.fillStyle = m3Rgba([c[0]*k, c[1]*k, c[2]*k], 1.15, 1); ctx.fill(paths[b]); }
     ctx.restore();
   }
-  // ASCII: the picture as a grid of characters from a brightness ramp, coloured by the picture beneath. Glyphs
-  // come from a cached atlas; a mask of glyphs is built with drawImage and the blocky colour is keyed through it.
+  // ASCII: the picture as a grid of characters from a brightness ramp, coloured by the picture beneath. Each row of
+  // characters is one fillText of a monospace string, stretched so every character is exactly one cell wide; the
+  // resulting white mask is then coloured by keying the (blocky) picture through it.
   if(on('ascii')){
     needLum();
     const a = eff.ascii, mix = fade(a), cell = Math.round(lerp(9, 24, chr(a))*Math.max(1, W/1280)), ramp = ST_RAMP, RL = ramp.length;
-    if(!ST.glyphs || ST.glyphSize !== cell){
-      const g = document.createElement('canvas'); g.width = cell*RL; g.height = cell;
-      const gx = g.getContext('2d'); gx.fillStyle = '#fff'; gx.font = 'bold ' + Math.round(cell*1.05) + 'px monospace'; gx.textAlign = 'center'; gx.textBaseline = 'middle';
-      for(let k = 0; k < RL; k++) gx.fillText(ramp[k], k*cell + cell*0.5, cell*0.55);
-      ST.glyphs = g; ST.glyphSize = cell;
-    }
     if(!ST.m){ ST.m = document.createElement('canvas'); ST.mx = ST.m.getContext('2d'); }
     if(ST.m.width !== W || ST.m.height !== H){ ST.m.width = W; ST.m.height = H; }
-    const mx = ST.mx; mx.setTransform(1, 0, 0, 1, 0, 0); mx.clearRect(0, 0, W, H); mx.globalCompositeOperation = 'source-over';
-    const gain = 1 + bass*0.3;
-    for(let y = 0; y < H; y += cell) for(let x = 0; x < W; x += cell){
-      const i = sample((x + cell*0.5)*scale, (y + cell*0.5)*scale), l = Math.min(1, lum[i]*gain);
-      const k = Math.min(RL - 1, (l*RL)|0); if(k === 0) continue;
-      mx.drawImage(ST.glyphs, k*cell, 0, cell, cell, x, y, cell, cell);
+    const mx = ST.mx; mx.setTransform(1, 0, 0, 1, 0, 0); mx.globalCompositeOperation = 'source-over'; mx.globalAlpha = 1; mx.clearRect(0, 0, W, H);
+    const font = 'bold ' + Math.round(cell*1.05) + 'px monospace';
+    mx.font = font; mx.fillStyle = '#fff'; mx.textAlign = 'left'; mx.textBaseline = 'middle';
+    if(ST.asciiFont !== font){ ST.asciiFont = font; ST.asciiAdv = mx.measureText('M').width || cell*0.6; }
+    const sxk = cell/ST.asciiAdv, gain = 1 + bass*0.3, cols = Math.ceil(W/cell), chars = new Array(cols);
+    for(let y = 0; y < H; y += cell){
+      let any = false;
+      for(let c = 0; c < cols; c++){
+        let l = lum[sample((c*cell + cell*0.5)*scale, (y + cell*0.5)*scale)]*gain; if(l > 255) l = 255;
+        const k = (l*RL) >> 8; chars[c] = ramp[k < RL ? k : RL - 1]; if(k) any = true;
+      }
+      if(!any) continue;
+      mx.setTransform(sxk, 0, 0, 1, 0, y + cell*0.55);
+      mx.fillText(chars.join(''), 0, 0);
     }
+    mx.setTransform(1, 0, 0, 1, 0, 0);
     // colour: the blocky picture keyed through the glyph mask
     mx.globalCompositeOperation = 'source-in'; mx.imageSmoothingEnabled = false;
     mx.drawImage(ST.c, 0, 0, SW, SH, 0, 0, W, H); mx.imageSmoothingEnabled = true;
@@ -2347,27 +2415,37 @@ function stylizePass(ST, ctx, src, W, H, tw, keys){
     ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(ST.m, 0, 0); ctx.drawImage(ST.m, 0, 0);   // twice: glyphs read brighter than the cells they came from
     ctx.restore();
   }
-  // NOISE FIELD (drawn part): short streamlines follow the same flow, each in the colour of the picture where it
-  // starts, so the smeared picture is combed with strands; the strand count grows with the slider.
+  // PRESSURE (drawn part): short hair-fine streamlines follow the same flow, in the colour of the picture where they
+  // start, so the smeared picture is combed with strands; the strand count grows with the slider. Strands are
+  // grouped into eight brightness bands and each band is one stroke, instead of one stroke per strand.
   if(on('noisefield')){
     needLum();
     const a = eff.noisefield, mix = fade(a), n = Math.round(lerp(300, 2200, chr(a))), t = tw*0.25;
-    if(!ST.nfPts || ST.nfPts.length < n*2){ ST.nfPts = new Float32Array(2200*2); const r = mulberry32(0x9e37); for(let i = 0; i < 2200*2; i++) ST.nfPts[i] = r(); }
-    const P = ST.nfPts, segs = 7, len = Math.max(3, Math.min(W, H)*0.012*(1 + bass*0.6));
-    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = mix*0.85; ctx.globalCompositeOperation = 'source-over'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(0.5, Math.min(W, H)*0.0011);   // hair-fine strands
+    if(!ST.nfPts){ ST.nfPts = new Float32Array(2200*2); const r = mulberry32(0x9e37); for(let i = 0; i < 2200*2; i++) ST.nfPts[i] = r(); }
+    const P = ST.nfPts, segs = 7, len = Math.max(3, Math.min(W, H)*0.012*(1 + bass*0.6)), B = 8, paths = [], pcol = [];
+    for(let b = 0; b < B; b++){ paths.push(new Path2D()); pcol.push([0, 0, 0, 0]); }
+    const fx = 3.1/W, fy = 3.1/H;
     for(let k = 0; k < n; k++){
       let x = P[k*2]*W, y = P[k*2 + 1]*H;
-      const i = sample(x*scale, y*scale), q = i*4, l = lum[i];
-      if(l < 0.05) continue;
-      ctx.strokeStyle = m3Rgba([d[q], d[q+1], d[q+2]], 1.3, 0.5 + l*0.5);
-      ctx.beginPath(); ctx.moveTo(x, y);
-      for(let s = 0; s < segs; s++){ const ang = n2(x/W*3.1, y/H*3.1, t)*Math.PI*2; x += Math.cos(ang)*len; y += Math.sin(ang)*len; ctx.lineTo(x, y); }
-      ctx.stroke();
+      const i = sample(x*scale, y*scale), l = lum[i];
+      if(l < 13) continue;
+      const b = (l*B) >> 8, v = d32[i], pc = pcol[b], p = paths[b];
+      pc[0] += v & 255; pc[1] += (v >>> 8) & 255; pc[2] += (v >>> 16) & 255; pc[3]++;
+      p.moveTo(x, y);
+      for(let s = 0; s < segs; s++){ const ang = n2(x*fx, y*fy, t)*TAU; x += Math.cos(ang)*len; y += Math.sin(ang)*len; p.lineTo(x, y); }
+    }
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(0.5, Math.min(W, H)*0.0011);   // hair-fine strands
+    for(let b = 0; b < B; b++){
+      const c = pcol[b]; if(!c[3]) continue; const k = 1/c[3];
+      ctx.globalAlpha = mix*0.85*(0.5 + (b + 0.5)/B*0.5);
+      ctx.strokeStyle = m3Rgba([c[0]*k, c[1]*k, c[2]*k], 1.3, 1);
+      ctx.stroke(paths[b]);
     }
     ctx.restore();
   }
 }
 
+const PB_SLICES = 8;
 const PB = { c:null, x:null, s:null, sx:null, pw:0, ph:0, sw:0, sh:0, luma:null, gx:null, gy:null, tex:null, texPat:null, armed:false, layers:[null, null], lastT:0 };
 const PB_COL_T = 2.2, PB_DIR_T = 3.0, PB_FADE_T = 1.6;   // seconds to settle: colour, direction/length, fine-stroke presence
 function paintTexture(){
@@ -2478,7 +2556,13 @@ function paintPass(ctx, W, H, tw, a){
   }
   PB.pw = pw; PB.ph = ph; PB.sw = sw; PB.sh = sh;
   const dt = clamp(tw - PB.lastT, 0, 0.1); PB.lastT = tw;
-  const kCol = PB.armed ? 1 - Math.exp(-dt/PB_COL_T) : 1, kDir = PB.armed ? 1 - Math.exp(-dt/PB_DIR_T) : 1, kFade = PB.armed ? 1 - Math.exp(-dt/PB_FADE_T) : 1;
+  // STROKE BUDGET: a full re-stroke is ~17,000 brush strokes, far too many for one frame. The paint canvas is never
+  // wiped and every stroke eases over seconds, so each frame updates and repaints only one of PB_SLICES interleaved
+  // slices of the cells (round-robin); the easing uses the time since that slice's last turn, so the painting
+  // settles at the same speed as before. A new painting fills in over the first PB_SLICES frames on top of the
+  // underpainting.
+  const S = PB.armed ? PB_SLICES : 1, phase = PB.armed ? (PB.phase = ((PB.phase || 0) + 1) % S) : 0, dtS = dt*S;
+  const kCol = PB.armed ? 1 - Math.exp(-dtS/PB_COL_T) : 1, kDir = PB.armed ? 1 - Math.exp(-dtS/PB_DIR_T) : 1, kFade = PB.armed ? 1 - Math.exp(-dtS/PB_FADE_T) : 1;
   // shrink the picture and pull its pixels
   const sx = PB.sx;
   sx.globalCompositeOperation = 'copy'; sx.imageSmoothingEnabled = true; sx.drawImage(view, 0, 0, W, H, 0, 0, sw, sh);
@@ -2511,7 +2595,7 @@ function paintPass(ctx, W, H, tw, a){
     if(!Ly || Ly.cols !== cols || Ly.rows !== rows || Ly.sp !== sp) Ly = PB.layers[li] = buildPaintLayer(cols, rows, sp, salt, pw, ph, sw, sh, kx, ky);
     const M = Ly.m, IN = Ly.init, C = Ly.C, CQ = Ly.cq, CS = Ly.cs, n = cols*rows;
     const lim = wid;
-    for(let cell = 0; cell < n; cell++){
+    for(let cell = phase; cell < n; cell += S){
       const o = cell*PBC;
       if(keep < 1 && C[o+3] > keep) continue;
       const cx = C[o], cy = C[o+1];
@@ -2565,12 +2649,14 @@ function paintPass(ctx, W, H, tw, a){
   layer(0, baseMin,      base,      0.8, lerp(2.6, 4.2, loose), -1,                      true,  1.0);   // block-in: covers everything
   layer(1, baseMin*0.38, base*0.38, 0.9, lerp(2.2, 3.0, loose), lerp(0.06, 0.18, loose), false, 2.0);   // detail: fades in on edges only
   PB.armed = true;
-  // canvas weave over the paint
-  paintTexture();
-  if(!PB.texPat) PB.texPat = x.createPattern(PB.tex, 'repeat');
-  x.globalCompositeOperation = 'overlay'; x.globalAlpha = 0.28 + 0.22*loose;
-  x.fillStyle = PB.texPat;
-  const tsc = pw/960; x.save(); x.scale(tsc, tsc); _protoFillRect.call(x, 0, 0, pw/tsc, ph/tsc); x.restore();
+  // canvas weave over the paint, once per full cycle of slices (the same rate per stroke as before)
+  if(phase === 0){
+    paintTexture();
+    if(!PB.texPat) PB.texPat = x.createPattern(PB.tex, 'repeat');
+    x.globalCompositeOperation = 'overlay'; x.globalAlpha = 0.28 + 0.22*loose;
+    x.fillStyle = PB.texPat;
+    const tsc = pw/960; x.save(); x.scale(tsc, tsc); _protoFillRect.call(x, 0, 0, pw/tsc, ph/tsc); x.restore();
+  }
   x.restore();
   ctx.save(); ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none'; ctx.imageSmoothingEnabled = true;
   ctx.globalAlpha = cover;
@@ -2598,25 +2684,31 @@ function targetBufferWidth(){
   for(const [lim, px] of BUFFER_STEPS){ if(f < lim){ w = px; break; } }
   return Math.max(256, Math.min(w, W || w));
 }
-function resize(){
-  dpr = Math.min(2, window.devicePixelRatio || 1);
-  W = Math.round(innerWidth * dpr);
-  H = Math.round(innerHeight * dpr);
-  view.width = W; view.height = H;
+// The shape buffers follow the RESOLUTION tier. Stepping between tiers used to run the whole resize() - every
+// full-size canvas reallocated and the TRAILS / FEEDBACK memories wiped - which is why dragging the slider across
+// a tier boundary stalled the picture. Now only the three buffer-sized canvases change.
+function resizeBuffers(){
   bw = targetBufferWidth();
   bh = Math.max(64, Math.round(bw * (H / W)));
   buf.width = bw; buf.height = bh;
   downBuf.width = bw; downBuf.height = bh;
   downBuf2.width = bw; downBuf2.height = bh;
-  trail.width = W; trail.height = H;
+  if(sharedSrcBuffer.length < bw * bh * 4) sharedSrcBuffer = new Uint8ClampedArray(bw * bh * 4);
+}
+function resize(){
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = Math.round(innerWidth * dpr);
+  H = Math.round(innerHeight * dpr);
+  view.width = W; view.height = H;
+  resizeBuffers();
+  LW = Math.min(W, LOOP_MAX_W); LH = Math.max(2, Math.round(H*LW/W));
+  trail.width = LW; trail.height = LH;
   fxc.width = W; fxc.height = H;
   txtBuf.width = W; txtBuf.height = H; txtDown.width = W; txtDown.height = H;
-  fbA.width = W; fbA.height = H; fbB.width = W; fbB.height = H;
+  FW = Math.min(W, FB_MAX_W); FH = Math.max(2, Math.round(H*FW/W));   // the loop only adds its soft echo over the full-res live frame, so it can be smaller than the trail
+  fbA.width = FW; fbA.height = FH; fbB.width = FW; fbB.height = FH; fbL.width = FW; fbL.height = FH;
   fbArmed = false;
   trailsArmed = false;
-  if(sharedSrcBuffer.length < bw * bh * 4) {
-    sharedSrcBuffer = new Uint8ClampedArray(bw * bh * 4);
-  }
 }
 addEventListener('resize', resize);
 
@@ -3920,7 +4012,7 @@ function drawForest(t){
   const pal = PALETTES[state.palette], gain = 0.25 + state.audio * 1.25;
   bctx.globalCompositeOperation = 'source-over';
   const FO = drawForest;
-  if(!FO.oc){ FO.oc = document.createElement('canvas'); FO.octx = FO.oc.getContext('2d'); FO.z = 0; FO.x = 0; FO.lastT = t; FO.sm = new Float32Array(4); FO.bank = 0; }
+  if(!FO.oc){ FO.oc = document.createElement('canvas'); FO.octx = FO.oc.getContext('2d', { willReadFrequently: true }); FO.z = 0; FO.x = 0; FO.lastT = t; FO.sm = new Float32Array(4); FO.bank = 0; }
   const W = 480, H = Math.max(64, Math.round(W*bh/bw)), px = W/208;
   if(FO.oc.width !== W || FO.oc.height !== H){ FO.oc.width = W; FO.oc.height = H; FO.gimg = FO.octx.createImageData(W, H); }
   if(FO.seed !== state.seed){
@@ -3964,6 +4056,13 @@ function drawForest(t){
     c.fillStyle = 'rgba(200,215,235,0.9)'; c.fillRect(cx + 1*px, cy + 6*px, cw - 2*px, 1*px);
   }
   // ---- mountains: two parallax ranges with snow caps, column-filled ----
+  // The sky, sun and clouds are read back once and the mountains and the ground are written straight into the pixels
+  // (then put back in one call), instead of up to five fillRects per pixel column.
+  const img = c.getImageData(0, 0, W, H), gd = img.data;
+  const col1 = (x, y0, y1, r, g, b) => {                           // one pixel column, rows y0..y1 inclusive, clipped to the sky band
+    if(y0 < 0) y0 = 0; if(y1 > horizon) y1 = horizon; r |= 0; g |= 0; b |= 0;
+    for(let y = y0, o = (y0*W + x)*4; y <= y1; y++, o += W*4){ gd[o] = r; gd[o + 1] = g; gd[o + 2] = b; gd[o + 3] = 255; }
+  };
   const ranges = [[0.08, 0.55, 1.0], [0.16, 0.85, 0.0]];      // parallax, scale, far-haze
   for(const [par, sc, haze] of ranges){
     for(let x = 0; x < W; x++){
@@ -3977,18 +4076,18 @@ function drawForest(t){
       const snowY = Math.round(horizon - h*C.snow - (((wxi*7) % 4 + 4) % 4)*px + tri(wx*3.1)*3*px);
       const hz_ = (col) => [lerp(col[0], skyBot[0], haze*0.45), lerp(col[1], skyBot[1], haze*0.45), lerp(col[2], skyBot[2], haze*0.45)];
       const s = hz_(snowC), ra = hz_(rockA), rb = hz_(rockB), sd = hz_([200, 210, 225]);
-      c.fillStyle = rgb(...s); c.fillRect(x, top, 1, Math.max(0, snowY - top));
-      c.fillStyle = rgb(...rb); c.fillRect(x, Math.max(top, snowY), 1, horizon - Math.max(top, snowY) + 1);
+      const r0 = Math.max(top, snowY);
+      col1(x, top, snowY - 1, s[0], s[1], s[2]);
+      col1(x, r0, horizon, rb[0], rb[1], rb[2]);
       // rock texture: hashed patches + shadow on the right-hand slopes
-      c.fillStyle = rgb(...ra);
-      for(let y = Math.max(top, snowY); y <= horizon; y += 2*px){ if(cityHash(wxi >> 1, Math.floor(y/px) >> 1, 9) < 0.45) c.fillRect(x, y, 1, 2*px); }
-      if(tri(wx*0.7 + 0.5) > 0.5 && cityHash(wxi, 3, 8) < 0.5){ c.fillStyle = 'rgba(0,0,0,0.18)'; c.fillRect(x, Math.max(top, snowY), 1, horizon - Math.max(top, snowY) + 1); }
+      for(let y = r0; y <= horizon; y += 2*px){ if(cityHash(wxi >> 1, Math.floor(y/px) >> 1, 9) < 0.45) col1(x, Math.round(y), Math.round(y + 2*px) - 1, ra[0], ra[1], ra[2]); }
+      if(tri(wx*0.7 + 0.5) > 0.5 && cityHash(wxi, 3, 8) < 0.5){ for(let y = Math.max(0, r0), o = (y*W + x)*4; y <= horizon; y++, o += W*4){ gd[o] *= 0.82; gd[o + 1] *= 0.82; gd[o + 2] *= 0.82; } }
       // snow streaks running down from the cap
-      if(cityHash(wxi >> 2, 1, 10) < 0.3){ c.fillStyle = rgb(...sd); c.fillRect(x, snowY, 1, Math.max(0, (horizon - snowY)*cityHash(wxi >> 2, 2, 10)*0.5)); }
+      if(cityHash(wxi >> 2, 1, 10) < 0.3){ const len = Math.round(Math.max(0, (horizon - snowY)*cityHash(wxi >> 2, 2, 10)*0.5)); if(len > 0) col1(x, snowY, snowY + len - 1, sd[0], sd[1], sd[2]); }
     }
   }
-  // ---- ground: perspective rows of hashed grass tiles rushing past, written per pixel into an ImageData ----
-  const gd = FO.gimg.data, g0 = horizon + 1;
+  // ---- ground: perspective rows of hashed grass tiles rushing past, written per pixel into the same pixels ----
+  const g0 = horizon + 1;
   const skyR = skyBot[0], skyG = skyBot[1], skyB = skyBot[2];
   for(let y = g0; y < H; y++){
     const z = camH*f/(y - horizon);                                  // distance of this row
@@ -4009,7 +4108,7 @@ function drawForest(t){
       gd[o] = col[0]*ik + skyR*k; gd[o + 1] = col[1]*ik + skyG*k; gd[o + 2] = col[2]*ik + skyB*k; gd[o + 3] = 255;
     }
   }
-  if(H > g0) c.putImageData(FO.gimg, 0, 0, 0, g0, W, H - g0);
+  c.putImageData(img, 0, 0);                                        // sky band with the mountains, and the ground, in one go
   // ---- trees: hashed world grid, drawn far to near ----
   const trees = [];
   const zNear = 0.6, zFar = 30;
@@ -4738,6 +4837,7 @@ function drawModularSynth(t){
 // light-shaft detail there is. Small crows cross the far woods now and then, behind the trees. Bass swells the light
 // shafts and leans the camera in, low-mids are the wind through the leaves (and send crows more often), high-mids
 // ripple the moss, treble brings out drifting motes. Nothing flashes.
+const GROVE_FAR_Z = 14, GROVE_FAR_EVERY = 4;
 function drawGrove(t){
   const pal = PALETTES[state.palette];
   bctx.globalCompositeOperation = 'source-over';
@@ -4808,7 +4908,7 @@ function drawGrove(t){
   const f = W*0.78*(1 + G.lean*0.06);                          // focal length; bass leans the camera in a touch
   const horizon = H*0.44, cx = W*0.5;
   const fog = dz => 1 - Math.exp(-dz*0.075);
-  const c = G.c;
+  let c = G.c;                                                 // swapped to the far-layer canvas while that layer is repainted
   c.clearRect(0, 0, W, H); c.lineCap = 'round'; c.lineJoin = 'round';
   const dab = (x, y, rx, ry, col, a, rot = 0) => { c.fillStyle = rgb(col, 1, a); c.beginPath(); c.ellipse(x, y, Math.max(0.4, rx), Math.max(0.4, ry), rot, 0, TAU); c.fill(); };
 
@@ -4879,11 +4979,25 @@ function drawGrove(t){
     trees.push({ crow: cr, dz });
   }
   trees.sort((p, q) => q.dz - p.dz);
-  for(const T of trees){
+  // FAR LAYER: trees beyond GROVE_FAR_Z move less than a third of a pixel a frame (parallax falls off with the square
+  // of the distance), so they are painted into their own layer only every GROVE_FAR_EVERY frames and that layer is
+  // laid down each frame; near trees and the crows are painted live on top. This roughly halves the dab count.
+  if(!G.farCv){ G.farCv = document.createElement('canvas'); G.farC = G.farCv.getContext('2d'); G.farTick = 0; }
+  if(G.farCv.width !== W || G.farCv.height !== H){ G.farCv.width = W; G.farCv.height = H; G.farTick = 0; }
+  const farKey = key + '|' + dens.toFixed(3);
+  if(G.farKey !== farKey){ G.farKey = farKey; G.farTick = 0; }
+  if(G.farTick++ % GROVE_FAR_EVERY === 0){
+    const c0 = c; c = G.farC; c.clearRect(0, 0, W, H); c.lineCap = 'round'; c.lineJoin = 'round';
+    for(const T of trees) if(!T.crow && T.dz >= GROVE_FAR_Z) paintTree(T);
+    c = c0;
+  }
+  c.drawImage(G.farCv, 0, 0);
+  for(const T of trees) if(T.crow || T.dz < GROVE_FAR_Z) paintTree(T);
+  function paintTree(T){
     if(T.crow){
       const cr = T.crow, p = proj(cr.x, cr.z), k = fog(T.dz), sy = horizon + (camH - cr.y)*p.s;
       const sz = 0.3*p.s, dir = cr.vx > 0 ? 1 : -1;                                     // small: about 30 cm to the eye
-      if(sz < 0.6 || p.sx < -sz*2 || p.sx > W + sz*2 || sy < -sz || sy > H + sz) continue;
+      if(sz < 0.6 || p.sx < -sz*2 || p.sx > W + sz*2 || sy < -sz || sy > H + sz) return;
       // wingbeat: quick downstroke, slower lift, with the odd glide on stiff wings
       if(cr.age > cr.glideAt){ cr.glide = !cr.glide; cr.glideAt = cr.age + (cr.glide ? 0.8 + Math.random()*1.6 : 1.5 + Math.random()*3); }
       const ph = cr.age*cr.fl + cr.ph, raw = Math.sin(ph) < 0 ? Math.sin(ph*1.4 + (ph % TAU)*0) : Math.sin(ph);
@@ -4909,12 +5023,12 @@ function drawGrove(t){
       c.lineTo(-0.84, -0.14); c.lineTo(-0.8, -0.02); c.lineTo(-0.88, 0.06); c.lineTo(-0.74, 0.1); c.quadraticCurveTo(-0.5, 0.15, -0.1, 0.15); c.quadraticCurveTo(0.35, 0.15, 0.56, 0.06); c.closePath(); c.fill();
       wing(0.1, -0.04, 1.0, fl, 1.2, 1);                                                // near wing
       c.restore();
-      continue;
+      return;
     }
     const p = proj(T.x, T.z), k = fog(T.dz);
     const hgt = 7 + ihash(T.zi, T.j, 33)*7, rad = 0.16 + ihash(T.zi, T.j, 34)*0.22;
     const topY = p.gy - (hgt - 0)*p.s, rw = rad*p.s;
-    if(p.sx < -rw*8 || p.sx > W + rw*8) continue;
+    if(p.sx < -rw*8 || p.sx > W + rw*8) return;
     const alpha = T.a*(1 - k*0.55), lit = ihash(T.zi, T.j, 35);
     const tintI = Math.floor(ihash(T.zi, T.j, 36)*S.leafT.length), tintK = 0.5 + ihash(T.zi, T.j, 37)*0.5;   // this tree's own leaf colour
     const tLeafD = mix(S.leafD, S.leafT[tintI], tintK*0.7), tLeafL = mix(S.leafL, S.leafT[tintI], tintK);
@@ -5670,19 +5784,18 @@ function drawPixelCity(t){
   // ---- pass 1: ground ----
   const road = [58, 60, 66], walk = [156, 158, 160], grass = [92, 168, 66], plaza = [176, 170, 150];
   c.fillStyle = rgb(road, 1); c.fillRect(0, 0, W + 2, H + 2);
+  const roadDash = new Path2D(), roadZebra = new Path2D();         // road markings, collected and filled once after the ground pass
   for(let d = vMin; d <= vMax; d++){
     for(let u = uMin + (((uMin + d) & 1) ? 1 : 0); u <= uMax; u += 2){
       const i = (u + d) >> 1, j = (d - u) >> 1;
       if(isRoad(i, j)){
         const li = ((i % P) + P) % P, lj = ((j % P) + P) % P;
         if(li >= 4 && lj >= 4) continue;                                     // intersection: plain asphalt
-        c.fillStyle = 'rgba(255,225,120,0.9)';
-        if(li === 4 && lj !== 3 && lj !== 0){ const x = SX(i + 1, j + 0.5), y = SY(i + 1, j + 0.5); c.fillRect(x - 1, y - 0.5, 2, 1); }
-        if(lj === 4 && li !== 3 && li !== 0){ const x = SX(i + 0.5, j + 1), y = SY(i + 0.5, j + 1); c.fillRect(x - 1, y - 0.5, 2, 1); }
+        if(li === 4 && lj !== 3 && lj !== 0){ const x = SX(i + 1, j + 0.5), y = SY(i + 1, j + 0.5); roadDash.rect(x - 1, y - 0.5, 2, 1); }
+        if(lj === 4 && li !== 3 && li !== 0){ const x = SX(i + 0.5, j + 1), y = SY(i + 0.5, j + 1); roadDash.rect(x - 1, y - 0.5, 2, 1); }
         if((li >= 4 && (lj === 3 || lj === 0)) || (lj >= 4 && (li === 3 || li === 0))){
           const x = SX(i, j), y = SY(i, j);
-          c.fillStyle = 'rgba(255,255,255,0.55)';
-          for(let k = -2; k <= 2; k += 2) c.fillRect(x + k - 0.5, y + hh - 1, 1, 2);
+          for(let k = -2; k <= 2; k += 2) roadZebra.rect(x + k - 0.5, y + hh - 1, 1, 2);
         }
         continue;
       }
@@ -5696,6 +5809,8 @@ function drawPixelCity(t){
       diamond(i, j, 1, fill);
     }
   }
+  c.fillStyle = 'rgba(255,225,120,0.9)'; c.fill(roadDash);
+  c.fillStyle = 'rgba(255,255,255,0.55)'; c.fill(roadZebra);
 
   // ---- pass 2: collect objects, sort by depth, draw ----
   const objs = CITY.objs; objs.length = 0;
@@ -5774,18 +5889,21 @@ function drawPixelCity(t){
       c.fillStyle = glass ? rgb(winC, 0.75) : rgb(wallC, 0.78); c.beginPath();
       c.moveTo(Sx, Sy); c.lineTo(Ex, Ey); c.lineTo(Ex, Ey - hgt); c.lineTo(Sx, Sy - hgt); c.closePath(); c.fill();
       // window bands
-      const floors = Math.floor((hgt - 4) / 4);
+      // windows never overlap each other, so each face's lit and unlit windows are collected into one path apiece
+      // and filled once (four fills per building instead of two per window)
+      const floors = Math.floor((hgt - 4) / 4), wL1 = new Path2D(), wL0 = new Path2D(), wR1 = new Path2D(), wR0 = new Path2D();
       for(let f = 0; f < floors; f++){
         const fy = 3 + f*4;
         for(let s = 0.12; s < 0.95; s += 0.5 / o.n){
-          const lit = cityHash(o.seed + f, (s*100)|0, 33) < 0.6;
-          const shade = glass ? (lit ? 1.15 : 0.7) : 1;
-          c.fillStyle = glass ? rgb(winC, shade*0.9) : (lit ? rgb(winC, 0.9*glow) : rgb(wallC, 0.28));
-          c.fillRect(Math.round(Wx + (Sx - Wx)*s) - 1, Math.round(Wy + (Sy - Wy)*s - hgt + fy), 2, 2);
-          const lit2 = cityHash(o.seed + f, (s*100)|0, 34) < 0.6;
-          c.fillStyle = glass ? rgb(winC, (lit2 ? 1.3 : 0.9)) : (lit2 ? rgb(winC, glow) : rgb(wallC, 0.4));
-          c.fillRect(Math.round(Sx + (Ex - Sx)*s) - 1, Math.round(Sy + (Ey - Sy)*s - hgt + fy), 2, 2);
+          (cityHash(o.seed + f, (s*100)|0, 33) < 0.6 ? wL1 : wL0).rect(Math.round(Wx + (Sx - Wx)*s) - 1, Math.round(Wy + (Sy - Wy)*s - hgt + fy), 2, 2);
+          (cityHash(o.seed + f, (s*100)|0, 34) < 0.6 ? wR1 : wR0).rect(Math.round(Sx + (Ex - Sx)*s) - 1, Math.round(Sy + (Ey - Sy)*s - hgt + fy), 2, 2);
         }
+      }
+      if(floors > 0){
+        c.fillStyle = glass ? rgb(winC, 1.15*0.9) : rgb(winC, 0.9*glow); c.fill(wL1);
+        c.fillStyle = glass ? rgb(winC, 0.7*0.9) : rgb(wallC, 0.28); c.fill(wL0);
+        c.fillStyle = glass ? rgb(winC, 1.3) : rgb(winC, glow); c.fill(wR1);
+        c.fillStyle = glass ? rgb(winC, 0.9) : rgb(wallC, 0.4); c.fill(wR0);
       }
       // roof
       c.fillStyle = rgb(wallC, 1.12); c.beginPath();
@@ -6639,7 +6757,21 @@ function drawNeonCity(t){
   bctx.lineCap = 'round';
   // pen pressure: every line gets its own stable, skewed-random thickness (mostly fine, sometimes heavy), buffer-scaled
   const S = bw/512, wv = (hid) => S*(0.55 + Math.pow(ihash(hid, k, 99), 1.8)*2.0);
-  const seg = (p, q, col, a, w = 1, hid = 0) => { bctx.strokeStyle = rgb(col, 1, a); bctx.lineWidth = w*wv(hid); bctx.beginPath(); bctx.moveTo(p[0], p[1]); bctx.lineTo(q[0], q[1]); bctx.stroke(); };
+  // LINE BATCH: edge lines are collected into one path per quantised style (colour to 8 levels a channel step, alpha
+  // to 1/32, width to half a pixel) and stroked together when a section ends, instead of one stroke call per line -
+  // thousands of calls become a few hundred. Fog ties colour to depth and blocks are drawn far to near, so buckets
+  // come out roughly depth-ordered by their first appearance.
+  const LB = NC.lb || (NC.lb = new Map());
+  const seg = (p, q, col, a, w = 1, hid = 0) => {
+    const aq = Math.round(a*32); if(aq <= 0) return;
+    // distant lines (dimmed by the fog) are drawn as 1-px hairlines, which rasterise on a much faster path than
+    // wider strokes; near lines keep their pen weight. Thinner far lines also read as depth.
+    const r = clamp(col[0], 0, 255) & 248, gg = clamp(col[1], 0, 255) & 248, b = clamp(col[2], 0, 255) & 248, wq = a < 0.22 ? 2 : Math.max(1, Math.round(w*wv(hid)*2));
+    const key = ((r*256 + gg)*256 + b)*1024 + (aq > 32 ? 32 : aq)*24 + wq;
+    let e = LB.get(key); if(!e){ e = { p:new Path2D(), s:'rgba(' + r + ',' + gg + ',' + b + ',' + (Math.min(32, aq)/32) + ')', w:wq/2 }; LB.set(key, e); }
+    e.p.moveTo(p[0], p[1]); e.p.lineTo(q[0], q[1]);
+  };
+  const lbFlush = () => { const cap = bctx.lineCap; for(const e of LB.values()){ bctx.lineCap = e.w <= 1.5 ? 'butt' : 'round'; bctx.strokeStyle = e.s; bctx.lineWidth = e.w; bctx.stroke(e.p); } bctx.lineCap = cap; LB.clear(); };   // round caps only where a line is wide enough to show them
   const dropP = 0.4 - dens*0.35;                                     // low DENSITY leaves more edges undrawn
   const edge = (p, q, col, a, w, hid) => {                          // hand-drawn edge: sometimes missing, partial or doubled
     const h = ihash(hid, k, 7);
@@ -6663,6 +6795,7 @@ function drawNeonCity(t){
     if(!ok(p0, p1)) continue;
     seg(p0, p1, gridC, (1 - fog)*0.25, 1, i + 450);
   }
+  lbFlush();                                                        // grid under everything
   // ---- wireframe solids ----
   const drawBox = (x0, x1, y0, y1, z0, z1, col, id, opts) => {
     const zc = (z0 + z1)*0.5 - NC.z, fog = fogAt(zc); if(fog > 0.985 || z1 - NC.z < near + 0.05) return;
@@ -6685,12 +6818,13 @@ function drawNeonCity(t){
     const faces = [[c000, c010, c100, c110]];
     if(camSide < 0) faces.push([c000, c010, c001, c011]); else if(camSide > 0) faces.push([c100, c110, c101, c111]);
     const nF = Math.max(2, Math.round((y1 - y0)*(0.5 + dens*1.4))), nM = 2 + Math.round(dens*5);
-    bctx.strokeStyle = rgb(line, 1, aL*0.35); bctx.lineWidth = wv(id*13 + 21)*0.8; bctx.beginPath();
+    // interior hatching is dim detail: 1-px hairlines (a much faster raster path than wider strokes); the outlines keep their pen weight
+    bctx.strokeStyle = rgb(line, 1, aL*0.35); bctx.lineWidth = Math.min(1, wv(id*13 + 21)*0.8); bctx.lineCap = 'butt'; bctx.beginPath();
     for(const [b0, t0, b1, t1] of faces){
       for(let i = 1; i < nF; i++){ if(ihash(id, i, 11) < 0.25) continue; const v = i/nF; bctx.moveTo(lerp(b0[0], t0[0], v), lerp(b0[1], t0[1], v)); bctx.lineTo(lerp(b1[0], t1[0], v), lerp(b1[1], t1[1], v)); }
       for(let i = 1; i < nM; i++){ if(ihash(id, i + 50, 11) < 0.3) continue; const u = i/nM; bctx.moveTo(lerp(b0[0], b1[0], u), lerp(b0[1], b1[1], u)); bctx.lineTo(lerp(t0[0], t1[0], u), lerp(t0[1], t1[1], u)); }
     }
-    bctx.stroke();
+    bctx.stroke(); bctx.lineCap = 'round';
     // cross bracing on the side face
     if(faces.length > 1 && ihash(id, k, 18) < 0.1 + dens*0.5){ const [b0, t0, b1, t1] = faces[1]; bctx.strokeStyle = rgb(line, 1, aL*0.3); bctx.beginPath(); for(let i = 0; i < 3; i++){ const v0 = i/3, v1 = (i + 1)/3; bctx.moveTo(lerp(b0[0], t0[0], v0), lerp(b0[1], t0[1], v0)); bctx.lineTo(lerp(b1[0], t1[0], v1), lerp(b1[1], t1[1], v1)); bctx.moveTo(lerp(b1[0], t1[0], v0), lerp(b1[1], t1[1], v0)); bctx.lineTo(lerp(b0[0], t0[0], v1), lerp(b0[1], t0[1], v1)); } bctx.stroke(); }
     // neon outline on the side face (glow stroke + bright stroke + inner glyph lines)
@@ -6713,7 +6847,7 @@ function drawNeonCity(t){
     if(!ok(apex, ...b)) return;
     const fog = fogAt((z0 + z1)*0.5 - NC.z), line = mix(col, paper, fog*0.85), aL = (1 - fog)*(0.55 + glow*0.45);
     for(let i = 0; i < 4; i++){ edge(b[i], apex, line, aL, 1, id*17 + i); edge(b[i], b[(i + 1) % 4], line, aL*0.6, 1, id*17 + 5 + i); }
-    for(let j = 1; j < 3; j++){ const v = j/3; bctx.strokeStyle = rgb(line, 1, aL*0.35); bctx.lineWidth = wv(id*17 + 9 + j); bctx.beginPath(); for(let i = 0; i <= 4; i++){ const p = b[i % 4], x = lerp(p[0], apex[0], v), y = lerp(p[1], apex[1], v); if(i) bctx.lineTo(x, y); else bctx.moveTo(x, y); } bctx.stroke(); }   // contour rings up the spire
+    for(let j = 1; j < 3; j++){ const v = j/3; bctx.strokeStyle = rgb(line, 1, aL*0.35); bctx.lineWidth = Math.min(1, wv(id*17 + 9 + j)); bctx.beginPath(); for(let i = 0; i <= 4; i++){ const p = b[i % 4], x = lerp(p[0], apex[0], v), y = lerp(p[1], apex[1], v); if(i) bctx.lineTo(x, y); else bctx.moveTo(x, y); } bctx.stroke(); }   // contour rings up the spire
   };
   const drawPrism = (cx, cz, r, y0, y1, col, id) => {
     const fog = fogAt(cz - NC.z), line = mix(col, paper, fog*0.85), aL = (1 - fog)*(0.55 + glow*0.45);
@@ -6768,6 +6902,7 @@ function drawNeonCity(t){
         if(Math.sin(tt*3 + id) > 0.2){ bctx.strokeStyle = rgb([255, 70, 70], 1, 1 - fog); bctx.lineWidth = 1.5; bctx.beginPath(); bctx.arc(p1[0], p1[1], 2, 0, TAU); bctx.stroke(); } }
     }
   }
+  lbFlush();
   // ---- cables sagging across the boulevard with hanging lamps ----
   for(let i = 0; i < Math.round(3 + dens*7); i++){                      // cables between the facades
     const z = Math.floor(NC.z/4)*4 + i*4 + ihash(i, k, 45)*3, y = 6 + ihash(i, k, 46)*9, fog = fogAt(z - NC.z), l = proj(-C.street, y, z), r = proj(C.street, y, z), m = proj(0, y - 1.2, z);
@@ -6776,6 +6911,7 @@ function drawNeonCity(t){
     const nLp = Math.round(2 + dens*6);
     for(let j = 1; j < nLp; j++){ const u = j/nLp, x = lerp(l[0], r[0], u), yy = lerp(l[1], r[1], u) + (m[1] - (l[1] + r[1])*0.5)*4*u*(1 - u)*0.9; bctx.strokeStyle = rgb(inkAt(i + j), 1, (1 - fog)*(0.4 + 0.5*Math.abs(Math.sin(tt*2 + i + j)))); bctx.beginPath(); bctx.arc(x, yy, 1.5, 0, TAU); bctx.stroke(); }   // hanging lamps
   }
+  lbFlush();
   // ---- gantries: braced beams across the street with chasing lights and hanging neon outline ----
   for(const gt of gantries){
     const y = 7 + ihash(gt.bi, k, 41)*5, xl = -C.street - 0.4, xr = C.street + 0.4, fog = fogAt(gt.z - NC.z), col = inkAt(gt.bi);
@@ -6801,6 +6937,7 @@ function drawNeonCity(t){
       }
     }
   }
+  lbFlush();
   // ---- traffic: outlined darts, chevrons and drone diamonds with light trails ----
   const wantCars = Math.round((8 + NC.sm[1]*16)*(0.4 + dens));
   while(NC.cars.length < wantCars){
@@ -6832,6 +6969,7 @@ function drawNeonCity(t){
     bctx.stroke();
     bctx.strokeStyle = rgb(c.mode === 'away' ? [255, 70, 60] : [255, 255, 255], 1, a); bctx.beginPath(); bctx.arc(p[0], p[1], 1.2, 0, TAU); bctx.stroke();
   }
+  lbFlush();
   bctx.globalCompositeOperation = 'source-over';
   bctx.lineCap = 'butt'; bctx.lineJoin = 'miter';
 }
@@ -7435,16 +7573,24 @@ function drawMeshGrid(t){
   }
   bctx.save(); bctx.globalCompositeOperation = 'lighter'; bctx.lineCap = 'round';
   const lw = Math.max(1, minD*0.0024);
-  const seg = (a, b, c) => {
-    const hh = (a.h + b.h)*0.5, depth = clamp(1 - (a.z + b.z)*0.5/2.2, 0.25, 1);
-    const k = clamp(hh*1.8, 0, 1);
-    const col = [lerp(c[0], hot[0], k), lerp(c[1], hot[1], k), lerp(c[2], hot[2], k)];
-    bctx.strokeStyle = m3Rgba(col, 1, depth*(0.35 + k*0.65));
-    bctx.lineWidth = lw*(1 + k*1.2);
-    bctx.beginPath(); bctx.moveTo(a.q[0], a.q[1]); bctx.lineTo(b.q[0], b.q[1]); bctx.stroke();
+  // segments are bucketed by crest height (KQ steps) and depth (DQ steps) per direction and each bucket is stroked
+  // once, instead of one stroke per segment ('lighter' blending makes the draw order irrelevant)
+  const KQ = 8, DQ = 5, paths = new Array(2*KQ*DQ);
+  const seg = (a, b, dir) => {
+    const k = clamp((a.h + b.h)*0.9, 0, 1), depth = clamp(1 - (a.z + b.z)*0.5/2.2, 0.25, 1);
+    const ki = Math.min(KQ - 1, (k*KQ) | 0), di = Math.min(DQ - 1, ((depth - 0.25)/0.75*DQ) | 0), idx = (dir*KQ + ki)*DQ + di;
+    const p = paths[idx] || (paths[idx] = new Path2D());
+    p.moveTo(a.q[0], a.q[1]); p.lineTo(b.q[0], b.q[1]);
   };
-  for(let j = 0; j <= N; j++) for(let i = 0; i < N; i++) seg(P[j*(N + 1) + i], P[j*(N + 1) + i + 1], tint);
-  for(let i = 0; i <= N; i++) for(let j = 0; j < N; j++) seg(P[j*(N + 1) + i], P[(j + 1)*(N + 1) + i], tint2);
+  for(let j = 0; j <= N; j++) for(let i = 0; i < N; i++) seg(P[j*(N + 1) + i], P[j*(N + 1) + i + 1], 0);
+  for(let i = 0; i <= N; i++) for(let j = 0; j < N; j++) seg(P[j*(N + 1) + i], P[(j + 1)*(N + 1) + i], 1);
+  for(let dir = 0; dir < 2; dir++) for(let ki = 0; ki < KQ; ki++) for(let di = 0; di < DQ; di++){
+    const p = paths[(dir*KQ + ki)*DQ + di]; if(!p) continue;
+    const c = dir ? tint2 : tint, k = (ki + 0.5)/KQ, depth = 0.25 + (di + 0.5)/DQ*0.75;
+    bctx.strokeStyle = m3Rgba([lerp(c[0], hot[0], k), lerp(c[1], hot[1], k), lerp(c[2], hot[2], k)], 1, depth*(0.35 + k*0.65));
+    bctx.lineWidth = ki < 2 ? 1 : lw*(1 + k*1.2);                     // the flat base grid as 1-px hairlines (the fast raster path)
+    bctx.stroke(p);
+  }
   bctx.restore();
 }
 
@@ -7626,16 +7772,25 @@ function drawBlob(t){
   g.addColorStop(0, m3Rgba(pb[3] > 0.4 ? hot : tint, 1, 0.15 + pb[0]*0.35 + pb[3]*0.15)); g.addColorStop(1, m3Rgba(tint, 1, 0));
   bctx.fillStyle = g; bctx.fillRect(0, 0, bw, bh);
   const lw = Math.max(0.5, minD*0.0013*(1 + pb[3]*0.8));
+  // segments are bucketed - back or front; for the front, relief (signed, KQ steps) and lighting (LQ steps) - and each
+  // bucket is stroked once instead of one stroke per segment ('lighter' blending makes the order irrelevant)
+  const KQ = 8, LQ = 4, back = new Path2D(), front = new Array(2*KQ*LQ);
   const seg = (a, b) => {
-    const front = (a.z + b.z)*0.5 < 0.05, k = (a.n + b.n)*0.5;
-    const c = k > 0 ? tint2 : tint, w = clamp(k*1.4, 0, 1)*(0.4 + pb[3]*0.8);
-    const col = [lerp(c[0], hot[0], w), lerp(c[1], hot[1], w), lerp(c[2], hot[2], w)];
-    bctx.strokeStyle = m3Rgba(col, front ? 0.7 + (a.lit + b.lit)*0.45 : 0.6, front ? 0.85 : 0.14);
-    bctx.lineWidth = front ? lw*(1 + Math.abs(k)*1.4) : lw*0.7;
-    bctx.beginPath(); bctx.moveTo(a.q[0], a.q[1]); bctx.lineTo(b.q[0], b.q[1]); bctx.stroke();
+    if((a.z + b.z)*0.5 >= 0.05){ back.moveTo(a.q[0], a.q[1]); back.lineTo(b.q[0], b.q[1]); return; }
+    const k = clamp((a.n + b.n)*0.5, -1, 1), ki = Math.min(2*KQ - 1, ((k + 1)*KQ) | 0), li = Math.min(LQ - 1, ((a.lit + b.lit)*0.5*LQ) | 0), idx = ki*LQ + li;
+    const p = front[idx] || (front[idx] = new Path2D());
+    p.moveTo(a.q[0], a.q[1]); p.lineTo(b.q[0], b.q[1]);
   };
   for(let i = 1; i < lat; i++) for(let j = 0; j < lon; j++) seg(P[i*lon + j], P[i*lon + (j + 1) % lon]);
   for(let j = 0; j < lon; j++) for(let i = 0; i < lat; i++) seg(P[i*lon + j], P[(i + 1)*lon + j]);
+  bctx.strokeStyle = m3Rgba(tint, 0.6, 0.14); bctx.lineWidth = lw*0.7; bctx.stroke(back);   // the back of the mesh: a faint ghost
+  for(let ki = 0; ki < 2*KQ; ki++) for(let li = 0; li < LQ; li++){
+    const p = front[ki*LQ + li]; if(!p) continue;
+    const k = (ki + 0.5)/KQ - 1, lit = (li + 0.5)/LQ, c = k > 0 ? tint2 : tint, w = clamp(k*1.4, 0, 1)*(0.4 + pb[3]*0.8);
+    bctx.strokeStyle = m3Rgba([lerp(c[0], hot[0], w), lerp(c[1], hot[1], w), lerp(c[2], hot[2], w)], 0.7 + lit*0.9, 0.85);
+    bctx.lineWidth = lw*(1 + Math.abs(k)*1.4);
+    bctx.stroke(p);
+  }
   bctx.restore();
 }
 
@@ -8143,38 +8298,33 @@ function fluxLinesPass(t, a){
 
 // COMIC INK (first stage of the effects chain): Sobel edge detection lays down black ink outlines, colours are
 // flattened to a few poster levels and saturation is pushed, giving the Final Cut "Comic" look. `a` = 0..1.
-const CI = { lum:null, post:new Float32Array(256), postLevels:-1 };
+const CI = { lum:null, post8:null, postLevels:-1 };
 function comicInkData(d, a){
+  // fixed-point integer maths throughout (luma x256, 8-bit saturation / posterise / ink factors): ~30% faster than
+  // the float version and within rounding of it
   const n = bw*bh;
-  if(!CI.lum || CI.lum.length !== n) CI.lum = new Float32Array(n);
-  const L = CI.lum;
-  for(let i = 0, p = 0; i < n; i++, p += 4) L[i] = d[p]*0.299 + d[p+1]*0.587 + d[p+2]*0.114;
-
+  if(!CI.lum || CI.lum.length !== n) CI.lum = new Int32Array(n);
+  const L = CI.lum, d32 = new Uint32Array(d.buffer, d.byteOffset, n);
+  for(let i = 0; i < n; i++){ const v = d32[i]; L[i] = (v & 255)*77 + ((v >>> 8) & 255)*150 + ((v >>> 16) & 255)*29; }   // luma x256
   const levels = Math.round(lerp(14, 4, a)), step = 255/(levels - 1);
-  if(CI.postLevels !== levels){ for(let v = 0; v < 256; v++) CI.post[v] = Math.round(v/step)*step; CI.postLevels = levels; }   // poster LUT instead of 3 rounds per pixel
-  const post = CI.post;
-  const thr = lerp(170, 44, a), invThr = 1/thr;   // lower threshold = more edges become ink
-  const satB = 1 + a*0.6;                          // punchier flat colour
-  const inkA = Math.min(1, a*1.6);                 // ink opacity ramps up quickly
-
-  const xMax = bw - 1;
+  if(CI.postLevels !== levels || !CI.post8){ CI.post8 = new Int32Array(256); for(let v = 0; v < 256; v++) CI.post8[v] = Math.round(Math.round(v/step)*step); CI.postLevels = levels; }
+  const post = CI.post8;
+  const thr = lerp(170, 44, a)*256, inkK = Math.min(1, a*1.6)*256/thr;   // ink = clamp((|gx|+|gy| - thr)/thr)*inkA, in 1/256
+  const satB = Math.round((1 + a*0.6)*256), aP = Math.round(a*256), xMax = bw - 1;
   for(let y = 0; y < bh; y++){
     const yA = (y > 0 ? y - 1 : y)*bw, yB = y*bw, yC = (y < bh - 1 ? y + 1 : y)*bw;
     for(let x = 0; x < bw; x++){
-      // Sobel; the row above/below is pre-clamped per row, only the two edge columns need the x clamp
       const xA = x > 0 ? x - 1 : 0, xC = x < xMax ? x + 1 : xMax;
       const a0 = L[yA + xA], a1 = L[yA + x], a2 = L[yA + xC], c0 = L[yC + xA], c1 = L[yC + x], c2 = L[yC + xC];
-      const gx = (a2 + 2*L[yB + xC] + c2) - (a0 + 2*L[yB + xA] + c0);
-      const gy = (c0 + 2*c1 + c2) - (a0 + 2*a1 + a2);
-      let ink = ((gx < 0 ? -gx : gx) + (gy < 0 ? -gy : gy) - thr)*invThr;
-      ink = (ink < 0 ? 0 : ink > 1 ? 1 : ink)*inkA;
-
-      const p = (yB + x)*4, l = L[yB + x];
-      let r = l + (d[p] - l)*satB, g = l + (d[p+1] - l)*satB, b = l + (d[p+2] - l)*satB;
-      r += (post[r < 0 ? 0 : r > 255 ? 255 : r|0] - r)*a; g += (post[g < 0 ? 0 : g > 255 ? 255 : g|0] - g)*a; b += (post[b < 0 ? 0 : b > 255 ? 255 : b|0] - b)*a;
-      const k = 1 - ink;
-      d[p] = r*k; d[p+1] = g*k; d[p+2] = b*k;                       // Uint8ClampedArray clamps + rounds on store
-      if(ink > 0.02){ const ia = ink*255; if(d[p+3] < ia) d[p+3] = ia; }   // ink also outlines shapes over a transparent backdrop
+      const gx = (a2 + 2*L[yB + xC] + c2) - (a0 + 2*L[yB + xA] + c0), gy = (c0 + 2*c1 + c2) - (a0 + 2*a1 + a2);
+      let ink = ((gx < 0 ? -gx : gx) + (gy < 0 ? -gy : gy) - thr)*inkK;           // 0..256
+      ink = ink < 0 ? 0 : ink > 256 ? 256 : ink | 0;
+      const i = yB + x, v = d32[i], l = L[i] >> 8, k = 256 - ink;
+      let r = l + ((((v & 255) - l)*satB) >> 8), g = l + (((((v >>> 8) & 255) - l)*satB) >> 8), b = l + (((((v >>> 16) & 255) - l)*satB) >> 8);
+      r = r < 0 ? 0 : r > 255 ? 255 : r; g = g < 0 ? 0 : g > 255 ? 255 : g; b = b < 0 ? 0 : b > 255 ? 255 : b;
+      r = ((r + (((post[r] - r)*aP) >> 8))*k) >> 8; g = ((g + (((post[g] - g)*aP) >> 8))*k) >> 8; b = ((b + (((post[b] - b)*aP) >> 8))*k) >> 8;
+      let al = v >>> 24; if(ink > 5){ const ia = ink > 255 ? 255 : ink; if(al < ia) al = ia; }   // ink also outlines shapes over a transparent backdrop
+      d32[i] = ((al << 24) | (b << 16) | (g << 8) | r) >>> 0;
     }
   }
 }
@@ -8211,20 +8361,21 @@ function postProcessData(d){
     return;
   }
 
-  sharedSrcBuffer.set(d.subarray(0, npx));
-  const src = sharedSrcBuffer;
+  // chroma-offset path (low RESOLUTION): red is read a few pixels to the right and blue to the left. Only the red
+  // and blue channels are copied aside, the edges are handled outside the inner loop, and the grain uses the same
+  // inline generator as the fast path, so this costs about the same as posterise + grain alone.
+  const src = sharedSrcBuffer; src.set(d.subarray(0, npx));
+  let rs = rngS | 0; const g2 = grain*2*2.3283064365386963e-10, ca4 = ca*4;
   for(let y = 0; y < bh; y++){
-    const row = y*bw, xMax = bw - 1;
-    let i = row*4;
-    for(let x = 0; x < bw; x++, i += 4){
-      // chroma offsets, clamped at the frame edges
-      let xR = x + ca; if(xR > xMax) xR = xMax;
-      let xL = x - ca; if(xL < 0) xL = 0;
-      const r = src[(row + xR) << 2], g = src[i + 1], b2 = src[((row + xL) << 2) + 2];
-      const gn = (frand()*2 - 1)*grain;
-      d[i] = lut[r] + gn; d[i+1] = lut[g] + gn; d[i+2] = lut[b2] + gn;   // store clamps
+    const rowStart = y*bw*4, rowEnd = rowStart + bw*4, inStart = rowStart + ca4, inEnd = rowEnd - ca4;
+    for(let i = rowStart; i < rowEnd; i += 4){
+      rs ^= rs << 13; rs ^= rs >>> 17; rs ^= rs << 5;
+      const gn = (rs >>> 0)*g2 - grain;
+      const iR = i < inEnd ? i + ca4 : rowEnd - 4, iB = i >= inStart ? i - ca4 : rowStart;
+      d[i] = lut[src[iR]] + gn; d[i+1] = lut[d[i+1]] + gn; d[i+2] = lut[src[iB + 2]] + gn;   // store clamps
     }
   }
+  rngS = rs;
 }
 
 // Vector overlays for the film filters: scratches, dust, hairs, stains. Drawn in buffer-pixel coordinates
@@ -8342,6 +8493,34 @@ function dfSetTint(tr, tg, tb, s){
   if(m !== DF.tintStr){ DF.tintEl.setAttribute('values', m); DF.tintStr = m; }
   return true;
 }
+// Rebuild the view from its red, green and blue channels, red shifted dx right and blue dx left (edge columns are
+// stretched so the frame border doesn't show dark strips). Channels are isolated with plain composites - 'multiply'
+// by pure red / green / blue - instead of SVG colour-matrix filters, which Chrome renders through an offscreen layer
+// per draw. Used by RGB and by the VHS / cable chroma offset in the DISPLAY FILTER.
+function rgbSplitView(dx){
+  fxctx.save(); fxctx.setTransform(1, 0, 0, 1, 0, 0); fxctx.filter = 'none'; fxctx.globalAlpha = 1;
+  fxctx.globalCompositeOperation = 'copy'; fxctx.drawImage(view, 0, 0);
+  fxctx.restore();
+  if(!RS.c){ RS.c = document.createElement('canvas'); RS.x = RS.c.getContext('2d'); }
+  if(RS.c.width !== W || RS.c.height !== H){ RS.c.width = W; RS.c.height = H; }
+  const cx = RS.x;
+  const channel = (col, off, edgeSrc, edgeDst) => {             // one channel, shifted by off, into the scratch
+    cx.globalCompositeOperation = 'copy'; cx.globalAlpha = 1;
+    cx.drawImage(fxc, off, 0);
+    cx.globalCompositeOperation = 'source-over';
+    if(edgeSrc >= 0) cx.drawImage(fxc, edgeSrc, 0, 1, H, edgeDst, 0, Math.abs(off) + 1, H);
+    cx.globalCompositeOperation = 'multiply'; cx.fillStyle = col; cx.fillRect(0, 0, W, H);
+  };
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.filter = 'none'; ctx.globalAlpha = 1;
+  channel('#ff0000', dx, 0, 0);
+  ctx.globalCompositeOperation = 'copy'; ctx.drawImage(RS.c, 0, 0);
+  channel('#00ff00', 0, -1, 0);
+  ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(RS.c, 0, 0);
+  channel('#0000ff', -dx, W - 1, W - dx - 1);
+  ctx.drawImage(RS.c, 0, 0);
+  ctx.restore();
+}
 function displayFilterPass(tw, bgCol){
   const F = FX[state.filter], L = eff.fxLevel;
   if(!F || state.filter === 'none' || L <= 0.02) return;
@@ -8375,15 +8554,9 @@ function displayFilterPass(tw, bgCol){
   }
 
   // 2. chroma offset (VHS / cable): the frame rebuilt from its channels with red and blue pulled apart
-  if(F.caAdd && FILTER_OK && L > 0.15){
-    const dx = Math.max(1, Math.round(F.caAdd*k*L));
-    snap();
-    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.filter = 'url(#rsR)'; ctx.drawImage(fxc, dx, 0); ctx.drawImage(fxc, 0, 0, 1, H, 0, 0, dx + 1, H);
-    ctx.filter = 'url(#rsG)'; ctx.drawImage(fxc, 0, 0);
-    ctx.filter = 'url(#rsB)'; ctx.drawImage(fxc, -dx, 0); ctx.drawImage(fxc, W - 1, 0, 1, H, W - dx - 1, 0, dx + 1, H);
-    ctx.filter = 'none'; ctx.globalCompositeOperation = 'source-over';
+  if(F.caAdd && L > 0.15){
+    ctx.restore(); rgbSplitView(Math.max(1, Math.round(F.caAdd*k*L)));
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.filter = 'none'; ctx.imageSmoothingEnabled = false;
   }
 
   // 3. softening (cable): a sub-pixel blur in buffer units
@@ -8544,7 +8717,7 @@ function frame(now){
   requestAnimationFrame(frame);
   const dt = clamp((now - last)*0.001, 0, 0.05);
   last = now;
-  if(bw !== targetBufferWidth()) resize();   // FIDELITY stepped into a new resolution tier
+  if(bw !== targetBufferWidth()) resizeBuffers();   // RESOLUTION stepped into a new buffer tier: only the shape buffers change
   const tw = now * 0.001;
 
   updateAudio(dt);
@@ -8688,14 +8861,18 @@ function frame(now){
   ctx.scale(k, k);
   ctx.drawImage(finalSource, -bw*0.5, -bh*0.5);
 
-  if(FILTER_OK){
-    // low-FIDELITY colour fringing (the DISPLAY FILTER's own chroma offset is applied later, in displayFilterPass)
+  {
+    // low-RESOLUTION colour fringing: a faint ghost of the picture nudged one way and a blue fringe the other,
+    // added on. (These used to be two SVG-filtered full-size draws; the ghost filter's matrix was malformed and so
+    // passed the picture through unchanged, and the buffer is opaque, so the blue fringe is just a blue rectangle.
+    // Drawing them directly gives the same look without the filters.)
     const ca = eff.fidelity < 0.7 ? (eff.fidelity < 0.35 ? 2 : 1) : 0;
     if(ca > 0){
+      const o = glitchCA/k;                                        // the fringe offset in buffer pixels
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.4;
-      ctx.filter = 'url(#caR)'; ctx.drawImage(finalSource, -bw*0.5, -bh*0.5);
-      ctx.filter = 'url(#caB)'; ctx.drawImage(finalSource, -bw*0.5, -bh*0.5);
+      ctx.drawImage(finalSource, -bw*0.5 + o, -bh*0.5);
+      ctx.fillStyle = '#0000ff'; ctx.fillRect(-bw*0.5 - o, -bh*0.5, bw, bh);
     }
   }
   ctx.restore();
@@ -8764,27 +8941,9 @@ function frame(now){
 
   // RGB SPLIT (effects chain stage 2): the frame is rebuilt from its red, green and blue channels drawn at
   // different horizontal offsets. Edge columns are stretched so the frame border doesn't show dark strips.
-  if(eff.split > 0.005 && FILTER_OK){
+  if(eff.split > 0.005){
     const dx = Math.max(1, Math.round(eff.split * W * 0.05));
-    fxctx.globalCompositeOperation = 'copy';
-    fxctx.drawImage(view, 0, 0);
-    fxctx.globalCompositeOperation = 'source-over';
-    ctx.save();
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 1;
-    ctx.filter = 'none';
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, W, H);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.filter = 'url(#rsR)';
-    ctx.drawImage(fxc, dx, 0);
-    ctx.drawImage(fxc, 0, 0, 1, H, 0, 0, dx + 1, H);
-    ctx.filter = 'url(#rsG)';
-    ctx.drawImage(fxc, 0, 0);
-    ctx.filter = 'url(#rsB)';
-    ctx.drawImage(fxc, -dx, 0);
-    ctx.drawImage(fxc, W - 1, 0, 1, H, W - dx - 1, 0, dx + 1, H);
-    ctx.restore();
+    rgbSplitView(dx);
   }
 
   // ASCII, right after RGB SPLIT, so the split picture is set in characters
@@ -8792,12 +8951,14 @@ function frame(now){
 
   // TRAILS: persistence of everything up to here; the later effects work on the smeared picture
   if(eff.trails > 0.01){
+    // the trail memory lives at LW x LH: the view is folded into it scaled down, and it comes back scaled up
+    tctx.imageSmoothingEnabled = true;
     if(!trailsArmed){
       tctx.globalCompositeOperation = 'source-over';
       tctx.globalAlpha = 1;
       tctx.fillStyle = bgCol;
-      tctx.fillRect(0, 0, W, H);
-      tctx.drawImage(view, 0, 0);
+      tctx.fillRect(0, 0, LW, LH);
+      tctx.drawImage(view, 0, 0, W, H, 0, 0, LW, LH);
       trailsArmed = true;
     }
     const mem = lerp(4, 240, Math.pow(eff.trails, 2.2));
@@ -8806,12 +8967,13 @@ function frame(now){
     const z = 1 + eff.trails*eff.trails*0.004;
     if(z > 1.0005){
       tctx.globalAlpha = 1;
-      tctx.drawImage(trail, (W - W*z)*0.5, (H - H*z)*0.5, W*z, H*z);
+      tctx.drawImage(trail, (LW - LW*z)*0.5, (LH - LH*z)*0.5, LW*z, LH*z);
     }
     tctx.globalAlpha = a;
-    tctx.drawImage(view, 0, 0);
+    tctx.drawImage(view, 0, 0, W, H, 0, 0, LW, LH);
     tctx.globalAlpha = 1;
-    ctx.drawImage(trail, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(trail, 0, 0, LW, LH, 0, 0, W, H);
   } else if(trailsArmed){
     trailsArmed = false;
   }
@@ -8829,9 +8991,21 @@ function frame(now){
   stylizePass(ST_VIEW, ctx, view, W, H, tw, ['thresh', 'edges', 'contour', 'psort', 'dither', 'halftone']);
 
   if(eff.blur > 0.01 && FILTER_OK){
-    ctx.save();
-    ctx.filter = `blur(${eff.blur * Math.min(W, H) * 0.02}px)`;
-    ctx.drawImage(view, 0, 0);
+    // A blur's cost grows with the radius and the pixel count. Above a few pixels of radius the picture is shrunk by
+    // up to 4x, blurred there with the radius shrunk to match, and scaled back up - the result is indistinguishable
+    // (a blurred image has no detail left to lose) at a small fraction of the cost.
+    const rad = eff.blur * Math.min(W, H) * 0.02, ds = rad < 3 ? 1 : Math.min(4, rad/1.5);
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    if(ds <= 1){
+      ctx.filter = `blur(${rad}px)`; ctx.drawImage(view, 0, 0);
+    } else {
+      const bwS = Math.max(2, Math.round(W/ds)), bhS = Math.max(2, Math.round(H/ds));
+      if(!BLR.c){ BLR.c = document.createElement('canvas'); BLR.x = BLR.c.getContext('2d'); }
+      if(BLR.c.width !== bwS || BLR.c.height !== bhS){ BLR.c.width = bwS; BLR.c.height = bhS; }
+      const bx = BLR.x; bx.globalCompositeOperation = 'copy'; bx.imageSmoothingEnabled = true;
+      bx.filter = `blur(${(rad/ds).toFixed(2)}px)`; bx.drawImage(view, 0, 0, W, H, 0, 0, bwS, bhS); bx.filter = 'none';
+      ctx.imageSmoothingEnabled = true; ctx.globalCompositeOperation = 'copy'; ctx.drawImage(BLR.c, 0, 0, bwS, bhS, 0, 0, W, H);
+    }
     ctx.restore();
   }
 
@@ -8855,40 +9029,47 @@ function frame(now){
     const keyed = state.fbKey !== 'off' && FILTER_OK;
     if(!fbArmed){
       fbActx.globalCompositeOperation = 'source-over'; fbActx.globalAlpha = 1; fbActx.filter = 'none';
-      if(keyed){ fbActx.fillStyle = '#000'; fbActx.fillRect(0, 0, W, H); }   // keyed loop starts from black so the key colour never gets into the memory
-      else fbActx.drawImage(view, 0, 0);
+      fbActx.fillStyle = '#000'; fbActx.fillRect(0, 0, FW, FH);
+      if(!keyed) fbActx.drawImage(view, 0, 0, W, H, 0, 0, FW, FH);   // a keyed loop starts from black so the key colour never gets into the memory
       fbArmed = true;
     }
-    fbBctx.globalCompositeOperation = 'source-over'; fbBctx.globalAlpha = 1; fbBctx.filter = 'none';
+    // 1. the loop contribution: the memory zoomed, rotated, hue-drifted and gained, over black - filtered once, at FW x FH
+    const lc = fbLctx;
+    lc.globalCompositeOperation = 'source-over'; lc.globalAlpha = 1; lc.filter = 'none'; lc.imageSmoothingEnabled = true;
+    lc.fillStyle = '#000'; lc.fillRect(0, 0, FW, FH);
+    lc.save();
+    lc.translate(FW*0.5, FH*0.5); lc.rotate(state.fbRot * Math.PI/180); lc.scale(1 + state.fbZoom, 1 + state.fbZoom); lc.translate(-FW*0.5, -FH*0.5);
     if(keyed){
-      // KEY: background = previous output, zoomed / rotated / hue-drifted and dimmed by the loop gain over black;
-      // foreground = the live frame with the key colour cut out. The composite is shown and becomes the next memory.
-      fbKeyBuild();
-      fbBctx.fillStyle = '#000'; fbBctx.fillRect(0, 0, W, H);
-      fbBctx.save();
-      fbBctx.translate(W*0.5, H*0.5); fbBctx.rotate(state.fbRot * Math.PI/180); fbBctx.scale(1 + state.fbZoom, 1 + state.fbZoom); fbBctx.translate(-W*0.5, -H*0.5);
-      fbBctx.globalAlpha = Math.min(1, 0.4 + eff.feedback*0.6);
-      fbBctx.filter = `hue-rotate(${state.fbHue}deg) saturate(${sat.toFixed(3)}) contrast(${(1 + over*0.15).toFixed(3)})`;
-      fbBctx.drawImage(fbA, 0, 0);
-      fbBctx.restore();
-      fbBctx.filter = 'url(#fbKey)';
-      fbBctx.drawImage(view, 0, 0);
-      fbBctx.filter = 'none';
+      lc.globalAlpha = Math.min(1, 0.4 + eff.feedback*0.6);
+      fbColorMatrix(state.fbHue, sat, 1, 1 + over*0.15); lc.filter = 'url(#fbCM)';
     } else {
-    fbBctx.drawImage(view, 0, 0);
-    fbBctx.save();
-    fbBctx.translate(W*0.5, H*0.5);
-    fbBctx.rotate(state.fbRot * Math.PI/180);
-    fbBctx.scale(1 + state.fbZoom, 1 + state.fbZoom);
-    fbBctx.translate(-W*0.5, -H*0.5);
-    fbBctx.globalCompositeOperation = 'lighter';
-    fbBctx.globalAlpha = gain;
-    if(FILTER_OK) fbBctx.filter = `hue-rotate(${state.fbHue}deg) saturate(${sat.toFixed(3)}) brightness(${bright.toFixed(3)}) contrast(${contrast.toFixed(3)})`;
-    fbBctx.drawImage(fbA, 0, 0);
-    fbBctx.restore();
+      lc.globalAlpha = gain;
+      if(FILTER_OK){ fbColorMatrix(state.fbHue, sat, bright, contrast); lc.filter = 'url(#fbCM)'; }
     }
-    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.filter = 'none';
-    ctx.drawImage(fbB, 0, 0);
+    lc.drawImage(fbA, 0, 0);
+    lc.restore();
+    fbBctx.globalCompositeOperation = 'source-over'; fbBctx.globalAlpha = 1; fbBctx.filter = 'none'; fbBctx.imageSmoothingEnabled = true;
+    if(keyed){
+      // KEY: background = the loop contribution; foreground = the live frame with the key colour cut out.
+      // The view keeps the live frame at full resolution: the keyed live picture is cut in the full-size scratch,
+      // the loop is blitted up beneath it, and the memory is the same composite at FW x FH.
+      fbKeyBuild();
+      fbBctx.drawImage(fbL, 0, 0);
+      fbBctx.filter = 'url(#fbKey)'; fbBctx.drawImage(view, 0, 0, W, H, 0, 0, FW, FH); fbBctx.filter = 'none';
+      fxctx.save(); fxctx.setTransform(1, 0, 0, 1, 0, 0); fxctx.globalCompositeOperation = 'copy'; fxctx.globalAlpha = 1;
+      fxctx.filter = 'url(#fbKey)'; fxctx.drawImage(view, 0, 0); fxctx.filter = 'none'; fxctx.restore();
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.filter = 'none'; ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(fbL, 0, 0, FW, FH, 0, 0, W, H);
+      ctx.drawImage(fxc, 0, 0);
+    } else {
+      // additive loop: memory = live frame + loop contribution (at FW x FH); the view gets the same contribution
+      // added over its full-resolution live frame
+      fbBctx.drawImage(view, 0, 0, W, H, 0, 0, FW, FH);
+      fbBctx.globalCompositeOperation = 'lighter'; fbBctx.drawImage(fbL, 0, 0); fbBctx.globalCompositeOperation = 'source-over';
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 1; ctx.filter = 'none'; ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(fbL, 0, 0, FW, FH, 0, 0, W, H);
+      ctx.globalCompositeOperation = 'source-over';
+    }
     // swap: what we just showed is next pass's memory
     let tc = fbA; fbA = fbB; fbB = tc; let tx = fbActx; fbActx = fbBctx; fbBctx = tx;
   } else if(fbArmed){
